@@ -1,0 +1,13 @@
+{
+  "name": "lift",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Elevator-throughput prototype. Sim is pure and headless; the renderer is disposable.",
+  "scripts": {
+    "play": "node harness/serve.js",
+    "test": "node test/run.js",
+    "sim": "node harness/run.js",
+    "sweep": "node harness/sweep.js"
+  }
+}
