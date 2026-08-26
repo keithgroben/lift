@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { CONFIG } from '../src/config/lift.config.js';
-import { boot, step } from '../src/sim/index.js';
-import { POLICIES } from '../harness/policy.js';
+import { CONFIG } from '../src/games/lift/config.js';
+import { boot, step } from '../src/games/lift/sim/index.js';
+import { POLICIES } from '../src/games/lift/policies.js';
 
 const assert = (c, m) => { if (!c) throw new Error(m); };
 
@@ -28,7 +28,7 @@ export const tests = {
 
   'no Math.random anywhere under src/sim'() {
     // Determinism is a property of the whole directory, not of one entry point.
-    const dir = path.join(process.cwd(), 'src', 'sim');
+    const dir = path.join(process.cwd(), 'src', 'games', 'lift', 'sim');
     for (const f of fs.readdirSync(dir)) {
       // Strip comments first: a comment SAYING "no Math.random" is not a call,
       // and matching it made this test fail on the file that proves the point.

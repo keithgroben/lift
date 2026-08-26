@@ -3,105 +3,46 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Lift — elevator throughput prototype</title>
+<title>Prototypes</title>
 <style>
-  :root {
-    --bg: #0e1116; --panel: #1b2430; --good: #3ddc97;
-    --warn: #ffb703; --bad: #ef476f; --info: #8ecae6;
-    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  }
+  :root { --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   * { box-sizing: border-box; }
-  html, body { height: 100%; margin: 0; }
   body {
-    background: var(--bg); color: #dbe4ee; font-family: var(--mono);
-    display: grid; grid-template-columns: 1fr 260px; overflow: hidden;
+    margin: 0; min-height: 100vh; background: #0e1116; color: #dbe4ee;
+    font-family: var(--mono); display: grid; place-items: center; padding: 32px;
   }
-  #stage { position: relative; }
-  #tower { width: 100%; height: 100%; display: block; }
-
-  #clock {
-    position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
-    font-size: 12px; letter-spacing: .12em; pointer-events: none;
+  main { width: 100%; max-width: 620px; }
+  h1 { font-size: 14px; letter-spacing: .2em; color: #8ecae6; margin: 0 0 6px; }
+  p.sub { font-size: 12px; color: #52657a; margin: 0 0 28px; line-height: 1.7; }
+  a.game {
+    display: block; text-decoration: none; color: inherit; background: #1b2430;
+    border: 1px solid #2a3746; border-radius: 8px; padding: 18px 20px; margin-bottom: 12px;
+    transition: border-color .14s ease, transform .1s ease;
   }
-  #log {
-    position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
-    font-size: 12px; pointer-events: none; text-align: center;
-  }
-
-  aside { background: var(--panel); padding: 16px; overflow-y: auto; }
-  h1 { font-size: 13px; letter-spacing: .18em; margin: 0 0 14px; color: var(--info); }
-  h1 small { display: block; color: #5f7488; letter-spacing: .04em; font-size: 10px; margin-top: 4px; }
-
-  .stat { display: flex; justify-content: space-between; font-size: 12px; padding: 4px 0; }
-  .stat span:first-child { color: #6b8199; }
-  .rule { height: 1px; background: #2a3746; margin: 12px 0; }
-
-  h2 { font-size: 10px; letter-spacing: .16em; color: #6b8199; margin: 0 0 8px; font-weight: 600; }
-  #build { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-  button {
-    font-family: var(--mono); font-size: 11px; padding: 8px 6px; cursor: pointer;
-    background: #223041; color: #cfe0ee; border: 1px solid #2f4055; border-radius: 5px;
-    transition: background .12s ease, transform .08s ease, border-color .12s ease;
-  }
-  button:hover:not(:disabled) { background: #2b3c50; transform: translateY(-1px); }
-  button:active:not(:disabled) { transform: translateY(0); }
-  button:disabled { opacity: .34; cursor: not-allowed; }
-  button.sel { border-color: var(--good); color: var(--good); }
-
-  #knobs { display: none; margin-top: 14px; }
-  #knobs.open { display: block; }
-  #knobs h3 { font-size: 10px; letter-spacing: .16em; color: #6b8199; margin: 0 0 10px; }
-  #knobs h3 span { float: right; color: #3d5063; }
-  #knobs label { display: block; font-size: 10px; color: #7f97ad; margin-bottom: 9px; }
-  #knobs output { float: right; color: var(--good); }
-  #knobs input { width: 100%; margin-top: 3px; accent-color: var(--good); }
-
-  .hint { font-size: 10px; color: #52657a; line-height: 1.6; margin-top: 14px; }
-  .hint b { color: #7f97ad; font-weight: 600; }
+  a.game:hover { border-color: #3ddc97; transform: translateY(-2px); }
+  a.game b { display: block; font-size: 15px; margin-bottom: 6px; }
+  a.game span { font-size: 11px; color: #6b8199; line-height: 1.6; }
+  a.game em { color: #ffb703; font-style: normal; }
 </style>
 </head>
 <body>
-  <div id="stage">
-    <canvas id="tower"></canvas>
-    <div id="clock"></div>
-    <div id="log"></div>
-  </div>
+<main>
+  <h1>PROTOTYPES</h1>
+  <p class="sub">
+    Throughput games — the player is a logistics bottleneck, and the game is
+    about seeing and widening it. The sim is pure and headless; the renderer is
+    disposable.
+  </p>
 
-  <aside>
-    <h1>LIFT<small>elevator throughput prototype</small></h1>
+  <a class="game" href="./src/games/lift/index.html">
+    <b>Lift</b>
+    <span>SimTower's real mechanic. Bottleneck: <em>elevator throughput</em> — car-trips per minute across the floors people need.</span>
+  </a>
 
-    <div class="stat"><span>money</span><b id="money">—</b></div>
-    <div class="stat"><span>day</span><b id="day">—</b></div>
-    <div class="stat"><span>population</span><b id="pop">—</b></div>
-    <div class="stat"><span>rating</span><b id="star">—</b></div>
-
-    <div class="rule"></div>
-
-    <div class="stat"><span>avg wait</span><b id="wait">—</b></div>
-    <div class="stat"><span>delivered</span><b id="rate">—</b></div>
-    <div class="stat"><span>reputation</span><b id="rep">—</b></div>
-
-    <div class="rule"></div>
-
-    <h2>BUILD</h2>
-    <div id="build">
-      <button data-do="floor">+ floor</button>
-      <button data-do="shaft">+ shaft</button>
-      <button data-do="car">+ car</button>
-      <button data-do="extend">extend shaft</button>
-      <button data-kind="office">office</button>
-      <button data-kind="condo">condo</button>
-      <button data-kind="shop">shop</button>
-    </div>
-
-    <div id="knobs"></div>
-
-    <p class="hint">
-      Click a floor to place the selected unit.<br>
-      <b>space</b> pause · <b>1/2/3</b> speed · <b>D</b> knobs · <b>E</b> export tape · <b>R</b> restart
-    </p>
-  </aside>
-
-  <script type="module" src="./src/ui/app.js"></script>
+  <a class="game" href="./src/games/bloom/index.html">
+    <b>Bloom Rush</b>
+    <span>Watering plants, rebuilt on the rig. Bottleneck: <em>you are the water delivery system</em> — one cup, one trip down the hill, a finite day.</span>
+  </a>
+</main>
 </body>
 </html>

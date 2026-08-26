@@ -1,6 +1,6 @@
-import { CONFIG } from '../src/config/lift.config.js';
-import { boot, step, applyAction } from '../src/sim/index.js';
-import { POLICIES } from '../harness/policy.js';
+import { CONFIG } from '../src/games/lift/config.js';
+import { boot, step, applyAction } from '../src/games/lift/sim/index.js';
+import { POLICIES } from '../src/games/lift/policies.js';
 
 const assert = (c, m) => { if (!c) throw new Error(m); };
 

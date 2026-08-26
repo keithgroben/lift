@@ -1,4 +1,4 @@
-import { CONFIG } from '../config/lift.config.js';
+import { CONFIG } from '../config.js';
 import { boot, step, applyAction, population, starTier, unlocked } from '../sim/index.js';
 import { makeRenderer } from '../render/canvas.js';
 import { makeJuice } from '../render/juice.js';

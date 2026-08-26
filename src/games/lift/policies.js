@@ -1,4 +1,4 @@
-import { applyAction } from '../src/sim/index.js';
+import { applyAction } from './sim/index.js';
 
 /**
  * Autoplayers. A headless run needs someone to press the buttons, and the
