@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bloom Rush — water delivery prototype</title>
+<style>
+  :root {
+    --bg: #12160f; --panel: #1e2718; --green: #7bc043;
+    --gold: #ffd166; --red: #ef476f; --water: #4fb3d9;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: #e3ead9; font-family: var(--mono);
+    display: grid; grid-template-columns: 1fr 250px; overflow: hidden;
+  }
+  #stage { position: relative; }
+  #field { width: 100%; height: 100%; display: block; cursor: pointer; }
+
+  #clock {
+    position: absolute; top: 12px; left: 22px;
+    font-size: 11px; letter-spacing: .1em; color: #7f9670; pointer-events: none;
+  }
+  #log {
+    position: absolute; bottom: 58px; left: 50%; transform: translateX(-50%);
+    font-size: 12px; pointer-events: none; text-align: center;
+  }
+
+  aside { background: var(--panel); padding: 16px; overflow-y: auto; }
+  h1 { font-size: 13px; letter-spacing: .16em; margin: 0 0 4px; color: var(--green); }
+  h1 small { display: block; color: #5f7350; letter-spacing: .04em; font-size: 10px; margin-top: 4px; }
+
+  .stat { display: flex; justify-content: space-between; font-size: 12px; padding: 4px 0; }
+  .stat span { color: #7f9670; }
+  .rule { height: 1px; background: #2c3a24; margin: 12px 0; }
+
+  .note {
+    font-size: 10px; color: #6f8562; line-height: 1.6;
+    background: #182010; border-left: 2px solid var(--gold);
+    padding: 8px 10px; margin: 10px 0;
+  }
+  .note b { color: var(--gold); font-weight: 600; }
+
+  button {
+    width: 100%; font-family: var(--mono); font-size: 11px; padding: 8px;
+    background: #26331d; color: #d7e4c8; border: 1px solid #3a4d2c;
+    border-radius: 5px; cursor: pointer; transition: background .12s, transform .08s;
+  }
+  button:hover { background: #31411f; transform: translateY(-1px); }
+
+  #knobs { display: none; margin-top: 14px; }
+  #knobs.open { display: block; }
+  #knobs h3 { font-size: 10px; letter-spacing: .16em; color: #7f9670; margin: 0 0 10px; }
+  #knobs h3 span { float: right; color: #4a5c3d; }
+  #knobs label { display: block; font-size: 10px; color: #8ba37a; margin-bottom: 9px; }
+  #knobs output { float: right; color: var(--green); }
+  #knobs input { width: 100%; margin-top: 3px; accent-color: var(--green); }
+
+  h2 { font-size: 10px; letter-spacing: .16em; color: #7f9670; margin: 16px 0 8px; font-weight: 600; }
+  .up {
+    width: 100%; text-align: left; display: block; margin-bottom: 5px; padding: 7px 9px;
+    background: #22301a; border: 1px solid #33452a; border-radius: 5px; cursor: pointer;
+    font-family: var(--mono); color: #d7e4c8; transition: background .12s, border-color .12s;
+  }
+  .up:hover:not(:disabled) { background: #2d3f21; border-color: var(--green); }
+  .up:disabled { opacity: .34; cursor: not-allowed; }
+  .up b { display: block; font-size: 11px; }
+  .up i { font-style: normal; float: right; color: var(--gold); }
+  .up span { font-size: 9px; color: #7f9670; display: block; margin-top: 2px; }
+  .up em { font-style: normal; color: var(--water); }
+  .up.auto { border-left: 3px solid var(--water); }
+  .up.owned { opacity: .45; border-color: #2a3a1f; }
+  .up.owned i { color: var(--green); }
+
+  .hint { font-size: 10px; color: #566647; line-height: 1.7; margin-top: 14px; }
+  .hint b { color: #8ba37a; font-weight: 600; }
+</style>
+</head>
+<body>
+  <div id="stage">
+    <canvas id="field"></canvas>
+    <div id="clock"></div>
+    <div id="log"></div>
+  </div>
+
+  <aside>
+    <h1>BLOOM RUSH<small>you are the water delivery system</small></h1>
+
+    <div class="stat"><span>cash</span><b id="cash">$0</b></div>
+    <div class="stat"><span>seeds</span><b id="seeds">0</b></div>
+    <div class="stat"><span>day</span><b id="day">1</b></div>
+
+    <div class="rule"></div>
+
+    <div class="stat"><span>plants alive</span><b id="alive">0</b></div>
+    <div class="stat"><span>reservoir</span><b id="water">0</b></div>
+    <div class="stat"><span>ceiling haul/real</span><b id="walls">—</b></div>
+
+    <p class="note">
+      One pair of hands. Hauling, pouring, harvesting and planting all use them,
+      and only one at a time. The <b>ceiling</b> is how many plants those hands
+      can actually keep watered in a day — go over it and everything grows
+      slower, not just the extras.
+    </p>
+
+    <button id="expand">+ pot</button>
+
+    <h2>UPGRADES</h2>
+    <div id="shop"></div>
+
+    <div id="knobs"></div>
+
+    <p class="hint">
+      Click the <b>river</b> to haul · click a <b>pot</b> to water, harvest or plant<br>
+      <b>space</b> pause · <b>1/2</b> speed · <b>H</b> haul · <b>D</b> knobs · <b>E</b> export · <b>R</b> restart
+    </p>
+  </aside>
+
+  <script type="module" src="./ui/app.js"></script>
+</body>
+</html>

@@ -209,7 +209,19 @@ export function makeRenderer(canvas, config) {
     return f >= 0 && f < state.floors ? f : -1;
   }
 
-  return { draw, resize, layout, unitPos, floorAt, get size() { return [W, H]; } };
+  /** Which elevator shaft a click landed on, for car placement. */
+  function shaftAt(state, px, py) {
+    const L = layout(state);
+    for (const sh of state.shafts) {
+      const x = L.x0 + sh.slot * L.cw;
+      const top = L.floorY(sh.top);
+      const bottom = L.floorY(sh.bottom) + L.fh;
+      if (px >= x && px <= x + L.cw && py >= top && py <= bottom) return sh.id;
+    }
+    return null;
+  }
+
+  return { draw, resize, layout, unitPos, floorAt, shaftAt, get size() { return [W, H]; } };
 }
 
 function roundRect(ctx, x, y, w, h, r) {

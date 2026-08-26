@@ -75,8 +75,22 @@ function onDayClose(closed, occupiedBefore) {
 
 // ---------------------------------------------------------------------- HUD
 const els = {};
-for (const id of ['money', 'day', 'pop', 'star', 'wait', 'rate', 'rep', 'clock', 'build', 'log', 'knobs'])
+for (const id of ['money', 'day', 'pop', 'star', 'wait', 'rate', 'rep', 'clock', 'build', 'log', 'knobs', 'mode', 'goal-copy'])
   els[id] = document.getElementById(id);
+
+const money = (n) => '$' + Math.round(n).toLocaleString();
+
+function modeText() {
+  if (tool === 'shaft') return 'SHAFT selected — click the top floor to place it.';
+  if (tool === 'car') return 'CAR selected — click an elevator shaft to add it.';
+  return tool.toUpperCase() + ' selected — click an upper floor to place it.';
+}
+
+function setMode(text = modeText(), color = GOOD) {
+  els.mode.textContent = text;
+  els.mode.style.color = color;
+  els.mode.style.borderColor = color;
+}
 
 function refresh() {
   const d = state.log[state.log.length - 1];
@@ -91,14 +105,33 @@ function refresh() {
   els.rate.style.color = d && d.deliveryRate < 70 ? BAD : GOOD;
   els.rep.textContent = d ? d.rep + '%' : '—';
   els.rep.style.color = d && d.rep < CONFIG.occupancy.relistMinDeliveryRate ? BAD : GOOD;
+  els['goal-copy'].textContent = d
+    ? 'Keep delivery above ' + CONFIG.occupancy.relistMinDeliveryRate + '% · current ' + d.deliveryRate + '%.'
+    : 'Keep delivery above ' + CONFIG.occupancy.relistMinDeliveryRate + '% so tenants stay.';
+
+  const costs = {
+    floor: money(CONFIG.costs.floor),
+    shaft: money(CONFIG.costs.shaft) + ' + span',
+    car: money(CONFIG.costs.car),
+    extend: money(CONFIG.costs.shaftPerFloor) + ' / floor',
+  };
+  for (const b of els.build.querySelectorAll('button[data-do]')) {
+    const cost = b.querySelector('.btn-cost');
+    if (cost) cost.textContent = costs[b.dataset.do] || '';
+    b.classList.toggle('sel', b.dataset.do === tool);
+  }
 
   for (const b of els.build.querySelectorAll('button[data-kind]')) {
     const kind = b.dataset.kind;
     const locked = !unlocked(state, CONFIG, kind);
     b.disabled = locked || state.money < CONFIG.costs[kind];
     b.classList.toggle('sel', tool === kind);
-    b.title = locked ? kind + ' unlocks at a higher star' : '$' + CONFIG.costs[kind];
+    const tier = CONFIG.stars.tiers.find((t) => t.unlocks.includes(kind) && t.pop > 0);
+    const cost = b.querySelector('.btn-cost');
+    if (cost) cost.textContent = locked ? 'unlock at ' + (tier?.pop || '?') + ' pop' : money(CONFIG.costs[kind]);
+    b.title = locked ? kind + ' unlocks at ' + (tier?.pop || '?') + ' population' : money(CONFIG.costs[kind]);
   }
+  setMode();
 }
 
 function drawClock() {
@@ -123,7 +156,19 @@ function toast(msg, color) {
 // ------------------------------------------------------------------- inputs
 canvas.addEventListener('click', (e) => {
   const r = canvas.getBoundingClientRect();
-  const floor = renderer.floorAt(state, e.clientX - r.left, e.clientY - r.top);
+  const px = e.clientX - r.left, py = e.clientY - r.top;
+  if (tool === 'car') {
+    const shaft = renderer.shaftAt(state, px, py);
+    if (!shaft) return toast(state.shafts.length ? 'click an elevator shaft' : 'build a shaft first', WARN);
+    const added = act('add_car', { id: shaft });
+    if (added.ok) {
+      tool = 'office';
+      refresh();
+      setMode('CAR added — office selected; click an upper floor to place it.');
+    }
+    return;
+  }
+  const floor = renderer.floorAt(state, px, py);
   if (floor < 0) return toast('click a floor', WARN);
   if (tool === 'shaft') return act('build_shaft', { bottom: 0, top: floor });
   if (floor === 0) return toast('the lobby is not leasable', WARN);
@@ -133,12 +178,15 @@ canvas.addEventListener('click', (e) => {
 els.build.addEventListener('click', (e) => {
   const b = e.target.closest('button');
   if (!b) return;
-  if (b.dataset.kind) { tool = b.dataset.kind; refresh(); return; }
+  if (b.dataset.kind) { tool = b.dataset.kind; setMode(); refresh(); return; }
   if (b.dataset.do === 'floor') act('build_floor');
-  if (b.dataset.do === 'shaft') { tool = 'shaft'; toast('click the top floor for the new shaft', INFO); refresh(); }
+  if (b.dataset.do === 'shaft') { tool = 'shaft'; setMode('SHAFT selected — click the top floor to place it.'); toast('click the top floor for the new shaft', INFO); refresh(); }
   if (b.dataset.do === 'car') {
-    const sh = state.shafts[state.shafts.length - 1];
-    if (sh) act('add_car', { id: sh.id }); else toast('build a shaft first', WARN);
+    if (!state.shafts.length) return toast('build a shaft first', WARN);
+    tool = 'car';
+    setMode('CAR selected — click an elevator shaft to add it.');
+    toast('click an elevator shaft to add the car', INFO);
+    refresh();
   }
   if (b.dataset.do === 'extend') {
     const sh = state.shafts[state.shafts.length - 1];

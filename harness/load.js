@@ -38,12 +38,22 @@ export function play(game, policyKey, days, seed) {
     console.error('unknown policy "' + policyKey + '". have: ' + Object.keys(POLICIES).join(', '));
     process.exit(1);
   }
-  const state = boot(CONFIG, seed);
-  policy.open?.(state, CONFIG);
+  // Every run gets its own config. Upgrades mutate it (that IS what an upgrade
+  // is), so sharing one object would let a purchase in seed 1 silently buff
+  // seed 2 and make the whole sweep a lie.
+  const cfg = structuredClone(CONFIG);
+  const state = boot(cfg, seed);
+  policy.open?.(state, cfg);
   while (state.day <= days && !state.over) {
-    const closed = step(state, CONFIG.time.dt, CONFIG);
-    if (closed) policy.decide?.(state, CONFIG);
+    // Two rhythms. decide() is once a day, for games whose decisions are daily
+    // (Lift: what to build tonight). tick() is every idle moment, for games
+    // played in seconds (Bloom: the hands are free, what do they do NOW).
+    // A policy implements whichever matches its game; both is legal.
+    if (policy.tick && !state.busy) policy.tick(state, cfg);
+    const closed = step(state, cfg.time.dt, cfg);
+    if (closed) policy.decide?.(state, cfg);
   }
+  state.config = cfg;   // what the run actually ended up tuned to
   return state;
 }
 

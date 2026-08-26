@@ -37,16 +37,37 @@
   .rule { height: 1px; background: #2a3746; margin: 12px 0; }
 
   h2 { font-size: 10px; letter-spacing: .16em; color: #6b8199; margin: 0 0 8px; font-weight: 600; }
+  .guide {
+    background: #16202b; border: 1px solid #2f4055; border-radius: 6px;
+    padding: 10px 11px; margin-bottom: 14px; font-size: 10px; line-height: 1.55;
+  }
+  .guide strong, .goal strong { color: var(--warn); font-size: 10px; letter-spacing: .12em; }
+  .guide ol { margin: 7px 0 0 16px; padding: 0; color: #aebdca; }
+  .guide li + li { margin-top: 3px; }
+  .guide b { color: #dbe4ee; }
+  .goal { border-left: 2px solid var(--good); padding: 1px 0 1px 9px; margin: 13px 0 14px; }
+  .goal strong { color: var(--good); }
+  .goal div:last-child { color: #aebdca; font-size: 10px; line-height: 1.55; margin-top: 3px; }
   #build { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
   button {
     font-family: var(--mono); font-size: 11px; padding: 8px 6px; cursor: pointer;
     background: #223041; color: #cfe0ee; border: 1px solid #2f4055; border-radius: 5px;
     transition: background .12s ease, transform .08s ease, border-color .12s ease;
   }
+  button .btn-label, button .btn-cost { display: block; }
+  button .btn-label { text-align: left; }
+  button .btn-cost { color: #7f97ad; font-size: 9px; margin-top: 3px; text-align: left; }
   button:hover:not(:disabled) { background: #2b3c50; transform: translateY(-1px); }
   button:active:not(:disabled) { transform: translateY(0); }
   button:disabled { opacity: .34; cursor: not-allowed; }
   button.sel { border-color: var(--good); color: var(--good); }
+  button.sel .btn-cost { color: #8de8bd; }
+
+  #mode {
+    color: var(--good); background: #10271f; border: 1px solid #285c48;
+    border-radius: 5px; padding: 7px 8px; margin: 9px 0 12px;
+    font-size: 10px; line-height: 1.45;
+  }
 
   #knobs { display: none; margin-top: 14px; }
   #knobs.open { display: block; }
@@ -81,23 +102,40 @@
     <div class="stat"><span>delivered</span><b id="rate">—</b></div>
     <div class="stat"><span>reputation</span><b id="rep">—</b></div>
 
+    <div class="goal">
+      <strong>OBJECTIVE</strong>
+      <div id="goal-copy">Keep delivery above 55% so tenants stay.</div>
+    </div>
+
     <div class="rule"></div>
+
+    <div class="guide">
+      <strong>START HERE</strong>
+      <ol>
+        <li>Add a floor.</li>
+        <li>Select a unit, then click that floor.</li>
+        <li>Select <b>+ car</b>, then click a shaft when waits rise.</li>
+      </ol>
+    </div>
 
     <h2>BUILD</h2>
     <div id="build">
-      <button data-do="floor">+ floor</button>
-      <button data-do="shaft">+ shaft</button>
-      <button data-do="car">+ car</button>
-      <button data-do="extend">extend shaft</button>
-      <button data-kind="office">office</button>
-      <button data-kind="condo">condo</button>
-      <button data-kind="shop">shop</button>
+      <button data-do="floor"><span class="btn-label">+ floor</span><small class="btn-cost">$400</small></button>
+      <button data-do="shaft"><span class="btn-label">+ shaft</span><small class="btn-cost">$900 + span</small></button>
+      <button data-do="car"><span class="btn-label">+ car</span><small class="btn-cost">$1,400</small></button>
+      <button data-do="extend"><span class="btn-label">extend shaft</span><small class="btn-cost">$120 / floor</small></button>
+      <button data-kind="office"><span class="btn-label">office</span><small class="btn-cost">$1,200</small></button>
+      <button data-kind="condo"><span class="btn-label">condo</span><small class="btn-cost">60 pop · $2,000</small></button>
+      <button data-kind="shop"><span class="btn-label">shop</span><small class="btn-cost">160 pop · $1,500</small></button>
     </div>
+
+    <div id="mode">OFFICE selected — click an upper floor to place it.</div>
 
     <div id="knobs"></div>
 
     <p class="hint">
-      Click a floor to place the selected unit.<br>
+      Units: select one, then click a floor.<br>
+      Cars: select + car, then click a shaft.<br>
       <b>space</b> pause · <b>1/2/3</b> speed · <b>D</b> knobs · <b>E</b> export tape · <b>R</b> restart
     </p>
   </aside>
