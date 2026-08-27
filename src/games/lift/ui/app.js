@@ -48,7 +48,9 @@ const renderer = makeRenderer(canvas, CONFIG);
 const juice = makeJuice(CONFIG);
 
 let state = boot(CONFIG, 1);
-let speed = 1;
+// Start safely paused so opening the game never launches a simulation workload
+// before the player is ready. The player can press 1x, 4x, or 12x to begin.
+let speed = 0;
 let tool = 'observe';
 let rentKind = 'office';
 let selectedUnitId = null;
@@ -131,7 +133,27 @@ function act(type, extra = {}) {
 }
 
 // ---------------------------------------------------------------- game loop
+// The simulation still advances on its fixed timestep, but expensive visual
+// work does not need to run at a 144Hz monitor's refresh rate. Keeping the
+// player-facing render and DOM refreshes bounded prevents the prototype from
+// monopolizing a machine while preserving deterministic simulation behavior.
+const RENDER_INTERVAL_MS = 1000 / 30;
+const LIVE_REFRESH_INTERVAL_MS = 200;
 let last = performance.now(), acc = 0;
+let lastRenderAt = 0;
+let lastLiveRefreshAt = -Infinity;
+let liveRefreshPending = false;
+
+function requestLiveRefresh() {
+  liveRefreshPending = true;
+}
+
+function flushLiveRefresh(now) {
+  if (!liveRefreshPending || now - lastLiveRefreshAt < LIVE_REFRESH_INTERVAL_MS) return;
+  liveRefreshPending = false;
+  lastLiveRefreshAt = now;
+  refresh();
+}
 
 function frame(now) {
   const dtMs = Math.min(120, now - last);
@@ -148,10 +170,16 @@ function frame(now) {
     if (closed) onDayClose(closed, before);
   }
 
-  if (updateWaitingNowIndicator()) refresh();
-  updateCarQueuePreview();
-  juice.update(dtMs);
-  renderer.draw(state, juice, dtMs, placementGuideTarget(), hoverFloor, shaftCanvasTarget(), serviceFocusTarget, hoverFacilityId, selectedShaftId, hoverShaftId, carQueueHistory);
+  const renderElapsed = now - lastRenderAt;
+  if (lastRenderAt === 0 || renderElapsed >= RENDER_INTERVAL_MS) {
+    lastRenderAt = now;
+    if (updateWaitingNowIndicator()) requestLiveRefresh();
+    updateCarQueuePreview();
+    flushLiveRefresh(now);
+    const renderDtMs = Math.min(120, Math.max(0, renderElapsed));
+    juice.update(renderDtMs);
+    renderer.draw(state, juice, renderDtMs, placementGuideTarget(), hoverFloor, shaftCanvasTarget(), serviceFocusTarget, hoverFacilityId, selectedShaftId, hoverShaftId, carQueueHistory);
+  }
   requestAnimationFrame(frame);
 }
 
@@ -542,7 +570,7 @@ function updateCarQueuePreview() {
   lastLocalRouteSignature = localSnapshot.signature;
   lastCarForecastContextKey = forecastContext.label;
   if (tool !== 'car') {
-    if (localChanged || sampleDue) refresh();
+    if (localChanged || sampleDue) requestLiveRefresh();
     return;
   }
   let targetChanged = false;
@@ -3752,7 +3780,13 @@ function refresh() {
   setMode(undefined, placementWarning ? WARN : GOOD);
 }
 
-function drawClock() {
+let lastClockAt = -Infinity;
+function drawClock(now) {
+  if (now - lastClockAt < 100) {
+    requestAnimationFrame(drawClock);
+    return;
+  }
+  lastClockAt = now;
   const h = Math.floor(state.tod * 24), m = Math.floor((state.tod * 24 % 1) * 60);
   const rush = inWindow(CONFIG.time.morningRush) ? 'MORNING RUSH'
     : inWindow(CONFIG.time.lunch) ? 'LUNCH'
@@ -5114,6 +5148,6 @@ tenantUtilizationBaseline = tenantLoadSummary(state, CONFIG).ratio;
 tenantUtilizationHistory = [{ day: state.day, ratio: tenantUtilizationBaseline }];
 
 refresh();
-toast('space = pause · 1/2/3 = speed · D = developer details · E = export · R = restart', INFO);
+toast('paused · click 1x to start · space = pause · D = developer details · E = export · R = restart', INFO);
 requestAnimationFrame(frame);
 requestAnimationFrame(drawClock);

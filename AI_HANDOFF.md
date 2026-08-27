@@ -23,6 +23,8 @@ work until the Release 0 and Release 1 gates pass.
   player HUD, including color and stress-line keys.
 - Visible time controls: `pause`, `1x`, `4x`, and `12x`; Space also toggles
   pause.
+- Safe runtime guard: the page opens paused, visual rendering is capped at
+  30 FPS, and expensive live sidebar refreshes are throttled to 200 ms.
 - Player and developer documentation in `docs/`.
 - Regression coverage for simulation behavior and player-facing UI contracts.
 
@@ -34,7 +36,7 @@ Run from the repository root:
 npm run test
 ```
 
-The last verified run passed 246 tests. Start the local game with:
+The last verified run passed 247 tests. Start the local game with:
 
 ```text
 npm run play
