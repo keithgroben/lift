@@ -34,6 +34,12 @@
 
   .stat { display: flex; justify-content: space-between; font-size: 12px; padding: 4px 0; }
   .stat span:first-child { color: #6b8199; }
+  .metric-key { border-left: 1px solid #2a3746; color: #52657a; font-size: 8px; line-height: 1.45; margin: -2px 0 9px 8px; padding-left: 7px; }
+  .metric-key b { color: #dbe4ee; font-weight: 700; letter-spacing: .04em; }
+  .stat b small { font-size: 10px; font-weight: 500; margin-left: 4px; }
+  #tenant-utilization-trend .recovery-reading { color: var(--info); outline: 1px solid var(--info); border-radius: 2px; padding: 0 1px; }
+  #milestone { color: #aebdca; background: #16202b; border: 1px solid #2f4055; border-radius: 5px; padding: 7px 8px; margin-top: 8px; font-size: 9px; line-height: 1.45; }
+  #milestone strong { display: block; color: var(--warn); letter-spacing: .1em; font-size: 9px; }
   .rule { height: 1px; background: #2a3746; margin: 12px 0; }
 
   h2 { font-size: 10px; letter-spacing: .16em; color: #6b8199; margin: 0 0 8px; font-weight: 600; }
@@ -48,6 +54,161 @@
   .goal { border-left: 2px solid var(--good); padding: 1px 0 1px 9px; margin: 13px 0 14px; }
   .goal strong { color: var(--good); }
   .goal div:last-child { color: #aebdca; font-size: 10px; line-height: 1.55; margin-top: 3px; }
+  .diagnostics { font-size: 10px; color: #aebdca; line-height: 1.45; }
+  .diag { display: flex; justify-content: space-between; gap: 8px; }
+  .diag b { color: var(--info); font-weight: 600; }
+  .diag span { text-align: right; }
+  .diag-sub { color: #52657a; font-size: 9px; margin: 0 0 5px 18px; }
+  .transport-choice-summary { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin: 3px 0 7px 18px; }
+  .transport-choice { min-width: 0; background: #16202b; border: 1px solid #2f4055; border-radius: 4px; padding: 5px 6px; font-size: 8px; line-height: 1.4; }
+  button.transport-choice { color: inherit; cursor: pointer; text-align: left; width: 100%; }
+  button.transport-choice:hover:not(:disabled) { border-color: var(--info); }
+  button.transport-choice:disabled { cursor: not-allowed; opacity: .6; }
+  .transport-choice.unavailable { border-color: #6c2c3c; }
+  .transport-choice.unavailable b { color: var(--bad); }
+  .transport-choice.funds { border-color: #755d17; }
+  .transport-choice.funds b { color: var(--warn); }
+  .transport-choice-next { margin-top: 5px; padding: 3px 5px; font-size: 8px; }
+  .transport-local-preview { border-left: 2px solid var(--info); padding-left: 6px; color: #dbe4ee; }
+  .transport-local-preview b { color: var(--info); letter-spacing: .04em; }
+  .transport-local-effect { border-left: 2px solid var(--warn); padding-left: 6px; color: #dbe4ee; }
+  .transport-local-effect b { color: var(--warn); letter-spacing: .04em; }
+  .transport-choice.preferred { border-color: var(--warn); box-shadow: 0 0 0 1px rgba(255,183,3,.18); }
+  .transport-choice b, .transport-choice span { display: block; }
+  .transport-choice b { color: var(--info); font-size: 8px; letter-spacing: .04em; }
+  .transport-choice.preferred b { color: var(--warn); }
+  .transport-choice span { color: #aebdca; margin-top: 3px; }
+  button.floor-diagnosis { display: flex; justify-content: space-between; gap: 8px; width: 100%; margin: 0 0 4px 0; padding: 4px 6px; font-size: 9px; text-align: left; }
+  button.floor-diagnosis > span:last-child { text-align: right; }
+  .floor-signal-key { color: #dbe4ee; font-size: 8px; font-weight: 700; letter-spacing: .04em; }
+  .floor-working { font-size: 8px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+  .floor-action-reason { color: #7f97ad; font-size: 8px; }
+  .floor-result-history { margin: 0 0 6px 18px; }
+  .floor-result-history-row { display: flex; justify-content: space-between; gap: 8px; font-size: 9px; line-height: 1.4; }
+  .floor-result-history-row > span:last-child { text-align: right; }
+  .floor-result-history-detail { color: #52657a; font-size: 8px; margin: 0 0 3px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  button.floor-diagnosis.selected { border-color: var(--info); background: #1c2a38; }
+  .floor-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin: 4px 0 6px 18px; }
+  .floor-candidate { min-width: 0; background: #16202b; border: 1px solid #2f4055; border-radius: 4px; padding: 5px 6px; font-size: 9px; line-height: 1.4; }
+  .floor-candidate strong, .floor-candidate span { display: block; }
+  .floor-candidate strong { color: var(--info); }
+  .floor-candidate span { color: #7f97ad; margin-top: 3px; }
+  .floor-candidate .candidate-mix { color: #aebdca; }
+  .floor-candidate .candidate-mix.warn { color: var(--warn); }
+  .floor-candidate .candidate-mix.good { color: var(--good); }
+  .floor-candidate .candidate-decision { font-weight: 600; letter-spacing: .02em; }
+  .floor-candidate .candidate-decision.aligned { color: var(--good); }
+  .floor-candidate .candidate-decision.mix_tradeoff, .floor-candidate .candidate-decision.quality_warning { color: var(--warn); }
+  .floor-candidate .candidate-decision.combined_warning { color: var(--bad); }
+  .floor-candidate .candidate-rank { font-weight: 600; }
+  .floor-candidate .candidate-rank.stronger { color: var(--good); }
+  .floor-candidate .candidate-rank.weaker { color: var(--warn); }
+  .floor-candidate .candidate-rank.equal { color: var(--info); }
+  .floor-candidate .candidate-gap { color: var(--warn) !important; font-size: 8px; }
+  .floor-candidate .candidate-reason { color: var(--good) !important; font-size: 8px; }
+  .floor-candidate .candidate-signal-reason { color: var(--warn) !important; font-size: 8px; }
+  .replacement-options { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+  .replacement-choice-card { flex: 1 1 100%; min-width: 0; }
+  .replacement-choice-card span { display: block; color: #aebdca; font-size: 8px; line-height: 1.35; margin-top: 2px; }
+  .replacement-choice-card .replacement-signal-reason { color: var(--warn) !important; }
+  .replacement-guidance { color: var(--warn) !important; }
+  .replacement-options button { margin: 0; }
+  .replacement-options .replacement-choice { white-space: normal; text-align: left; max-width: 100%; }
+  .replacement-options .replacement-choice.aligned { color: var(--good); border-color: #285c48; }
+  .replacement-options .replacement-choice.mix_tradeoff, .replacement-options .replacement-choice.quality_warning { color: var(--warn); border-color: #755d17; }
+  .replacement-options .replacement-choice.combined_warning { color: var(--bad); border-color: #6c2c3c; }
+  .floor-candidate.preferred { border-color: var(--warn); box-shadow: 0 0 0 1px rgba(255,183,3,.22); }
+  .floor-candidate.preferred strong { color: var(--warn); }
+  .floor-candidate button { margin-top: 5px; font-size: 9px; padding: 3px 5px; }
+  .diag-good { color: var(--good); }
+  .diag-warn { color: var(--warn); }
+  .diag-bad { color: var(--bad); }
+  .response-volume { color: var(--info); font-size: 9px; }
+  .diag-critical { color: var(--bad); font-weight: 700; letter-spacing: .03em; }
+  .shop-traffic-today { font-weight: 600; }
+  .shop-traffic-live { color: var(--good); font-size: 8px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+  .shop-traffic-trend { border-left: 1px solid rgba(142,202,230,.35); display: inline-block; margin-left: 6px; padding-left: 6px; white-space: nowrap; }
+  .shop-traffic-trend-label { color: var(--info); font-size: 8px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+  .shop-traffic-trend-scope { color: var(--info); font-size: 8px; font-weight: 600; }
+  .shop-traffic-current-heading { color: var(--good); }
+  .shop-traffic-periods-heading { color: var(--info); font-size: 8px; font-weight: 700; letter-spacing: .06em; margin-bottom: 5px; text-transform: uppercase; }
+  .shop-traffic-periods-key { border-left: 1px solid rgba(142,202,230,.35); color: var(--info); display: inline-block; font-weight: 600; margin-left: 6px; padding-left: 6px; }
+  .shop-traffic-periods-key:focus-visible { outline: 1px solid var(--info); outline-offset: 2px; }
+  .shop-traffic-trend-key { display: inline-block; margin-left: 6px; }
+  .shop-traffic-history { border-left: 2px solid rgba(142,202,230,.35); color: #9aaab8; margin-top: 4px; padding-left: 6px; }
+  .shop-traffic-pending { color: var(--warn); margin-top: 4px; }
+  .shop-traffic-pending-scope { font-size: 8px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+  .shop-traffic-pending-trigger { border: 1px solid rgba(255,183,3,.35); border-radius: 3px; font-size: 8px; font-weight: 700; letter-spacing: .05em; padding: 1px 3px; text-transform: uppercase; }
+  .shop-traffic-baseline-status { color: var(--info); margin-top: 4px; }
+  .shop-traffic-history-heading { color: var(--info); font-size: 8px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+  .shop-traffic-history-cue { font-weight: 600; }
+  .shop-traffic-history-baseline { color: var(--info); font-size: 8px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+  .shop-traffic-history-partial { color: var(--warn); font-size: 8px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+  .shop-traffic-history-day { border: 1px solid rgba(142,202,230,.35); border-radius: 3px; font-weight: 600; padding: 1px 3px; }
+  .shop-traffic-history-latest { color: var(--info); font-size: 8px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+  .service-focus-area { background: rgba(142,202,230,.12); border: 1px solid #8ecae6; }
+  .service-outcome-history { border-left: 2px solid rgba(142,202,230,.35); margin-top: 4px; padding-left: 6px; }
+  button.inspect-vacancy { font-size: 9px; padding: 2px 5px; margin-left: 4px; vertical-align: middle; }
+  #facility-inspector { display: none; background: #16202b; border: 1px solid #ffcf55; border-radius: 6px; padding: 9px 10px; margin: 12px 0; }
+  #facility-inspector.open { display: block; }
+  #facility-title { color: #ffcf55; font-size: 11px; font-weight: 700; }
+  #facility-status { color: var(--good); font-size: 9px; margin-top: 4px; }
+  #facility-detail { color: #aebdca; font-size: 9px; line-height: 1.5; margin-top: 6px; }
+  #facility-inspector .facility-inspector-budget { font-size: 9px; line-height: 1.45; margin-top: 6px; }
+  #facility-inspector .facility-inspector-note { color: #52657a; font-size: 9px; line-height: 1.45; margin-top: 6px; }
+  #facility-inspector .facility-clear { font-size: 9px; margin-top: 7px; padding: 4px 6px; }
+  #shaft-inspector { display: none; background: #16202b; border: 1px solid #ffcf55; border-radius: 6px; padding: 9px 10px; margin: 12px 0; }
+  #shaft-inspector.open { display: block; }
+  #shaft-title { color: #ffcf55; font-size: 11px; font-weight: 700; }
+  #shaft-status { color: var(--good); font-size: 9px; margin-top: 4px; }
+  #shaft-detail { color: #aebdca; font-size: 9px; line-height: 1.5; margin-top: 6px; }
+  #shaft-inspector .shaft-upgrade { color: #aebdca; font-size: 9px; line-height: 1.45; margin-top: 7px; }
+  #shaft-inspector .shaft-upgrade-button { font-size: 9px; margin-left: 4px; padding: 3px 5px; }
+  #shaft-inspector .shaft-inspector-note { color: #52657a; font-size: 9px; line-height: 1.45; margin-top: 6px; }
+  #shaft-inspector .shaft-clear { font-size: 9px; margin-top: 7px; padding: 4px 6px; }
+  #unit-inspector { display: none; background: #16202b; border: 1px solid #2f4055; border-radius: 6px; padding: 9px 10px; margin: 12px 0; }
+  #unit-inspector.open { display: block; }
+  #unit-title { color: var(--info); font-size: 11px; font-weight: 700; }
+  #unit-status { color: var(--bad); font-size: 9px; margin-top: 4px; }
+  #unit-detail { color: #aebdca; font-size: 9px; margin: 6px 0; }
+  #unit-utilization-context { font-size: 9px; line-height: 1.45; margin: 6px 0; }
+  #conversion-controls { margin: 7px 0 6px; }
+  .conversion-hint { margin: 0 0 4px; }
+  .conversion-options { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+  .conversion-options button { font-size: 9px; padding: 6px 4px; }
+  #unit-actions { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+  #unit-actions button { width: 100%; }
+  #demolish-unit { color: #ffb3bc; }
+  #recovery-warning { display: none; color: #ffcf66; background: rgba(255,183,3,0.1); border: 1px solid rgba(255,183,3,0.35); border-radius: 4px; padding: 6px 7px; font-size: 9px; line-height: 1.45; margin-top: 6px; }
+  #recovery-warning.open { display: block; }
+  #rerent-reason { color: #52657a; font-size: 9px; line-height: 1.45; margin: 6px 0 0; }
+  #rent-control { display: grid; grid-template-columns: 34px 1fr 34px; gap: 6px; align-items: stretch; }
+  #rent-control button { font-size: 16px; padding: 2px; }
+  #rent-summary { background: #16202b; border: 1px solid #2f4055; border-radius: 5px; padding: 5px 7px; text-align: center; }
+  #rent-kind, #rent-value { display: block; }
+  #rent-kind { color: var(--info); font-size: 10px; letter-spacing: .1em; }
+  #rent-value { color: #aebdca; font-size: 10px; margin-top: 2px; }
+  .rent-hint { color: #52657a; font-size: 9px; line-height: 1.5; margin: 6px 0 0; }
+  .legend { margin-top: 14px; padding-top: 10px; border-top: 1px solid #2a3746; }
+  .legend-row { display: flex; align-items: center; gap: 6px; color: #7f97ad; font-size: 9px; line-height: 1.6; }
+  .swatch { width: 8px; height: 8px; border-radius: 2px; flex: 0 0 auto; }
+  .swatch-unit { background: linear-gradient(90deg, var(--info), #aa7896, var(--bad)); }
+  .swatch-queue { background: linear-gradient(90deg, var(--good) 0 22%, var(--warn) 22% 74%, var(--bad) 74% 100%); }
+  .swatch-tenants { background: linear-gradient(90deg, var(--bad) 0 49%, var(--warn) 49% 74%, var(--good) 74% 100%); }
+  .swatch-car { background: linear-gradient(90deg, var(--info), var(--warn)); }
+  .swatch-doors { background: var(--good); }
+  .swatch-facility { background: linear-gradient(90deg, #b388ff, #f4a261, #e76f51); }
+  .swatch-lobby { background: #5aa9e6; }
+  .swatch-stairs { background: #8ecae6; }
+  .swatch-escalator { background: #f4a261; }
+  .guide-swatch { width: 22px; height: 10px; border-radius: 2px; flex: 0 0 auto; margin-top: 2px; }
+  .guide-target { background: rgba(255, 183, 3, .4); border: 2px solid #ffb703; }
+  .guide-valid { background: rgba(142, 202, 230, .25); border: 1px dashed #8ecae6; }
+  .guide-full { background: rgba(239, 71, 111, .22); border: 1px solid #ef476f; }
+  .placement-preview { margin: 6px 0; padding: 6px 8px; border: 1px solid #2f4055; border-radius: 4px; font-size: 10px; line-height: 1.45; letter-spacing: .04em; }
+  .placement-preview.coverage-strong { background: rgba(61,220,151,.08); }
+  .placement-preview.coverage-partial { background: rgba(255,183,3,.08); }
+  .placement-preview.coverage-flat { background: rgba(239,71,111,.08); }
   #build { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
   button {
     font-family: var(--mono); font-size: 11px; padding: 8px 6px; cursor: pointer;
@@ -62,6 +223,14 @@
   button:disabled { opacity: .34; cursor: not-allowed; }
   button.sel { border-color: var(--good); color: var(--good); }
   button.sel .btn-cost { color: #8de8bd; }
+  button.recommended { border-color: var(--warn); box-shadow: 0 0 0 1px rgba(255,183,3,.28); }
+  button.recommended .btn-label::after { content: '  ← recommended'; color: var(--warn); font-size: 9px; }
+  button.sel.recommended { box-shadow: 0 0 0 1px rgba(61,220,151,.35), 0 0 0 2px rgba(255,183,3,.22); }
+  button.placement-recommended { border-color: var(--info); box-shadow: 0 0 0 1px rgba(142,202,230,.36); }
+  button.placement-recommended .btn-label::after { content: '  ← best fix for warning'; color: var(--info); font-size: 9px; }
+  button.sel.placement-recommended { box-shadow: 0 0 0 1px rgba(61,220,151,.35), 0 0 0 2px rgba(142,202,230,.28); }
+  button.forecasted { border-color: var(--info); box-shadow: 0 0 0 1px rgba(142,202,230,.28); }
+  button.forecasted .btn-label::after { content: '  ← forecast'; color: var(--info); font-size: 9px; }
 
   #mode {
     color: var(--good); background: #10271f; border: 1px solid #285c48;
@@ -94,13 +263,42 @@
     <div class="stat"><span>money</span><b id="money">—</b></div>
     <div class="stat"><span>day</span><b id="day">—</b></div>
     <div class="stat"><span>population</span><b id="pop">—</b></div>
+    <div class="stat"><span>tenants / capacity</span><b><span id="tenant-total">—</span><small id="tenant-utilization">—</small><small id="tenant-utilization-change">Δ —</small><small id="tenant-utilization-trend">trend —</small><small id="tenant-utilization-recovery">—</small></b></div>
     <div class="stat"><span>rating</span><b id="star">—</b></div>
+    <div id="milestone"><strong>NEXT MILESTONE</strong><span id="milestone-copy">—</span></div>
 
     <div class="rule"></div>
 
+    <div class="stat"><span>waiting now</span><b id="waiting-now">—</b></div>
+    <div class="metric-key" aria-label="headline metric key"><b>W</b> waiting people · <b>T</b> tenants / capacity<br><b>W</b>: <span class="diag-good">green 0 clear</span> · <span class="diag-warn">amber 1–11 watch/busy</span> · <span class="diag-bad">red 12+ critical</span><br><b>T</b>: <span class="diag-good">green 75%+ full</span> · <span class="diag-warn">amber 50–74% partial</span> · <span class="diag-bad">red &lt;50% light</span><br>route focus: <span style="color:#ffcf55">yellow outline = selected shaft route</span> · <span class="diag-bad">red dashed outline = no assigned shaft</span></div>
     <div class="stat"><span>avg wait</span><b id="wait">—</b></div>
     <div class="stat"><span>delivered</span><b id="rate">—</b></div>
     <div class="stat"><span>reputation</span><b id="rep">—</b></div>
+    <div class="stat"><span>room eval</span><b id="eval">—</b></div>
+    <div class="stat"><span>desirability</span><b><span id="desirability">—</span><small id="desirability-trend">trend —</small></b></div>
+
+    <div class="rule"></div>
+
+    <h2>SYSTEMS</h2>
+    <div id="transport" class="diagnostics">—</div>
+
+    <div id="facility-inspector"></div>
+    <div id="shaft-inspector"></div>
+
+    <div id="unit-inspector">
+      <div id="unit-title">—</div>
+      <div id="unit-status">—</div>
+      <div id="unit-detail">—</div>
+      <div id="unit-utilization-context">—</div>
+      <div id="conversion-controls"></div>
+      <div id="unit-actions">
+        <button id="renovate-unit">renovate</button>
+        <button id="rerent-unit">re-rent</button>
+        <button id="demolish-unit">demolish</button>
+      </div>
+      <div id="recovery-warning"></div>
+      <div id="rerent-reason">—</div>
+    </div>
 
     <div class="goal">
       <strong>OBJECTIVE</strong>
@@ -112,30 +310,72 @@
     <div class="guide">
       <strong>START HERE</strong>
       <ol>
-        <li>Add a floor.</li>
-        <li>Select a unit, then click that floor.</li>
-        <li>Select <b>+ car</b>, then click a shaft when waits rise.</li>
+      <li>Add a floor.</li>
+      <li>Select a unit, then click that floor.</li>
+      <li>Place a service to cover nearby floors.</li>
+      <li>Click a built service to inspect its coverage and upkeep.</li>
+      <li>Select <b>+ car</b>, then click a shaft when waits rise.</li>
+      <li>The lobby is the ground-floor entrance; its walk counts too.</li>
+      <li>Use <b>+ lobby wing</b> to add another nearby entrance.</li>
       </ol>
     </div>
 
     <h2>BUILD</h2>
     <div id="build">
       <button data-do="floor"><span class="btn-label">+ floor</span><small class="btn-cost">$400</small></button>
+      <button data-do="lobby"><span class="btn-label">+ lobby</span><small class="btn-cost">$500</small></button>
+      <button data-do="stairs"><span class="btn-label">+ stairs</span><small class="btn-cost">$700 + floor</small></button>
+      <button data-do="escalator"><span class="btn-label">+ escalator</span><small class="btn-cost">$1,800 + floor</small></button>
       <button data-do="shaft"><span class="btn-label">+ shaft</span><small class="btn-cost">$900 + span</small></button>
       <button data-do="car"><span class="btn-label">+ car</span><small class="btn-cost">$1,400</small></button>
       <button data-do="extend"><span class="btn-label">extend shaft</span><small class="btn-cost">$120 / floor</small></button>
+      <button data-facility="food"><span class="btn-label">cafeteria</span><small class="btn-cost">$1,800</small></button>
+      <button data-facility="parking"><span class="btn-label">parking</span><small class="btn-cost">$2,200</small></button>
+      <button data-facility="medical"><span class="btn-label">clinic</span><small class="btn-cost">60 pop · $2,600</small></button>
+      <button data-facility="security"><span class="btn-label">security</span><small class="btn-cost">$2,000</small></button>
+      <button data-facility="recycling"><span class="btn-label">recycling</span><small class="btn-cost">$1,600</small></button>
       <button data-kind="office"><span class="btn-label">office</span><small class="btn-cost">$1,200</small></button>
       <button data-kind="condo"><span class="btn-label">condo</span><small class="btn-cost">60 pop · $2,000</small></button>
       <button data-kind="shop"><span class="btn-label">shop</span><small class="btn-cost">160 pop · $1,500</small></button>
+      <button data-kind="hotel"><span class="btn-label">hotel</span><small class="btn-cost">160 pop · $3,200</small></button>
     </div>
 
-    <div id="mode">OFFICE selected — click an upper floor to place it.</div>
+    <h2 class="rent-heading">RENT</h2>
+    <div id="rent-control">
+      <button data-rent-step="-1" aria-label="Lower rent">−</button>
+      <div id="rent-summary"><b id="rent-kind">OFFICE</b><span id="rent-value">$300 / day</span></div>
+      <button data-rent-step="1" aria-label="Raise rent">+</button>
+    </div>
+    <p class="rent-hint">Higher rent pays more but lowers room evaluation. Cafeterias ±1; parking ±2; clinics ±3; security ±4; recycling ±2.</p>
+
+    <div id="mode" role="status" aria-live="polite" aria-atomic="true">OFFICE selected — click an upper floor to place it.</div>
+    <div id="placement-preview" class="placement-preview" hidden></div>
+
+    <div class="legend">
+      <h2>LEGEND</h2>
+      <div class="legend-row"><i class="swatch swatch-unit"></i><span>room eval: good → poor (stress, access, rent, noise, fit, layout, view, amenity; market demand fills vacancies)</span></div>
+      <div class="legend-row"><i class="swatch swatch-queue"></i><span><b>W</b> = waiting / floor badge: <span class="diag-good">green 0</span> · <span class="diag-warn">amber 1–11</span> · <span class="diag-bad">red 12+</span></span></div>
+      <div class="legend-row"><i class="swatch swatch-tenants"></i><span><b>T</b> = tenants / capacity: <span class="diag-bad">red &lt;50%</span> · <span class="diag-warn">amber 50–74%</span> · <span class="diag-good">green 75%+</span></span></div>
+      <div class="legend-row"><i class="swatch swatch-car"></i><span>car: light → heavily loaded</span></div>
+      <div class="legend-row"><i class="swatch swatch-doors"></i><span>green car: doors open</span></div>
+      <div class="legend-row"><i class="swatch swatch-lobby"></i><span>lobby: entrance and expanded wings</span></div>
+      <div class="legend-row"><i class="swatch swatch-stairs"></i><span>stairs: slow local route, no car wait</span></div>
+      <div class="legend-row"><i class="swatch swatch-escalator"></i><span>escalator: faster local route, no car wait</span></div>
+      <div class="legend-row"><i class="swatch swatch-facility"></i><span>facility: food · parking · medical · security · recycling</span></div>
+      <div id="placement-guide-legend" hidden>
+        <div class="legend-row"><i class="guide-swatch guide-target"></i><span>TARGET: the warned floor to improve</span></div>
+        <div class="legend-row"><i class="guide-swatch guide-valid"></i><span>VALID: an open floor where the fix can be placed</span></div>
+        <div class="legend-row"><i class="guide-swatch guide-full"></i><span>FULL: in range, but no open placement slot</span></div>
+        <div class="legend-row"><i class="guide-swatch service-focus-area"></i><span>SERVICE AREA: focused facility coverage; CHANGED marks newly covered rooms; <span class="diag-bad">UNCOVERED</span> marks occupied rooms still missing the service</span></div>
+      </div>
+    </div>
 
     <div id="knobs"></div>
 
     <p class="hint">
       Units: select one, then click a floor.<br>
       Cars: select + car, then click a shaft.<br>
+      Click an empty room to inspect and re-rent it.<br>
       <b>space</b> pause · <b>1/2/3</b> speed · <b>D</b> knobs · <b>E</b> export tape · <b>R</b> restart
     </p>
   </aside>
