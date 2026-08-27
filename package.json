@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Elevator-throughput prototype. Sim is pure and headless; the renderer is disposable.",
+  "description": "Human-first tower-management game with a pure, headless simulation.",
   "scripts": {
     "play": "node harness/serve.js",
     "test": "node test/run.js",

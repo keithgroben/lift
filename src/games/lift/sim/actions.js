@@ -266,8 +266,17 @@ const ACTIONS = {
       return { ok: false, reason: `local shafts cap at ${config.elevator.maxSpan} floors` };
     }
     // A shaft needs the same free column on every floor it passes through.
+    // UI callers may choose a column; headless policies keep the old
+    // first-clear fallback so existing simulations remain deterministic.
+    const requestedSlot = Number.isInteger(a.slot) ? a.slot : null;
+    if (requestedSlot != null && (requestedSlot < 0 || requestedSlot >= config.building.slotsPerFloor)) {
+      return { ok: false, reason: 'selected shaft column is outside the building' };
+    }
     let slot = -1;
-    for (let s = 0; s < config.building.slotsPerFloor; s++) {
+    const candidateSlots = requestedSlot == null
+      ? Array.from({ length: config.building.slotsPerFloor }, (_, index) => index)
+      : [requestedSlot];
+    for (const s of candidateSlots) {
       let clear = true;
       for (let f = bottom; f <= top && clear; f++) {
         for (const u of state.units) if (u.floor === f && u.slot === s) clear = false;
@@ -282,7 +291,7 @@ const ACTIONS = {
       }
       if (clear) { slot = s; break; }
     }
-    if (slot < 0) return { ok: false, reason: 'no clear column for a shaft' };
+    if (slot < 0) return { ok: false, reason: requestedSlot == null ? 'no clear column for a shaft' : 'selected shaft column is blocked across this span' };
 
     const cost = config.costs.shaft + config.costs.shaftPerFloor * span;
     if (!charge(state, cost)) return { ok: false, reason: 'not enough money' };
@@ -294,7 +303,7 @@ const ACTIONS = {
       calls: {},
     };
     state.shafts.push(sh);
-    pushEvent(state, 'shaft_built', { bottom, top });
+    pushEvent(state, 'shaft_built', { bottom, top, slot });
     return { ok: true, id: sh.id };
   },
 

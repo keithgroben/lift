@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Lift — elevator throughput prototype</title>
+<title>Lift — tower management game</title>
 <style>
   :root {
     --bg: #0e1116; --panel: #1b2430; --good: #3ddc97;
@@ -51,6 +51,50 @@
   .guide ol { margin: 7px 0 0 16px; padding: 0; color: #aebdca; }
   .guide li + li { margin-top: 3px; }
   .guide b { color: #dbe4ee; }
+  .beta-path { border-color: rgba(142,202,230,.45); }
+  .beta-path strong { color: var(--info); }
+  #beta-path { color: #aebdca; font-size: 9px; line-height: 1.5; margin-top: 6px; }
+  .beta-path-summary { color: var(--info); font-weight: 700; }
+  .beta-path-summary.pass { color: var(--good); }
+  .beta-path-warning { border-left: 2px solid var(--warn); color: #ffcf66; margin: 6px 0; padding-left: 6px; }
+  button.beta-path-action { color: #16202b; background: var(--warn); border-color: var(--warn); font-size: 8px; font-weight: 700; margin-top: 4px; padding: 3px 5px; }
+  .beta-path ol { margin-top: 5px; }
+  .beta-path-step.done { color: var(--good); }
+  .beta-path-step.next { color: #dbe4ee; }
+  .beta-path-detail { color: #7f97ad; }
+  .beta-path-affordability { font-size: 8px; font-weight: 700; margin-left: 3px; }
+  .beta-path-budget { border-top: 1px solid rgba(142,202,230,.2); color: #7f97ad; margin-top: 6px; padding-top: 5px; }
+  .beta-path-recovery { border-left: 2px solid rgba(61,220,151,.45); color: #aebdca; margin-top: 6px; padding-left: 6px; }
+  .beta-path-evidence { border-left: 2px solid rgba(61,220,151,.45); color: #aebdca; margin-top: 6px; padding-left: 6px; }
+  .beta-path-next { color: var(--warn); margin-top: 5px; }
+  .beta-path-details { color: #7f97ad; margin-top: 7px; }
+  .beta-path-details summary { color: var(--info); cursor: pointer; font-size: 9px; }
+  .player-help { color: #aebdca; font-size: 10px; line-height: 1.5; margin: 5px 0 0; }
+  .player-help a { color: var(--info); }
+  .player-help-links { color: #7f97ad; font-size: 9px; margin-top: 7px; }
+  .player-help-links a { color: var(--info); }
+  .player-session-controls { display: flex; justify-content: flex-end; margin-top: 5px; }
+  .player-session-controls button { background: transparent; border: 0; color: #7f97ad; font-size: 8px; padding: 2px 0; }
+  .player-session-controls button:hover:not(:disabled) { color: var(--info); }
+  .player-session-controls button.armed { color: var(--warn); }
+  .player-key { color: #7f97ad; font-size: 8px; line-height: 1.45; margin-top: 6px; }
+  .player-key b { color: #aebdca; }
+  .player-color-key { color: #7f97ad; font-size: 8px; line-height: 1.45; margin-top: 3px; }
+  .player-color-key b { color: #aebdca; }
+  .time-controls { display: grid; grid-template-columns: auto repeat(4, 1fr); gap: 4px; align-items: center; margin-top: 9px; }
+  .time-controls label { color: #6b8199; font-size: 8px; letter-spacing: .1em; }
+  .time-controls button { padding: 5px 3px; font-size: 9px; }
+  .time-controls button.active { color: var(--good); border-color: var(--good); background: #10271f; }
+  .quick-action { border: 1px solid rgba(255,207,85,.45); background: rgba(255,207,85,.06); margin-top: 9px; padding: 7px; }
+  .quick-action[hidden] { display: none; }
+  .quick-action-label { color: var(--warn); font-size: 8px; font-weight: 700; letter-spacing: .1em; }
+  .quick-action button { display: block; margin-top: 5px; width: 100%; }
+  .quick-action-detail { color: #aebdca; font-size: 9px; line-height: 1.4; margin-top: 5px; }
+  .developer-toggle { width: 100%; margin: 12px 0 0; color: #8fa4b8; background: #16202b; font-size: 9px; text-align: left; }
+  .developer-toggle[aria-expanded="true"] { color: var(--warn); border-color: rgba(255,183,3,.45); }
+  #developer-panel { margin-top: 10px; padding-top: 10px; border-top: 1px solid #2a3746; }
+  #developer-panel[hidden] { display: none; }
+  #developer-panel h2 { color: var(--info); }
   .goal { border-left: 2px solid var(--good); padding: 1px 0 1px 9px; margin: 13px 0 14px; }
   .goal strong { color: var(--good); }
   .goal div:last-child { color: #aebdca; font-size: 10px; line-height: 1.55; margin-top: 3px; }
@@ -178,9 +222,14 @@
   .conversion-options button { font-size: 9px; padding: 6px 4px; }
   #unit-actions { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
   #unit-actions button { width: 100%; }
+  #cancel-confirmation { grid-column: 1 / -1; color: #aebdca; }
   #demolish-unit { color: #ffb3bc; }
-  #recovery-warning { display: none; color: #ffcf66; background: rgba(255,183,3,0.1); border: 1px solid rgba(255,183,3,0.35); border-radius: 4px; padding: 6px 7px; font-size: 9px; line-height: 1.45; margin-top: 6px; }
+  #recovery-warning { display: none; color: #ffcf66; background: rgba(255,183,3,0.1); border: 1px solid rgba(255,183,3,0.35); border-radius: 4px; padding: 6px 7px; font-size: 9px; line-height: 1.45; margin-top: 6px; white-space: pre-line; }
+  #recovery-warning.outcome { color: #8ecae6; background: rgba(142,202,230,0.1); border-color: rgba(142,202,230,0.35); }
   #recovery-warning.open { display: block; }
+  .vacancy-prefill-history { border-left: 2px solid rgba(142,202,230,.35); margin-top: 4px; padding-left: 6px; }
+  .vacancy-prefill-history-row { color: #9aaab8; line-height: 1.5; margin: 2px 0; }
+  .vacancy-prefill-history-row .vacancy-prefill-day { color: var(--info); font-weight: 700; }
   #rerent-reason { color: #52657a; font-size: 9px; line-height: 1.45; margin: 6px 0 0; }
   #rent-control { display: grid; grid-template-columns: 34px 1fr 34px; gap: 6px; align-items: stretch; }
   #rent-control button { font-size: 16px; padding: 2px; }
@@ -209,7 +258,19 @@
   .placement-preview.coverage-strong { background: rgba(61,220,151,.08); }
   .placement-preview.coverage-partial { background: rgba(255,183,3,.08); }
   .placement-preview.coverage-flat { background: rgba(239,71,111,.08); }
-  #build { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .build-safety { margin: 6px 0 0; padding: 6px 8px; border: 1px solid #2f4055; border-radius: 4px; font-size: 9px; line-height: 1.45; }
+  .build-safety.good { color: var(--good); background: rgba(61,220,151,.06); }
+  .build-safety.warn { color: var(--warn); background: rgba(255,183,3,.07); border-color: rgba(255,183,3,.35); }
+  .build-safety.bad { color: var(--bad); background: rgba(239,71,111,.07); border-color: rgba(239,71,111,.35); }
+  .build-safety b { letter-spacing: .06em; }
+  .build-safety span { color: #aebdca; }
+  #build { display: block; }
+  .build-primary { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .build-more { margin-top: 8px; }
+  .build-more summary { color: #8fa4b8; cursor: pointer; font-size: 9px; padding: 5px 0; }
+  .build-more-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 4px; }
+  .build-help { color: #7f97ad; font-size: 9px; line-height: 1.45; margin: -3px 0 7px; }
+  .build-help b { color: #dbe4ee; }
   button {
     font-family: var(--mono); font-size: 11px; padding: 8px 6px; cursor: pointer;
     background: #223041; color: #cfe0ee; border: 1px solid #2f4055; border-radius: 5px;
@@ -237,9 +298,12 @@
     border-radius: 5px; padding: 7px 8px; margin: 9px 0 12px;
     font-size: 10px; line-height: 1.45;
   }
+  #cancel-tool { color: #aebdca; font-size: 9px; margin: -6px 0 12px; padding: 3px 6px; }
+  #cancel-tool[hidden] { display: none; }
 
   #knobs { display: none; margin-top: 14px; }
   #knobs.open { display: block; }
+  #developer-panel:not([hidden]) #knobs { display: block; }
   #knobs h3 { font-size: 10px; letter-spacing: .16em; color: #6b8199; margin: 0 0 10px; }
   #knobs h3 span { float: right; color: #3d5063; }
   #knobs label { display: block; font-size: 10px; color: #7f97ad; margin-bottom: 9px; }
@@ -258,7 +322,62 @@
   </div>
 
   <aside>
-    <h1>LIFT<small>elevator throughput prototype</small></h1>
+    <h1>LIFT<small>tower management game</small></h1>
+
+    <div class="goal">
+      <strong>OBJECTIVE</strong>
+      <div id="goal-copy">Keep delivery above 55% so tenants stay.</div>
+      <div class="player-help">Watch the tower, then follow the highlighted next action. Build a room, let people use it, and add transport only when waiting grows.</div>
+      <div class="player-help-links"><a href="../../../docs/HOW_TO_PLAY.md" target="_blank" rel="noreferrer">How to play</a> · <a href="../../../docs/RULES.md" target="_blank" rel="noreferrer">Rules</a></div>
+      <div class="player-key"><b>W</b> waiting · <b>T</b> tenants/capacity · <b>delivery</b> trips completed · <b>reputation</b> tenant trust · <b>desirability</b> room appeal</div>
+      <div class="player-color-key"><b>room colors:</b> blue office · green condo · amber shop · violet hotel · gray empty · red fade = low appeal · yellow/red line = tenant stress</div>
+      <div class="player-session-controls"><button id="restart-game" type="button" title="reset this tower and start a fresh session">new session</button></div>
+      <div id="time-controls" class="time-controls" aria-label="time controls">
+        <label>TIME</label>
+        <button type="button" data-speed="0">pause</button>
+        <button type="button" data-speed="1">1x</button>
+        <button type="button" data-speed="4">4x</button>
+        <button type="button" data-speed="12">12x</button>
+      </div>
+      <div id="quick-action" class="quick-action" hidden aria-live="polite">
+        <div class="quick-action-label">NEXT ACTION</div>
+        <button id="quick-action-button" type="button">—</button>
+        <div id="quick-action-detail" class="quick-action-detail">—</div>
+      </div>
+    </div>
+
+    <div class="guide beta-path">
+      <strong>FIRST SESSION PATH</strong>
+      <div id="beta-path">—</div>
+    </div>
+
+    <h2>BUILD</h2>
+    <div class="build-help"><b>Rooms:</b> choose one, then click a floor. <b>Shaft:</b> hover a column, then click its top floor. <b>Car:</b> choose it, then click the highlighted shaft.</div>
+    <div id="build">
+      <div class="build-primary">
+        <button data-do="floor"><span class="btn-label">+ floor</span><small class="btn-cost">$400</small></button>
+        <button data-do="lobby"><span class="btn-label">+ lobby</span><small class="btn-cost">$500</small></button>
+        <button data-kind="office"><span class="btn-label">office</span><small class="btn-cost">$1,200</small></button>
+        <button data-do="shaft"><span class="btn-label">+ shaft</span><small class="btn-cost">$900 + span</small></button>
+        <button data-do="car"><span class="btn-label">+ car</span><small class="btn-cost">$1,400</small></button>
+      </div>
+      <details class="build-more">
+        <summary>more routes, services, and room types</summary>
+        <div class="build-more-grid">
+          <button data-do="stairs"><span class="btn-label">+ stairs</span><small class="btn-cost">$700 + floor</small></button>
+          <button data-do="escalator"><span class="btn-label">+ escalator</span><small class="btn-cost">$1,800 + floor</small></button>
+          <button data-do="extend"><span class="btn-label">extend shaft</span><small class="btn-cost">$120 / floor</small></button>
+          <button data-facility="food"><span class="btn-label">cafeteria</span><small class="btn-cost">$1,800</small></button>
+          <button data-facility="parking"><span class="btn-label">parking</span><small class="btn-cost">$2,200</small></button>
+          <button data-facility="medical"><span class="btn-label">clinic</span><small class="btn-cost">60 pop · $2,600</small></button>
+          <button data-facility="security"><span class="btn-label">security</span><small class="btn-cost">$2,000</small></button>
+          <button data-facility="recycling"><span class="btn-label">recycling</span><small class="btn-cost">$1,600</small></button>
+          <button data-kind="condo"><span class="btn-label">condo</span><small class="btn-cost">60 pop · $2,000</small></button>
+          <button data-kind="shop"><span class="btn-label">shop</span><small class="btn-cost">160 pop · $1,500</small></button>
+          <button data-kind="hotel"><span class="btn-label">hotel</span><small class="btn-cost">160 pop · $3,200</small></button>
+        </div>
+      </details>
+    </div>
 
     <div class="stat"><span>money</span><b id="money">—</b></div>
     <div class="stat"><span>day</span><b id="day">—</b></div>
@@ -279,8 +398,26 @@
 
     <div class="rule"></div>
 
-    <h2>SYSTEMS</h2>
-    <div id="transport" class="diagnostics">—</div>
+    <div class="guide">
+      <strong>START HERE</strong>
+      <ol>
+      <li>Choose a room, then click an upper floor to place it.</li>
+      <li>Watch the <b>W</b> waiting badge and <b>T</b> tenant badge.</li>
+      <li>When waiting turns amber or red, add a car to the highlighted shaft.</li>
+      </ol>
+    </div>
+
+    <h2 class="rent-heading">RENT</h2>
+    <div id="rent-control">
+      <button data-rent-step="-1" aria-label="Lower rent">−</button>
+      <div id="rent-summary"><b id="rent-kind">OFFICE</b><span id="rent-value">$300 / day</span></div>
+      <button data-rent-step="1" aria-label="Raise rent">+</button>
+    </div>
+    <p class="rent-hint">Higher rent pays more but lowers room evaluation. Cafeterias ±1; parking ±2; clinics ±3; security ±4; recycling ±2.</p>
+
+    <div id="mode" role="status" aria-live="polite" aria-atomic="true">OFFICE selected — click an upper floor to place it.</div>
+    <button id="cancel-tool" type="button" hidden>cancel action</button>
+    <div id="placement-preview" class="placement-preview" hidden></div>
 
     <div id="facility-inspector"></div>
     <div id="shaft-inspector"></div>
@@ -295,64 +432,19 @@
         <button id="renovate-unit">renovate</button>
         <button id="rerent-unit">re-rent</button>
         <button id="demolish-unit">demolish</button>
+        <button id="cancel-confirmation" hidden>cancel preview</button>
       </div>
       <div id="recovery-warning"></div>
       <div id="rerent-reason">—</div>
     </div>
 
-    <div class="goal">
-      <strong>OBJECTIVE</strong>
-      <div id="goal-copy">Keep delivery above 55% so tenants stay.</div>
-    </div>
-
-    <div class="rule"></div>
-
-    <div class="guide">
-      <strong>START HERE</strong>
-      <ol>
-      <li>Add a floor.</li>
-      <li>Select a unit, then click that floor.</li>
-      <li>Place a service to cover nearby floors.</li>
-      <li>Click a built service to inspect its coverage and upkeep.</li>
-      <li>Select <b>+ car</b>, then click a shaft when waits rise.</li>
-      <li>The lobby is the ground-floor entrance; its walk counts too.</li>
-      <li>Use <b>+ lobby wing</b> to add another nearby entrance.</li>
-      </ol>
-    </div>
-
-    <h2>BUILD</h2>
-    <div id="build">
-      <button data-do="floor"><span class="btn-label">+ floor</span><small class="btn-cost">$400</small></button>
-      <button data-do="lobby"><span class="btn-label">+ lobby</span><small class="btn-cost">$500</small></button>
-      <button data-do="stairs"><span class="btn-label">+ stairs</span><small class="btn-cost">$700 + floor</small></button>
-      <button data-do="escalator"><span class="btn-label">+ escalator</span><small class="btn-cost">$1,800 + floor</small></button>
-      <button data-do="shaft"><span class="btn-label">+ shaft</span><small class="btn-cost">$900 + span</small></button>
-      <button data-do="car"><span class="btn-label">+ car</span><small class="btn-cost">$1,400</small></button>
-      <button data-do="extend"><span class="btn-label">extend shaft</span><small class="btn-cost">$120 / floor</small></button>
-      <button data-facility="food"><span class="btn-label">cafeteria</span><small class="btn-cost">$1,800</small></button>
-      <button data-facility="parking"><span class="btn-label">parking</span><small class="btn-cost">$2,200</small></button>
-      <button data-facility="medical"><span class="btn-label">clinic</span><small class="btn-cost">60 pop · $2,600</small></button>
-      <button data-facility="security"><span class="btn-label">security</span><small class="btn-cost">$2,000</small></button>
-      <button data-facility="recycling"><span class="btn-label">recycling</span><small class="btn-cost">$1,600</small></button>
-      <button data-kind="office"><span class="btn-label">office</span><small class="btn-cost">$1,200</small></button>
-      <button data-kind="condo"><span class="btn-label">condo</span><small class="btn-cost">60 pop · $2,000</small></button>
-      <button data-kind="shop"><span class="btn-label">shop</span><small class="btn-cost">160 pop · $1,500</small></button>
-      <button data-kind="hotel"><span class="btn-label">hotel</span><small class="btn-cost">160 pop · $3,200</small></button>
-    </div>
-
-    <h2 class="rent-heading">RENT</h2>
-    <div id="rent-control">
-      <button data-rent-step="-1" aria-label="Lower rent">−</button>
-      <div id="rent-summary"><b id="rent-kind">OFFICE</b><span id="rent-value">$300 / day</span></div>
-      <button data-rent-step="1" aria-label="Raise rent">+</button>
-    </div>
-    <p class="rent-hint">Higher rent pays more but lowers room evaluation. Cafeterias ±1; parking ±2; clinics ±3; security ±4; recycling ±2.</p>
-
-    <div id="mode" role="status" aria-live="polite" aria-atomic="true">OFFICE selected — click an upper floor to place it.</div>
-    <div id="placement-preview" class="placement-preview" hidden></div>
-
-    <div class="legend">
-      <h2>LEGEND</h2>
+    <button id="developer-toggle" class="developer-toggle" type="button" aria-expanded="false">show developer details</button>
+    <section id="developer-panel" hidden>
+      <h2>DEVELOPER DETAILS</h2>
+      <div id="transport" class="diagnostics">—</div>
+      <div id="expansion-safety" class="build-safety" role="status" aria-live="polite">—</div>
+      <div class="legend">
+      <h2>LEGEND &amp; SIGNALS</h2>
       <div class="legend-row"><i class="swatch swatch-unit"></i><span>room eval: good → poor (stress, access, rent, noise, fit, layout, view, amenity; market demand fills vacancies)</span></div>
       <div class="legend-row"><i class="swatch swatch-queue"></i><span><b>W</b> = waiting / floor badge: <span class="diag-good">green 0</span> · <span class="diag-warn">amber 1–11</span> · <span class="diag-bad">red 12+</span></span></div>
       <div class="legend-row"><i class="swatch swatch-tenants"></i><span><b>T</b> = tenants / capacity: <span class="diag-bad">red &lt;50%</span> · <span class="diag-warn">amber 50–74%</span> · <span class="diag-good">green 75%+</span></span></div>
@@ -368,16 +460,18 @@
         <div class="legend-row"><i class="guide-swatch guide-full"></i><span>FULL: in range, but no open placement slot</span></div>
         <div class="legend-row"><i class="guide-swatch service-focus-area"></i><span>SERVICE AREA: focused facility coverage; CHANGED marks newly covered rooms; <span class="diag-bad">UNCOVERED</span> marks occupied rooms still missing the service</span></div>
       </div>
-    </div>
+      </div>
 
-    <div id="knobs"></div>
+      <div id="knobs"></div>
 
-    <p class="hint">
+      <p class="hint">
       Units: select one, then click a floor.<br>
       Cars: select + car, then click a shaft.<br>
       Click an empty room to inspect and re-rent it.<br>
-      <b>space</b> pause · <b>1/2/3</b> speed · <b>D</b> knobs · <b>E</b> export tape · <b>R</b> restart
-    </p>
+      <b>space</b> pause · <b>1/2/3</b> speed · <b>D</b> developer details · <b>E</b> export tape · <b>R</b> restart
+      </p>
+      <div class="player-help-links"><a href="../../../docs/DEVELOPER_MODE.md" target="_blank" rel="noreferrer">Developer mode guide</a></div>
+    </section>
   </aside>
 
   <script type="module" src="./ui/app.js"></script>

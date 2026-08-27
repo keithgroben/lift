@@ -1,5 +1,5 @@
 import { lerp, mix } from './juice.js';
-import { shaftQueueTrend, tenantLoadStatus, unitEvaluation, waitingPressureSummary } from '../sim/evaluation.js';
+import { shaftQueueTrend, tenantDemandQuality, tenantLoadStatus, unitEvaluation, waitingPressureSummary } from '../sim/evaluation.js';
 import { localRouteOccupancy } from '../sim/demand.js';
 import { freeSlot, slotsUsed } from '../sim/state.js';
 
@@ -227,6 +227,7 @@ export function serviceFocusCoverage(focus, state, config) {
     coveredHeads: covered.reduce((sum, unit) => sum + (unit.heads ?? 0), 0),
     uncoveredHeads: uncovered.reduce((sum, unit) => sum + (unit.heads ?? 0), 0),
     uncoveredFloors: Object.keys(uncoveredRoomsByFloor).map(Number).sort((a, b) => a - b),
+    coveredUnitIds: covered.map((unit) => unit.id),
     uncoveredUnitIds: uncovered.map((unit) => unit.id),
     requiredRoomsByFloor,
     coveredRoomsByFloor,
@@ -235,6 +236,62 @@ export function serviceFocusCoverage(focus, state, config) {
     uncoveredRoomsByFloor,
     uncoveredHeadsByFloor,
   };
+}
+
+/** Name rooms currently served by a focused facility. */
+export function serviceFocusCoveredRoomLabel(coverage, state, limit = 3) {
+  const rooms = (coverage?.coveredUnitIds ?? [])
+    .map((id) => state?.units?.find((unit) => unit.id === id && unit.occupied))
+    .filter(Boolean)
+    .map((unit) => 'F' + unit.floor + ' ' + unit.kind + ' (' + Math.max(0, Math.round(unit.heads ?? 0)) + ' tenants)');
+  if (!rooms.length) return '';
+  const shown = rooms.slice(0, Math.max(1, limit));
+  return shown.join(', ') + (rooms.length > shown.length ? ' +' + (rooms.length - shown.length) + ' more' : '');
+}
+
+/** Return live desirability details for rooms served by a focused facility. */
+export function serviceFocusCoveredRoomDetails(coverage, state, config) {
+  return (coverage?.coveredUnitIds ?? [])
+    .map((id) => state?.units?.find((unit) => unit.id === id && unit.occupied))
+    .filter(Boolean)
+    .map((unit) => ({
+      id: unit.id,
+      floor: unit.floor,
+      kind: unit.kind,
+      heads: Math.max(0, Math.round(unit.heads ?? 0)),
+      desirability: tenantDemandQuality(state, unit, config).desirabilityScore,
+      stress: Math.max(0, Math.round(Number(unit.stress) || 0)),
+    }));
+}
+
+/** Summarize room appeal and transport stress without hiding either value. */
+export function serviceRoomHealthSignal(room, config) {
+  const desirability = Number(room?.desirability);
+  const stress = Number(room?.stress);
+  const vacateAt = Number(config?.units?.[room?.kind]?.vacateAt) || 0;
+  if (!Number.isFinite(desirability) && !Number.isFinite(stress)) {
+    return { key: 'unknown', label: 'HEALTH UNKNOWN', colorKey: 'warn', driver: 'unknown' };
+  }
+  const lowAppeal = Number.isFinite(desirability) && desirability < 55;
+  const watchAppeal = Number.isFinite(desirability) && desirability < 80;
+  const highStress = vacateAt > 0 && Number.isFinite(stress) && stress >= vacateAt * 0.7;
+  const watchStress = vacateAt > 0 && Number.isFinite(stress) && stress >= vacateAt * 0.5;
+  const riskDrivers = [lowAppeal ? 'appeal' : null, highStress ? 'transport' : null].filter(Boolean);
+  const watchDrivers = [watchAppeal ? 'appeal' : null, watchStress ? 'transport' : null].filter(Boolean);
+  if (lowAppeal || highStress) return { key: 'risk', label: 'AT RISK', colorKey: 'bad', driver: riskDrivers.join(' + ') || 'unknown' };
+  if (watchAppeal || watchStress) return { key: 'watch', label: 'WATCH', colorKey: 'warn', driver: watchDrivers.join(' + ') || 'unknown' };
+  return { key: 'healthy', label: 'HEALTHY', colorKey: 'good', driver: 'none' };
+}
+
+/** Name the occupied rooms that remain outside a focused facility's service. */
+export function serviceFocusUncoveredRoomLabel(coverage, state, limit = 3) {
+  const rooms = (coverage?.uncoveredUnitIds ?? [])
+    .map((id) => state?.units?.find((unit) => unit.id === id && unit.occupied))
+    .filter(Boolean)
+    .map((unit) => 'F' + unit.floor + ' ' + unit.kind + ' (' + Math.max(0, Math.round(unit.heads ?? 0)) + ' tenants)');
+  if (!rooms.length) return '';
+  const shown = rooms.slice(0, Math.max(1, limit));
+  return shown.join(', ') + (rooms.length > shown.length ? ' +' + (rooms.length - shown.length) + ' more' : '');
 }
 
 /**
@@ -449,6 +506,28 @@ export function makeRenderer(canvas, config) {
       return;
     }
     if (target.kind !== 'shaft' || !Number.isInteger(target.floor) || target.floor < 0 || target.floor >= state.floors) return;
+    if (Number.isInteger(target.slot)) {
+      const bottomFloor = config.building.lobbyFloor ?? 0;
+      const topFloor = target.floor;
+      const span = topFloor - bottomFloor + 1;
+      const inBounds = target.slot >= 0 && target.slot < L.cols && topFloor > bottomFloor && span <= config.elevator.maxSpan;
+      const clear = inBounds && Array.from({ length: span }, (_, index) => bottomFloor + index)
+        .every((floor) => !slotsUsed(state, floor).has(target.slot));
+      const x = L.x0 + target.slot * L.cw;
+      const top = L.floorY(topFloor);
+      const bottom = L.floorY(bottomFloor) + L.fh;
+      ctx.strokeStyle = clear ? '#ffb703' : '#ef476f';
+      ctx.lineWidth = 3;
+      ctx.setLineDash([6, 4]);
+      roundRect(ctx, x + 2, top + 1, L.cw - 4, bottom - top - 2, 4);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = clear ? '#ffcf55' : '#ff8da6';
+      ctx.textAlign = 'center';
+      ctx.font = '700 8px ui-monospace, monospace';
+      ctx.fillText(clear ? 'SHAFT C' + (target.slot + 1) : 'BLOCKED', x + L.cw / 2, top + 11);
+      return;
+    }
     const y = L.floorY(target.floor);
     const hovered = target.floor === hoverFloor;
     const ready = target.floor > (config.building.lobbyFloor ?? 0) &&

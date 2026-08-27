@@ -1,6 +1,15 @@
 import { CONFIG } from '../src/games/lift/config.js';
 import { boot, applyAction } from '../src/games/lift/sim/index.js';
-import { averageEvaluation, boundedEvaluationTrend, evaluationDrift, firstWavePressure, floorDiagnosisAgeCue, floorDiagnosisChange, floorDiagnosisNextAction, floorDiagnosisRepeatedFailure, floorDiagnosisWorkingState, floorHandoffPreview, floorOperationsSummary, indicatorColorKey, leasingForecast, rememberFloorDiagnosisResult, rememberRoomHealthHistory, rememberVacancyAppealFollowupHistory, roomHealthHistoryAction, roomHealthHistoryAgeLabel, roomHealthHistoryChange, roomHealthHistoryPriority, roomHealthHistoryStatus, roomHealthHistoryUrgency, roomEvaluationResponse, routePlacementStatus, shaftBuildControlStatus, shaftCapacityProjection, shaftCandidateCoverageLabel, shaftPlacementProjection, shaftQueueReliefProjection, shaftQueueReliefRecommendation, shaftRouteCoverageLabel, sustainedLowEvaluation, tenantAccessOutcomeForUnit, tenantDemandQuality, tenantDemandForecast, tenantFloorMix, tenantLeasingHistory, tenantLoadStatus, tenantLoadSummary, tenantRetentionPressure, tenantTransportForecastHistory, tenantTransportForecastSignal, tenantTransportForecastTrend, tenantUtilizationRecoveryResult, tenantUtilizationRecoverySummary, tenantUtilizationRoomContext, tenantPlacementAlternativeReason, tenantPlacementComparisonChoice, tenantPlacementDecision, tenantPlacementDecisionReason, tenantPlacementFloorComparison, tenantPlacementFloorPreview, tenantPlacementInvestmentPreview, tenantPlacementInvestmentReason, tenantPlacementMixPreview, tenantPlacementPreview, tenantPlacementRankingReason, tenantPlacementReplacementPreviews, tenantPlacementSmallestInvestment, tenantUtilizationDelta, tenantUtilizationHistoryLabel, tenantUtilizationHintFocusLabel, tenantUtilizationManagementHint, tenantUtilizationTrend, transportCoverageText, unitEvaluation, vacancyAppealFollowupResult, vacancyAppealFactorValue, vacancyDemandSummary, vacancyRankingAccessSummary, vacancyRankingReason, vacancyRankingSignalSummary, vacancyAppealChangeAction } from '../src/games/lift/sim/evaluation.js';
+import { tenantUtilizationManagementHint } from '../src/games/lift/sim/evaluation.js';
+import { vacancyPreFillConfirmationLines, vacancyPreFillOverrideGuidance } from '../src/games/lift/sim/evaluation.js';
+import { vacancyPreFillResultHistoryLines } from '../src/games/lift/sim/evaluation.js';
+import { firstSessionPressureWarning } from '../src/games/lift/sim/evaluation.js';
+import { firstSessionRecoveryReadings } from '../src/games/lift/sim/evaluation.js';
+import { firstSessionRecoveryEvidence } from '../src/games/lift/sim/evaluation.js';
+import { postBetaManagementGoal } from '../src/games/lift/sim/evaluation.js';
+import { tenantPlacementServiceNeeds } from '../src/games/lift/sim/evaluation.js';
+import { condoTransportPreview } from '../src/games/lift/sim/evaluation.js';
+import { averageEvaluation, boundedEvaluationTrend, evaluationDrift, firstWavePressure, floorDiagnosisAgeCue, floorDiagnosisChange, floorDiagnosisNextAction, floorDiagnosisRepeatedFailure, floorDiagnosisWorkingState, floorHandoffPreview, floorOperationsSummary, indicatorColorKey, leasingForecast, rememberFloorDiagnosisResult, rememberRoomHealthHistory, rememberVacancyAppealFollowupHistory, rememberVacancyPreFillResultHistory, vacancyPreFillChoiceSignal, vacancyPreFillOutcomeSignal, vacancyPreFillOverrideComponent, vacancyPreFillOverrideSignal, vacancyPreFillRankingLabel, vacancyPreFillResultHistoryLabel, roomHealthHistoryAction, roomHealthHistoryAgeLabel, roomHealthHistoryChange, roomHealthHistoryPriority, roomHealthHistoryStatus, roomHealthHistoryUrgency, roomEvaluationResponse, routePlacementStatus, shaftBuildControlStatus, shaftCapacityProjection, shaftCandidateCoverageLabel, shaftPlacementProjection, shaftQueueReliefProjection, shaftQueueReliefRecommendation, shaftRouteCoverageLabel, sustainedLowEvaluation, tenantAccessOutcomeForUnit, tenantDemandQuality, tenantDemandForecast, tenantFloorMix, tenantLeasingHistory, tenantLoadStatus, tenantLoadSummary, tenantRetentionPressure, tenantTransportForecastHistory, tenantTransportForecastSignal, tenantTransportForecastTrend, tenantUtilizationRecoveryResult, tenantUtilizationRecoverySummary, tenantUtilizationRoomContext, tenantPlacementAlternativeReason, tenantPlacementComparisonChoice, tenantPlacementDecision, tenantPlacementDecisionReason, tenantPlacementFloorComparison, tenantPlacementFloorPreview, tenantPlacementInvestmentPreview, tenantPlacementInvestmentReason, tenantPlacementMixPreview, tenantPlacementPreview, tenantPlacementRankingReason, tenantPlacementReplacementPreviews, tenantPlacementSmallestInvestment, tenantUtilizationDelta, tenantUtilizationHistoryLabel, tenantUtilizationHintFocusLabel, tenantUtilizationTrend, transportCoverageText, unitEvaluation, vacancyAppealFollowupResult, vacancyAppealFactorValue, vacancyDemandSummary, vacancyPreFillGuidance, vacancyPreFillOutcome, vacancyPreFillResult, vacancyRankingAccessSummary, vacancyRankingGuidance, vacancyRankingReason, vacancyRankingSignalSummary, vacancyAppealChangeAction } from '../src/games/lift/sim/evaluation.js';
 import { dayClose } from '../src/games/lift/sim/economy.js';
 import { shaftQueueTrend } from '../src/games/lift/sim/evaluation.js';
 import { shaftQueueForecastContext } from '../src/games/lift/sim/evaluation.js';
@@ -14,7 +23,7 @@ import { tenantLoadColorMeaning, waitingPressureColorMeaning } from '../src/game
 import { towerDesirabilitySummary } from '../src/games/lift/sim/evaluation.js';
 import { towerDesirabilityHistory, towerDesirabilityHistoryLabel, towerDesirabilityTrend, towerDesirabilityTrendDeltaLabel } from '../src/games/lift/sim/evaluation.js';
 import { tenantRetentionHistory, tenantRetentionHistoryLabel, tenantRetentionTrend, tenantRetentionTrendDeltaLabel } from '../src/games/lift/sim/evaluation.js';
-import { serviceCoverageChange, serviceCoverageSummary, servicePlacementBudgetImpact, servicePlacementComparison, servicePlacementCoveragePreview, servicePlacementRecommendation, tenantRetentionRecommendation } from '../src/games/lift/sim/evaluation.js';
+import { cashRunwaySummary, expansionSafetySummary, serviceCoverageChange, serviceCoverageSummary, servicePlacementBudgetImpact, servicePlacementComparison, servicePlacementCoveragePreview, servicePlacementRecommendation, tenantRetentionRecommendation } from '../src/games/lift/sim/evaluation.js';
 import { transportResponseRecommendation, unassignedQueueResponse } from '../src/games/lift/sim/evaluation.js';
 import { transportInvestmentChoices } from '../src/games/lift/sim/evaluation.js';
 import { shaftCoverageDemandComparison } from '../src/games/lift/sim/evaluation.js';
@@ -23,6 +32,41 @@ import { shaftInvestmentComparison } from '../src/games/lift/sim/evaluation.js';
 const assert = (c, m) => { if (!c) throw new Error(m); };
 
 export const tests = {
+  'cash runway summarizes recent closed-day net'() {
+    const positive = cashRunwaySummary({ money: 900, log: [
+      { rent: 300, shopRevenue: 0, upkeep: 180, spent: 5000 },
+      { rent: 300, shopRevenue: 30, upkeep: 0, spent: 1000 },
+    ] });
+    const warning = cashRunwaySummary({ money: 500, log: [
+      { rent: 0, shopRevenue: 0, upkeep: 100 },
+      { rent: 0, shopRevenue: 0, upkeep: 150 },
+    ] });
+    const empty = cashRunwaySummary({ money: 500, log: [] });
+    assert(positive.key === 'positive' && positive.averageNet === 225 && positive.days == null && positive.label.includes('operating cash flow +225/day'),
+      'cash runway did not report positive recent net');
+    assert(warning.key === 'watch' && warning.averageNet === -125 && warning.days === 4 && warning.label.includes('about 4 days'),
+      'cash runway did not report a negative recent net window');
+    assert(empty.key === 'unknown' && empty.days == null,
+      'cash runway should remain unknown before a closed-day budget');
+  },
+
+  'expansion safety warns without blocking a risky build'() {
+    const state = {
+      money: 5000,
+      log: [{ rent: 0, shopRevenue: 0, upkeep: 100 }],
+    };
+    const unknown = expansionSafetySummary({ money: 5000, log: [] }, 1200);
+    const watch = expansionSafetySummary(state, 1200);
+    const critical = expansionSafetySummary(state, 4700);
+    const positive = expansionSafetySummary({ money: 5000, log: [{ rent: 300, shopRevenue: 0, upkeep: 100 }] }, 1200);
+    assert(unknown.key === 'unknown' && unknown.label.includes('first day closes') &&
+      watch.key === 'watch' && watch.days === 38 && watch.label.includes('expansion watch') &&
+      critical.key === 'critical' && critical.days === 3 && critical.label.includes('expansion warning') &&
+      positive.key === 'positive' && positive.averageNet === 200 &&
+      state.money === 5000 && state.log.length === 1,
+      'expansion safety did not explain runway risk without mutating or blocking the build');
+  },
+
   'tower desirability summarizes appeal separately from transport reputation'() {
     const state = {
       floors: 4,
@@ -139,8 +183,10 @@ export const tests = {
     const budgetImpact = servicePlacementBudgetImpact({ log: [{ net: 400 }] }, 'food', config);
     assert(recommendation.key === 'ready' && recommendation.floor === 2 &&
       recommendation.targetCovered && recommendation.coveredRooms === 2 &&
-      recommendation.coveredHeads === 12 && recommendation.detail.includes('F2') &&
-      recommendation.detail.includes('2/2 required rooms') && coverage.available &&
+      recommendation.coveredHeads === 12 && recommendation.beforeRooms === 0 &&
+      recommendation.beforeHeads === 0 && recommendation.detail.includes('F2') &&
+      recommendation.detail.includes('0/2 covered') && recommendation.detail.includes('2 remain') &&
+      recommendation.detail.includes('reaches 2/2') && coverage.available &&
       coverage.beforeRooms === 0 && coverage.afterRooms === 2 && coverage.roomsDelta === 2 &&
       coverage.beforeHeads === 0 && coverage.afterHeads === 12 && coverage.headsDelta === 12 &&
       servicePlacementComparison(alternateCoverage, coverage).key === 'worse' &&
@@ -215,6 +261,21 @@ export const tests = {
       'tenant placement preview did not expose capacity and target role');
   },
 
+  'tenant placement preview lists the services a condo will need'() {
+    const needs = tenantPlacementServiceNeeds('condo', CONFIG);
+    assert(needs.map((service) => service.label).join(', ') === 'cafeteria, parking, clinic, security, recycling' &&
+      needs.every((service) => service.need > 0),
+      'tenant placement preview did not expose condo service obligations');
+  },
+
+  'condo placement forecast exposes added resident travel demand'() {
+    const preview = condoTransportPreview(CONFIG);
+    assert(preview.residents === CONFIG.units.condo.residents &&
+      preview.roundTripsPerDay === Math.round(CONFIG.units.condo.residents * CONFIG.demand.condoTripsPerDay) &&
+      preview.passengerJourneysPerDay === preview.roundTripsPerDay * 2,
+      'condo placement forecast did not expose resident travel demand');
+  },
+
   'floor tenant mix reports actual shares and buildable slots'() {
     const config = structuredClone(CONFIG);
     config.economy.startMoney = 100000;
@@ -260,6 +321,25 @@ export const tests = {
     assert(preview.balanceBefore - preview.balanceAfter >= config.occupancy.tenantMixPlacementWarningDelta &&
       preview.balanceDelta < 0,
       'placement mix preview did not expose a material balance warning');
+  },
+
+  'condo placement forecast combines mixed-use and floor quality'() {
+    const config = structuredClone(CONFIG);
+    config.economy.startMoney = 100000;
+    config.stars.tiers[1].pop = 0;
+    config.building.startFloors = 6;
+    const state = boot(config, 44);
+    assert(applyAction(state, { type: 'build_lobby', slot: 0 }, config).ok &&
+      applyAction(state, { type: 'build_shaft', bottom: 0, top: 5 }, config).ok &&
+      applyAction(state, { type: 'build_unit', kind: 'office', floor: 1 }, config).ok,
+      'could not build condo-placement forecast fixture');
+    const before = JSON.stringify(state);
+    const mix = tenantPlacementMixPreview(state, 'condo', config);
+    const floor = tenantPlacementFloorPreview(state, 'condo', 3, config);
+    assert(mix.projectedShare > mix.currentShare && Number.isFinite(mix.balanceAfter) &&
+      floor.available && Number.isFinite(floor.evaluation.score) && Number.isFinite(floor.demandQuality.bonus) &&
+      JSON.stringify(state) === before,
+      'condo placement forecast did not expose mixed-use and floor-quality effects without mutation');
   },
 
   'floor placement preview combines room evaluation and mix impact'() {
@@ -863,6 +943,298 @@ export const tests = {
       summary.detail.includes('room appeal favors F4 by 3') && summary.detail.includes('access favors F3 by 1') &&
       summary.detail.includes('tenant mix favors F4 by 2'),
       'vacancy ranking did not compare desirability and access separately');
+  },
+
+  'vacancy ranking guidance names the combined next choice'() {
+    const guidance = vacancyRankingGuidance({ marketCandidates: [
+      { unit: { id: 1, floor: 4, kind: 'office' } },
+      { unit: { id: 2, floor: 3, kind: 'office' } },
+    ] });
+    const single = vacancyRankingGuidance({ marketCandidates: [
+      { unit: { id: 7, floor: 2, kind: 'condo' } },
+    ] });
+    const none = vacancyRankingGuidance({ marketCandidates: [] });
+    assert(guidance.key === 'compare' && guidance.label === 'start with F4 office' &&
+      guidance.detail.includes('combined vacancy ranking') && guidance.runnerFloor === 3 &&
+      single.key === 'single' && single.detail.includes('only eligible vacancy') &&
+      none.key === 'none' && none.label === 'no vacancy choice yet',
+      'vacancy ranking guidance did not state the next combined choice');
+  },
+
+  'vacancy pre-fill confirmation identifies the combined choice'() {
+    const forecast = { marketCandidates: [
+      { unit: { id: 1, floor: 4, kind: 'office' } },
+      { unit: { id: 2, floor: 3, kind: 'office' } },
+    ] };
+    const recommended = vacancyPreFillGuidance(forecast, 1);
+    const alternative = vacancyPreFillGuidance(forecast, 2);
+    const notRanked = vacancyPreFillGuidance(forecast, 9);
+    assert(recommended.key === 'recommended' && recommended.label === 'combined choice: F4 office' &&
+      recommended.detail.includes('combining room quality, tenant mix, access, and appeal') &&
+      alternative.key === 'alternative' && alternative.detail.includes('rank 2') && alternative.recommendedFloor === 4 &&
+      notRanked.key === 'not-ranked' && notRanked.detail.includes('not yet eligible'),
+      'vacancy pre-fill guidance did not identify the combined vacancy choice');
+  },
+
+  'vacancy pre-fill outcome shows tenant mix change'() {
+    const config = structuredClone(CONFIG);
+    const state = boot(config, 321);
+    const outcome = vacancyPreFillOutcome(state, { id: 9, kind: 'office', occupied: false }, config, {
+      marketCandidates: [{ unit: { id: 9, floor: 4, kind: 'office' } }],
+    });
+    assert(outcome.key === 'recommended' && outcome.tenantKind === 'office' && outcome.capacity > 0 &&
+      outcome.projectedShare > outcome.currentShare && outcome.targetShare === config.units.office.targetShare &&
+      Number.isFinite(outcome.balanceDelta),
+      'vacancy pre-fill outcome did not show the projected tenant mix change');
+  },
+
+  'vacancy pre-fill result retains ranking breakdown'() {
+    const config = structuredClone(CONFIG);
+    const state = boot(config, 777);
+    const unit = { id: 11, floor: 4, kind: 'office', occupied: false };
+    const preview = vacancyPreFillOutcome(state, unit, config, {
+      marketCandidates: [{
+        unit,
+        evaluation: { score: 80 },
+        marketDemandBonus: 4,
+        experienceDemand: { bonus: 9, experienceBonus: 6, transportAccessBonus: 2, desirabilityBonus: 1 },
+      }],
+    });
+    const filled = { ...unit, occupied: true, heads: config.units.office.workers };
+    state.units.push(filled);
+    const result = vacancyPreFillResult(preview, state, filled, config);
+    assert(preview.ranking.total === 93 && result.ranking.tenantMix === 4 &&
+      vacancyPreFillRankingLabel(result).includes('room 80') && vacancyPreFillRankingLabel(result).includes('appeal +1') &&
+      vacancyPreFillResultHistoryLabel([{ ...result, day: 1, floor: 4 }]).includes('rank 1'),
+      'vacancy pre-fill result did not retain the ranking breakdown');
+  },
+
+  'vacancy pre-fill override identifies the strongest component pull'() {
+    const config = structuredClone(CONFIG);
+    const state = boot(config, 888);
+    const unit = { id: 12, floor: 3, kind: 'office', occupied: false };
+    const preview = vacancyPreFillOutcome(state, unit, config, {
+      marketCandidates: [
+        { unit: { id: 10, floor: 4, kind: 'office' }, evaluation: { score: 90 }, marketDemandBonus: 4, experienceDemand: { bonus: 8, experienceBonus: 6, transportAccessBonus: 0, desirabilityBonus: 2 } },
+        { unit, evaluation: { score: 80 }, marketDemandBonus: 3, experienceDemand: { bonus: 10, experienceBonus: 6, transportAccessBonus: 4, desirabilityBonus: 0 } },
+      ],
+    });
+    const signal = vacancyPreFillOverrideSignal([{ key: 'different', followedRecommendation: false, overrideComponent: preview.overrideComponent }]);
+    assert(preview.overrideComponent.key === 'access' && preview.overrideComponent.delta === 4 &&
+      vacancyPreFillOverrideGuidance(preview).includes('override pull: access') &&
+      vacancyPreFillConfirmationLines(preview).some((line) => line.startsWith('choice:')) &&
+      vacancyPreFillConfirmationLines(preview).some((line) => line.startsWith('tenant:')) &&
+      signal.key === 'access' && signal.label === 'access is the main override pull' && signal.count === 1,
+      'vacancy override analysis did not identify the strongest component pull');
+  },
+
+  'vacancy pre-fill result compares actual tenant mix'() {
+    const config = structuredClone(CONFIG);
+    const state = boot(config, 654);
+    const unit = { id: 9, floor: 4, kind: 'office', occupied: false };
+    const preview = vacancyPreFillOutcome(state, unit, config, {
+      marketCandidates: [{ unit }],
+    });
+    const filled = { ...unit, occupied: true, heads: config.units.office.workers };
+    state.units.push(filled);
+    const result = vacancyPreFillResult(preview, state, filled, config);
+    assert(result.key === 'matched' && result.label === 'forecast matched' && result.followedRecommendation === true &&
+      result.detail.includes('actual mix') && result.actualShare === result.projectedShare &&
+      result.actualBalance === result.projectedBalance,
+      'vacancy pre-fill result did not compare the actual tenant mix');
+  },
+
+  'vacancy pre-fill history retains recent checks'() {
+    const first = { day: 1, floor: 2, label: 'forecast matched', followThroughLabel: 'followed recommendation', tenantKind: 'office', projectedShare: 0.5, actualShare: 0.5 };
+    const second = { day: 2, floor: 3, label: 'forecast differed', followThroughLabel: 'overrode recommendation', tenantKind: 'condo', projectedShare: 0.5, actualShare: 0.7 };
+    const history = rememberVacancyPreFillResultHistory([first, second, { day: 3 }], { day: 4, floor: 5, label: 'better than forecast', tenantKind: 'shop', projectedShare: 0.2, actualShare: 0.3 }, 3);
+    assert(history.length === 3 && history[0].day === 2 && history.at(-1).day === 4 &&
+      vacancyPreFillResultHistoryLabel(history).includes('overrode recommendation'),
+      'vacancy pre-fill history did not retain the recent checks');
+  },
+
+  'vacancy pre-fill history exposes scan-friendly rows'() {
+    const lines = vacancyPreFillResultHistoryLines([
+      { day: 4, floor: 5, tenantKind: 'shop', followThroughLabel: 'overrode recommendation', label: 'forecast matched', projectedShare: 0.2, actualShare: 0.3, overrideComponent: { key: 'access', label: 'access' } },
+      { day: 5, floor: 2, tenantKind: 'office', followedRecommendation: true, label: 'forecast differed', projectedShare: 0.5, actualShare: 0.4 },
+    ]);
+    assert(lines.length === 2 && lines[0].startsWith('D4 · F5 shop · overrode recommendation') &&
+      lines[0].includes('mix 20% → 30%') && lines[0].includes('pull access') &&
+      lines[1].includes('D5 · F2 office · followed recommendation'),
+      'vacancy pre-fill history rows were not scan-friendly');
+  },
+
+  'first-session pressure warning preserves a recovery window'() {
+    const config = structuredClone(CONFIG);
+    const live = firstSessionPressureWarning({
+      money: 2500,
+      people: [{ state: 'waiting' }],
+      units: [{ kind: 'office', occupied: true, stress: 20 }],
+      shafts: [{ cars: [{}] }],
+    }, config, 'S1');
+    const shortfall = firstSessionPressureWarning({
+      money: 1000,
+      people: [{ state: 'waiting' }],
+      units: [{ kind: 'office', occupied: true, stress: 0 }],
+      shafts: [{ cars: [{}] }],
+    }, config, 'S1');
+    const answered = firstSessionPressureWarning({
+      people: [{ state: 'waiting' }],
+      units: [{ kind: 'office', occupied: true, stress: 20 }],
+      shafts: [{ cars: [{}, {}] }],
+    }, config, 'S1');
+    const quiet = firstSessionPressureWarning({ people: [], units: [], shafts: [] }, config, 'S1');
+    assert(live.active && live.waiting === 1 && live.stressedUnits === 1 && live.affordable && live.detail.includes('select + car, then click S1') &&
+      live.detail.includes('car $1,400') && live.detail.includes('cash $2,500') && live.detail.includes('affordable now') &&
+      shortfall.detail.includes('need $400 more') &&
+      !answered.active && !quiet.active,
+      'first-session pressure warning did not preserve or clear the recovery window correctly');
+  },
+
+  'first-session recovery watch exposes current and latest readings'() {
+    const config = structuredClone(CONFIG);
+    const watching = firstSessionRecoveryReadings({
+      people: [{ state: 'waiting' }, { state: 'waiting' }],
+      units: [{ kind: 'office', occupied: true }, { kind: 'office', occupied: false }],
+      shafts: [{ cars: [{}, {}] }],
+    }, config, [{ day: 2, cars: 1, deliveryRate: 42, rep: 58, desirability: 61 }]);
+    const recoveredClose = firstSessionRecoveryReadings({
+      people: [],
+      units: [{ kind: 'office', occupied: true }],
+      shafts: [{ cars: [{}, {}] }],
+    }, config, [{ day: 3, cars: 2, deliveryRate: 96, rep: 84, desirability: 67 }]);
+    const beforeCar = firstSessionRecoveryReadings({
+      people: [], units: [], shafts: [{ cars: [{}] }],
+    }, config, []);
+    assert(watching.active && watching.waiting === 2 && watching.occupied === 1 && watching.capacity > 0 &&
+      !watching.postCarClose && watching.detail.includes('W 2 now') && watching.detail.includes('latest D2 pre-car') &&
+      watching.detail.includes('keep running for a post-car day close') &&
+      recoveredClose.postCarClose && recoveredClose.detail.includes('latest D3 post-car') &&
+      !beforeCar.active,
+      'first-session recovery watch did not expose the right current and latest readings');
+  },
+
+  'first-session recovery evidence pairs the latest pre-car pressure'() {
+    const evidence = firstSessionRecoveryEvidence([
+      { day: 1, cars: 1, elevatorTrips: 4, abandoned: 1, deliveryRate: 60, rep: 99 },
+      { day: 2, cars: 1, elevatorTrips: 5, abandoned: 2, deliveryRate: 70, rep: 72 },
+      { day: 3, cars: 2, elevatorTrips: 4, abandoned: 0, deliveryRate: 100, rep: 82 },
+      { day: 4, cars: 2, elevatorTrips: 5, abandoned: 1, deliveryRate: 86, rep: 84 },
+    ]);
+    assert(evidence.pressure?.day === 2 && evidence.recoveryEntry?.day === 3 && evidence.recovered,
+      'first-session recovery evidence did not use the latest pre-car pressure day');
+  },
+
+  'first-session recovery evidence accepts a healthy same-day live response'() {
+    const config = structuredClone(CONFIG);
+    const live = firstSessionRecoveryEvidence([
+      { day: 2, cars: 2, elevatorTrips: 4, abandoned: 0, deliveryRate: 92, rep: 96, occupied: 2, vacant: 1, desirability: 27 },
+    ], { day: 2, waiting: 1, stressedUnits: 0, occupied: 3, vacant: 0 }, config);
+    const weak = firstSessionRecoveryEvidence([
+      { day: 2, cars: 2, elevatorTrips: 4, abandoned: 1, deliveryRate: 72, rep: 78 },
+    ], { day: 2, waiting: 1, stressedUnits: 0 }, config);
+    assert(live.observed && live.recovered && live.source === 'live-warning' && live.pressure.waiting === 1 &&
+      live.recoveryEntry.day === 2 && !weak.recovered,
+      'first-session recovery evidence did not handle a same-day live response safely');
+  },
+
+  'post-beta management goal starts with the weakest required service'() {
+    const config = structuredClone(CONFIG);
+    const state = boot(config, 515);
+    state.units.push({ id: 1, kind: 'office', floor: 1, occupied: true, heads: config.units.office.workers, stress: 0 });
+    const serviceGoal = postBetaManagementGoal(state, config);
+    const expansionGoal = postBetaManagementGoal({ ...state, units: [] }, config);
+    assert(serviceGoal.key === 'service' && serviceGoal.action === 'food' && serviceGoal.label === 'add a cafeteria' &&
+      serviceGoal.cost === config.costs.food && serviceGoal.targetUnitId === 1 && serviceGoal.targetTenantLoad === 6 &&
+      serviceGoal.detail.includes('helps F1 office (6 tenants)') && serviceGoal.recommendedFloor === 1 &&
+      expansionGoal.key === 'expand' && expansionGoal.action === 'floor' &&
+      expansionGoal.cost === config.costs.floor,
+      'post-beta management goal did not choose a concrete service or expansion');
+  },
+
+  'post-beta management goal points to the first mixed-use expansion'() {
+    const config = structuredClone(CONFIG);
+    const state = boot(config, 516);
+    for (let index = 0; index < 10; index += 1) {
+      state.units.push({
+        id: index + 1,
+        kind: 'office',
+        floor: 1 + (index % 3),
+        slot: index,
+        occupied: true,
+        heads: config.units.office.workers,
+        stress: 0,
+      });
+    }
+    for (const kind of ['food', 'parking', 'security', 'recycling']) {
+      state.facilities.push({ id: 100 + state.facilities.length, kind, floor: 2, slot: 20 + state.facilities.length });
+    }
+    const goal = postBetaManagementGoal(state, config);
+    assert(goal.key === 'expansion' && goal.action === 'condo' && goal.label === 'add a condo' &&
+      goal.cost === config.costs.condo && goal.detail.includes('mixed-use expansion'),
+      'post-beta management goal did not point to the first condo expansion');
+  },
+
+  'post-beta management goal names the first condo service follow-up'() {
+    const config = structuredClone(CONFIG);
+    const state = {
+      floors: 4,
+      units: [{ id: 1, kind: 'condo', floor: 2, slot: 1, occupied: true, heads: 3, stress: 0, rent: config.units.condo.rent }],
+      facilities: [], shafts: [], stairs: [], escalators: [], lobby: null, people: [], log: [],
+    };
+    const goal = postBetaManagementGoal(state, config);
+    assert(goal.action === 'food' && goal.label === 'add a cafeteria for the condo' &&
+      goal.detail.includes('support the first condo') && goal.targetUnitId === 1,
+      'post-beta management goal did not name the first condo service follow-up');
+  },
+
+  'repeated service goal names the rooms still uncovered'() {
+    const config = structuredClone(CONFIG);
+    const state = {
+      floors: 4,
+      units: [
+        { id: 1, kind: 'office', floor: 1, slot: 1, heads: 6, occupied: true, stress: 0, rent: config.units.office.rent },
+        { id: 2, kind: 'office', floor: 2, slot: 1, heads: 6, occupied: true, stress: 0, rent: config.units.office.rent },
+        { id: 3, kind: 'office', floor: 3, slot: 1, heads: 6, occupied: true, stress: 0, rent: config.units.office.rent },
+      ],
+      facilities: [{ id: 10, kind: 'food', floor: 1, slot: 0 }],
+      shafts: [{ id: 20, bottom: 0, top: 3, slot: 0, cars: [] }],
+      stairs: [], escalators: [], lobby: null, people: [], log: [],
+    };
+    const goal = postBetaManagementGoal(state, config);
+    assert(goal.action === 'food' && goal.label === 'add a cafeteria' &&
+      goal.targetUnitId === 3 && goal.detail.includes('remaining uncovered: F3 office (6 tenants)') &&
+      goal.detail.includes('place on F3'),
+      'repeated service goal did not identify the uncovered room');
+  },
+
+  'vacancy pre-fill choice signal summarizes follow-through'() {
+    const signal = vacancyPreFillChoiceSignal([
+      { followedRecommendation: true },
+      { followThroughLabel: 'overrode recommendation' },
+      { followedRecommendation: false },
+    ]);
+    const empty = vacancyPreFillChoiceSignal([]);
+    assert(signal.key === 'overridden' && signal.followed === 1 && signal.overridden === 2 && signal.total === 3 &&
+      signal.detail.includes('persistent overrides') && empty.key === 'none',
+      'vacancy pre-fill choice signal did not summarize player follow-through');
+  },
+
+  'vacancy pre-fill outcome signal compares overrides'() {
+    const insufficient = vacancyPreFillOutcomeSignal([
+      { key: 'different', followedRecommendation: true },
+      { key: 'matched', followedRecommendation: false },
+    ]);
+    const signal = vacancyPreFillOutcomeSignal([
+      { key: 'different', followedRecommendation: true },
+      { key: 'matched', followedRecommendation: false },
+      { key: 'better', followedRecommendation: false },
+    ]);
+    const empty = vacancyPreFillOutcomeSignal([]);
+    assert(insufficient.key === 'insufficient' && insufficient.sampleReady === false && insufficient.minimumSample === 3 &&
+      signal.key === 'override-outperforms' && signal.followedHealthy === 0 && signal.overriddenHealthy === 2 &&
+      signal.sampleReady === true && signal.detail.includes('reviewing the ranking weights') && empty.key === 'none',
+      'vacancy pre-fill outcome signal did not compare override results');
   },
 
   'floor operations summary joins local queues to tenant load'() {
@@ -1696,6 +2068,11 @@ export const tests = {
       units: Array.from({ length: 4 }, (_, floor) => Array.from({ length: CONFIG.building.slotsPerFloor }, (_, slot) => ({ floor, slot }))).flat(),
     };
     const readyShaft = routePlacementStatus('shaft', 0, 3, base, CONFIG);
+    const readySelectedShaft = routePlacementStatus('shaft', 0, 3, base, CONFIG, null, 2);
+    const selectedBlockedShaft = routePlacementStatus('shaft', 0, 3, {
+      ...base,
+      units: Array.from({ length: 4 }, (_, floor) => ({ floor, slot: 2 })),
+    }, CONFIG, null, 2);
     const blockedShaft = routePlacementStatus('shaft', 0, 3, blocked, CONFIG);
     const readyCar = routePlacementStatus('car', null, null, base, CONFIG, { cars: [{ riders: [] }] });
     const fullCar = routePlacementStatus('car', null, null, base, CONFIG, { cars: [{}, {}, {}] });
@@ -1704,12 +2081,27 @@ export const tests = {
       shafts: [{ id: 10, cars: [{}, {}, {}] }, { id: 11, cars: [{}] }],
     };
     const fullWithAlternate = routePlacementStatus('car', null, null, alternateState, CONFIG, alternateState.shafts[0]);
-    assert(readyShaft.key === 'ready' && blockedShaft.key === 'blocked' &&
+    assert(readyShaft.key === 'ready' && readySelectedShaft.key === 'ready' && readySelectedShaft.slot === 2 &&
+      selectedBlockedShaft.key === 'blocked' && selectedBlockedShaft.detail.includes('selected column') &&
+      blockedShaft.key === 'blocked' &&
       blockedShaft.alternative === 'free a route column' && readyCar.key === 'ready' &&
       fullCar.key === 'blocked' && fullCar.alternative === 'build a new shaft for more capacity' &&
       fullCar.alternativeAction.kind === 'shaft' && fullWithAlternate.alternative === 'try S2' &&
       fullWithAlternate.alternativeAction.kind === 'car' && fullWithAlternate.alternativeAction.shaftId === 11,
       'route placement status did not expose placement conflicts');
+  },
+
+  'shaft building honors an explicitly selected column'() {
+    const state = boot(CONFIG, 77);
+    state.floors = 4;
+    assert(applyAction(state, { type: 'build_lobby', slot: 0 }, CONFIG).ok,
+      'could not build lobby for explicit shaft-column test');
+    const first = applyAction(state, { type: 'build_shaft', bottom: 0, top: 3, slot: 1 }, CONFIG);
+    const blocked = applyAction(state, { type: 'build_shaft', bottom: 0, top: 3, slot: 1 }, CONFIG);
+    const second = applyAction(state, { type: 'build_shaft', bottom: 0, top: 3, slot: 2 }, CONFIG);
+    assert(first.ok && state.shafts[0].slot === 1 && !blocked.ok &&
+      blocked.reason.includes('selected shaft column') && second.ok && state.shafts[1].slot === 2,
+      'shaft building did not honor the selected column');
   },
 
   'floor diagnosis change reports the next local reading'() {

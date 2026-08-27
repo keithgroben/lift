@@ -306,6 +306,90 @@ export function servicePlacementBudgetImpact(state, kind, config) {
   };
 }
 
+/** Describe the current cash runway from recent closed-day net results. */
+export function cashRunwaySummary(state, maxHistory = 3) {
+  const cash = Number(state?.money);
+  const historyLimit = Math.max(1, Math.floor(Number(maxHistory) || 3));
+  const recent = (state?.log ?? [])
+    .slice(-historyLimit)
+    .map((entry) => {
+      const rent = Number(entry?.rent);
+      const shopRevenue = Number(entry?.shopRevenue);
+      const upkeep = Number(entry?.upkeep);
+      if (Number.isFinite(rent) && Number.isFinite(shopRevenue) && Number.isFinite(upkeep)) {
+        return rent + shopRevenue - upkeep;
+      }
+      const net = Number(entry?.net);
+      const spent = Number(entry?.spent);
+      const rewards = Number(entry?.rewards);
+      return Number.isFinite(net)
+        ? net + (Number.isFinite(spent) ? spent : 0) - (Number.isFinite(rewards) ? rewards : 0)
+        : NaN;
+    })
+    .filter(Number.isFinite);
+  if (!Number.isFinite(cash) || !recent.length) {
+    return { key: 'unknown', cash: Number.isFinite(cash) ? cash : null, averageNet: null, days: null, label: 'cash runway awaiting a closed-day budget' };
+  }
+  const averageNet = +(recent.reduce((total, net) => total + net, 0) / recent.length).toFixed(2);
+  if (averageNet > 0) {
+    return { key: 'positive', cash, averageNet, days: null, label: 'operating cash flow +' + averageNet.toLocaleString() + '/day at recent pace' };
+  }
+  if (averageNet === 0) {
+    return { key: 'break_even', cash, averageNet, days: null, label: 'operating cash flow break-even at recent pace' };
+  }
+  const days = cash > 0 ? Math.max(1, Math.ceil(cash / Math.abs(averageNet))) : 0;
+  return {
+    key: days <= 3 ? 'critical' : 'watch',
+    cash,
+    averageNet,
+    days,
+    label: cash > 0
+      ? 'cash runway about ' + days + ' day' + (days === 1 ? '' : 's') + ' at ' + averageNet.toLocaleString() + '/day'
+      : 'cash exhausted at recent pace',
+  };
+}
+
+/** Warn before a build consumes a meaningful part of the current cash runway. */
+export function expansionSafetySummary(state, cost, maxHistory = 3) {
+  const cash = Number(state?.money);
+  const amount = Number(cost);
+  if (!Number.isFinite(cash) || !Number.isFinite(amount) || amount <= 0) {
+    return { key: 'unknown', cash: Number.isFinite(cash) ? cash : null, cost: Number.isFinite(amount) ? amount : null, cashAfter: null, averageNet: null, days: null, label: 'expansion safety unavailable' };
+  }
+  const cashAfter = cash - amount;
+  if (cashAfter < 0) {
+    return {
+      key: 'unaffordable', cash, cost: amount, cashAfter, averageNet: null, days: null,
+      label: 'not enough cash after this ' + formatCost(amount) + ' build (short ' + formatCost(Math.abs(cashAfter)) + ')',
+    };
+  }
+  const runway = cashRunwaySummary(state, maxHistory);
+  if (runway.averageNet == null) {
+    return {
+      key: 'unknown', cash, cost: amount, cashAfter, averageNet: null, days: null,
+      label: 'operating flow unknown until the first day closes · cash after build ' + formatCost(cashAfter),
+    };
+  }
+  if (runway.averageNet > 0) {
+    return {
+      key: 'positive', cash, cost: amount, cashAfter, averageNet: runway.averageNet, days: null,
+      label: 'operating flow +' + formatCost(runway.averageNet) + '/day · cash after build ' + formatCost(cashAfter),
+    };
+  }
+  if (runway.averageNet === 0) {
+    return {
+      key: 'break_even', cash, cost: amount, cashAfter, averageNet: 0, days: null,
+      label: 'operating flow break-even · cash after build ' + formatCost(cashAfter),
+    };
+  }
+  const days = cashAfter > 0 ? Math.max(1, Math.ceil(cashAfter / Math.abs(runway.averageNet))) : 0;
+  const severity = days <= 3 ? 'critical' : 'watch';
+  return {
+    key: severity, cash, cost: amount, cashAfter, averageNet: runway.averageNet, days,
+    label: 'expansion ' + (severity === 'critical' ? 'warning' : 'watch') + ' · about ' + days + ' operating day' + (days === 1 ? '' : 's') + ' after build at ' + formatCost(runway.averageNet) + '/day',
+  };
+}
+
 /**
  * Find the strongest open floor for a recommended service while keeping the
  * affected room's floor as the coverage target. Target coverage is required;
@@ -335,6 +419,8 @@ export function servicePlacementRecommendation(state, unit, kind, config) {
       floor,
       slot: preview.slot,
       targetCovered,
+      beforeRooms: preview.beforeRooms,
+      beforeHeads: preview.beforeHeads,
       coveredRooms: preview.afterRooms,
       coveredHeads: preview.afterHeads,
       totalRooms: preview.requiredRooms,
@@ -360,12 +446,15 @@ export function servicePlacementRecommendation(state, unit, kind, config) {
     key: 'ready', kind, targetFloor, coverageFloors,
     floor: best.floor, slot: best.slot,
     targetCovered: best.targetCovered,
+    beforeRooms: best.beforeRooms,
+    beforeHeads: best.beforeHeads,
     coveredRooms: best.coveredRooms,
     coveredHeads: best.coveredHeads,
     totalRooms: best.totalRooms,
     totalHeads: best.totalHeads,
-    detail: 'F' + best.floor + ' covers F' + targetFloor + ' and ' + best.coveredRooms +
-      '/' + best.totalRooms + ' required rooms (' + best.coveredHeads + '/' + best.totalHeads + ' tenant heads)',
+    detail: 'F' + best.floor + ' covers F' + targetFloor + ' · currently ' + best.beforeRooms +
+      '/' + best.totalRooms + ' covered (' + Math.max(0, best.totalRooms - best.beforeRooms) + ' remain) · reaches ' +
+      best.coveredRooms + '/' + best.totalRooms + ' (' + best.coveredHeads + '/' + best.totalHeads + ' tenant heads)',
   };
 }
 
@@ -721,7 +810,7 @@ export function shaftCoverageDemandComparison(bottom, top, shafts = [], demandFl
 }
 
 /** Check whether a route preview can be placed with the current building. */
-export function routePlacementStatus(kind, bottom, top, state, config, shaft = null) {
+export function routePlacementStatus(kind, bottom, top, state, config, shaft = null, selectedSlot = null) {
   if (!state || !config) return { key: 'unknown', detail: 'placement cannot be checked yet' };
   const shafts = Array.isArray(state.shafts) ? state.shafts : [];
   if (kind === 'car') {
@@ -750,21 +839,29 @@ export function routePlacementStatus(kind, bottom, top, state, config, shaft = n
   if (span > tune.maxSpan) {
     return { key: 'invalid', detail: kind + ' span exceeds the ' + tune.maxSpan + '-floor limit', alternative: 'choose a shorter span' };
   }
-  const openSlot = Array.from({ length: config.building.slotsPerFloor }, (_, slot) => slot)
+  const candidateSlots = Number.isInteger(selectedSlot)
+    ? [selectedSlot]
+    : Array.from({ length: config.building.slotsPerFloor }, (_, slot) => slot);
+  if (Number.isInteger(selectedSlot) && (selectedSlot < 0 || selectedSlot >= config.building.slotsPerFloor)) {
+    return { key: 'invalid', detail: 'selected column is outside the building', alternative: 'choose a visible building column' };
+  }
+  const openSlot = candidateSlots
     .find((slot) => Array.from({ length: span }, (_, index) => candidateBottom + index)
       .every((floor) => !slotsUsed(state, floor).has(slot)));
   if (openSlot == null) {
     const carIndex = shafts.findIndex((candidate) => (candidate.cars?.length ?? 0) < config.elevator.maxCarsPerShaft);
     return {
       key: 'blocked',
-      detail: 'no clear column across floors ' + candidateBottom + '–' + candidateTop,
+      detail: Number.isInteger(selectedSlot)
+        ? 'selected column is blocked across floors ' + candidateBottom + '–' + candidateTop
+        : 'no clear column across floors ' + candidateBottom + '–' + candidateTop,
       alternative: carIndex >= 0 ? 'add a car to S' + (carIndex + 1) : 'free a route column',
       alternativeAction: carIndex >= 0
         ? { kind: 'car', shaftId: shafts[carIndex].id }
         : null,
     };
   }
-  return { key: 'ready', detail: 'clear column available for placement' };
+  return { key: 'ready', slot: openSlot, detail: 'clear column available for placement' };
 }
 
 /** Report whether the shaft control has a full-span or shorter legal placement. */
@@ -1635,6 +1732,171 @@ function localInvestmentChoice(state, config, kind) {
       ? 'F' + placement.bottom + '–F' + placement.top + ' · ' + speedSecondsPerFloor + 's/floor · +' + capacity + ' simultaneous people · local capacity ' + currentCapacity + ' → ' + (currentCapacity + capacity) + ' · column ' + (placement.slot + 1) +
         (pressure.coveredTrips ? ' · covers ' + pressure.coveredTrips + ' current waits' : ' · no current waits covered')
       : placement?.reason ?? 'no clear local-route placement',
+  };
+}
+
+/** Explain when the first-session player still has time to answer live pressure. */
+export function firstSessionPressureWarning(state, config, recommendedTarget = null) {
+  const waiting = (state?.people ?? []).filter((person) => person.state === 'waiting').length;
+  const stressedUnits = (state?.units ?? []).filter((unit) => {
+    if (!unit.occupied) return false;
+    const vacateAt = Number(config?.units?.[unit.kind]?.vacateAt);
+    return Number.isFinite(vacateAt) && Number(unit.stress) >= vacateAt * 0.5;
+  }).length;
+  const hasSecondCar = (state?.shafts ?? []).some((shaft) => (shaft.cars?.length ?? 0) >= 2);
+  const target = recommendedTarget ?? 'the pressured shaft';
+  const carCost = Number(config?.costs?.car);
+  const availableMoney = Number(state?.money);
+  const affordable = !Number.isFinite(carCost) || !Number.isFinite(availableMoney) || availableMoney >= carCost;
+  if (hasSecondCar || (waiting === 0 && stressedUnits === 0)) {
+    return { active: false, waiting, stressedUnits, target, affordable, carCost, availableMoney, detail: '' };
+  }
+  const budgetDetail = Number.isFinite(carCost) && Number.isFinite(availableMoney)
+    ? availableMoney >= carCost
+      ? ' · car ' + formatCost(carCost) + ' · cash ' + formatCost(availableMoney) + ' · affordable now'
+      : ' · car ' + formatCost(carCost) + ' · cash ' + formatCost(availableMoney) + ' · need ' + formatCost(carCost - availableMoney) + ' more'
+    : '';
+  return {
+    active: true,
+    waiting,
+    stressedUnits,
+    target,
+    affordable,
+    carCost,
+    availableMoney,
+    detail: 'warning: W ' + waiting + ' waiting' +
+      (stressedUnits ? ' · ' + stressedUnits + ' tenant' + (stressedUnits === 1 ? '' : 's') + ' near departure stress' : '') +
+      ' · select + car, then click ' + target + ' while recovery is still available' + budgetDetail,
+  };
+}
+
+/** Keep the first-session recovery target readable while the repaired tower runs. */
+export function firstSessionRecoveryReadings(state, config, history = []) {
+  const shafts = Array.isArray(state?.shafts) ? state.shafts : [];
+  const hasSecondCar = shafts.some((shaft) => (shaft.cars?.length ?? 0) >= 2);
+  const people = Array.isArray(state?.people) ? state.people : [];
+  const units = Array.isArray(state?.units) ? state.units : [];
+  const waiting = people.filter((person) => person.state === 'waiting').length;
+  const occupied = units.filter((unit) => unit.occupied).length;
+  const capacity = tenantLoadSummary(state, config).capacity;
+  const latest = Array.isArray(history) ? history.at(-1) ?? null : null;
+  const latestCars = Number(latest?.cars);
+  const postCarClose = Number.isFinite(latestCars) && latestCars >= 2;
+  const reading = (value, suffix = '') => Number.isFinite(Number(value))
+    ? Math.round(Number(value)) + suffix : '—';
+  const detail = 'recovery watch: W ' + waiting + ' now · T ' + occupied + '/' + capacity +
+    ' occupied' + (latest
+      ? ' · latest D' + latest.day + (postCarClose ? ' post-car' : ' pre-car') +
+        ' delivery ' + reading(latest.deliveryRate, '%') +
+        ' · reputation ' + reading(latest.rep, '%') +
+        ' · desirability ' + reading(latest.desirability, '%') +
+        (postCarClose ? '' : ' · keep running for a post-car day close')
+      : ' · awaiting the first closed-day readings');
+  return { active: hasSecondCar, waiting, occupied, capacity, latest, postCarClose, detail };
+}
+
+/** Pair the latest pre-car pressure day with the first demonstrable recovery. */
+export function firstSessionRecoveryEvidence(history = [], livePressure = null, config = null) {
+  const entries = Array.isArray(history) ? history : [];
+  const pressureIndex = entries.reduce((latestIndex, entry, index) => {
+    const cars = Number(entry?.cars);
+    const preCar = !Number.isFinite(cars) || cars < 2;
+    const pressured = Number(entry?.elevatorTrips) > 0 &&
+      (Number(entry?.abandoned) > 0 || Number(entry?.deliveryRate) < 100);
+    return preCar && pressured ? index : latestIndex;
+  }, -1);
+  const pressure = pressureIndex >= 0 ? entries[pressureIndex] : null;
+  const recoveryEntry = pressure
+    ? entries.slice(pressureIndex + 1).find((entry) =>
+      Number(entry?.cars) >= 2 &&
+      Number(entry?.deliveryRate) > Number(pressure.deliveryRate) &&
+      Number(entry?.rep) > Number(pressure.rep))
+    : null;
+  if (recoveryEntry) return {
+    pressureIndex,
+    pressure,
+    recoveryEntry,
+    source: 'closed-day',
+    observed: pressureIndex >= 0 || Boolean(livePressure),
+    recovered: true,
+  };
+  const liveRecoveryTarget = Math.max(90, Number(config?.occupancy?.relistMinDeliveryRate) || 0);
+  const liveRecoveryEntry = livePressure
+    ? entries.find((entry) =>
+      Number(entry?.day) >= Number(livePressure.day) &&
+      Number(entry?.cars) >= 2 &&
+      Number(entry?.deliveryRate) >= liveRecoveryTarget &&
+      Number(entry?.rep) >= Number(config?.occupancy?.relistMinDeliveryRate ?? 0))
+    : null;
+  return {
+    pressureIndex,
+    observed: pressureIndex >= 0 || Boolean(livePressure),
+    pressure: liveRecoveryEntry ? livePressure : pressure,
+    recoveryEntry: liveRecoveryEntry,
+    source: liveRecoveryEntry ? 'live-warning' : 'closed-day',
+    recovered: Boolean(liveRecoveryEntry),
+  };
+}
+
+/** Choose one concrete management goal after the first-session recovery loop. */
+export function postBetaManagementGoal(state, config) {
+  const serviceOrder = ['food', 'parking', 'security', 'recycling', 'medical'];
+  const labels = { food: 'cafeteria', parking: 'parking', security: 'security', recycling: 'recycling', medical: 'clinic' };
+  const occupied = (state?.units ?? []).filter((unit) => unit.occupied);
+  const missing = serviceOrder.find((kind) => occupied.some((unit) =>
+    Number(config?.units?.[unit.kind]?.[kind + 'Need'] ?? 0) > 0 &&
+    !unitEvaluation(state, unit, config)[kind + 'Covered']));
+  if (missing) {
+    const label = labels[missing] ?? missing;
+    const uncoveredUnits = occupied.filter((unit) =>
+      Number(config?.units?.[unit.kind]?.[missing + 'Need'] ?? 0) > 0 &&
+      !unitEvaluation(state, unit, config)[missing + 'Covered']);
+    const targetUnit = occupied.find((unit) =>
+      Number(config?.units?.[unit.kind]?.[missing + 'Need'] ?? 0) > 0 &&
+      !unitEvaluation(state, unit, config)[missing + 'Covered']);
+    const placement = targetUnit
+      ? servicePlacementRecommendation(state, targetUnit, missing, config)
+      : null;
+    const targetTenantLoad = targetUnit ? Math.max(0, Math.round(targetUnit.heads ?? 0)) : 0;
+    const targetContext = targetUnit
+      ? ' · helps F' + targetUnit.floor + ' ' + targetUnit.kind + ' (' + targetTenantLoad + ' tenants)'
+      : '';
+    const condoFollowup = targetUnit?.kind === 'condo';
+    const roomLabels = uncoveredUnits.map((unit) =>
+      'F' + unit.floor + ' ' + unit.kind + ' (' + Math.max(0, Math.round(unit.heads ?? 0)) + ' tenants)');
+    const remainingContext = roomLabels.length
+      ? ' · remaining uncovered: ' + roomLabels.slice(0, 3).join(', ') + (roomLabels.length > 3 ? ' +' + (roomLabels.length - 3) + ' more' : '')
+      : '';
+    return {
+      key: 'service',
+      action: missing,
+      label: 'add a ' + label + (condoFollowup ? ' for the condo' : ''),
+      detail: (condoFollowup ? 'support the first condo and improve its room appeal' : 'cover a required tenant service and improve room appeal') + targetContext + remainingContext +
+        (placement?.key === 'ready' ? ' · place on F' + placement.floor : ''),
+      cost: Number(config?.costs?.[missing]) || 0,
+      targetUnitId: targetUnit?.id ?? null,
+      targetTenantLoad,
+      recommendedFloor: placement?.key === 'ready' ? placement.floor : null,
+      recommendedDetail: placement?.detail ?? placement?.reason ?? null,
+    };
+  }
+  const condoUnlocked = unlocked(state, config, 'condo');
+  const hasCondo = (state?.units ?? []).some((unit) => unit.kind === 'condo');
+  if (condoUnlocked && !hasCondo) {
+    return {
+      key: 'expansion',
+      action: 'condo',
+      label: 'add a condo',
+      detail: 'begin mixed-use expansion with residents and a new service profile',
+      cost: Number(config?.costs?.condo) || 0,
+    };
+  }
+  return {
+    key: 'expand',
+    action: 'floor',
+    label: 'expand one floor',
+    detail: 'add room capacity for the next tenant wave',
+    cost: Number(config?.costs?.floor) || 0,
   };
 }
 
@@ -2713,6 +2975,22 @@ export function tenantPlacementPreview(kind, config) {
   };
 }
 
+/** List the services a prospective tenant room will need once occupied. */
+export function tenantPlacementServiceNeeds(kind, config) {
+  const tune = config?.units?.[kind] ?? {};
+  const labels = { food: 'cafeteria', parking: 'parking', medical: 'clinic', security: 'security', recycling: 'recycling' };
+  return ['food', 'parking', 'medical', 'security', 'recycling']
+    .filter((service) => Number(tune[service + 'Need'] ?? 0) > 0)
+    .map((service) => ({ kind: service, label: labels[service] ?? service, need: Number(tune[service + 'Need']) }));
+}
+
+/** Project the daily resident travel demand added by a condo placement. */
+export function condoTransportPreview(config) {
+  const residents = Math.max(0, Math.round(Number(config?.units?.condo?.residents) || 0));
+  const roundTripsPerDay = Math.max(0, Math.round(residents * (Number(config?.demand?.condoTripsPerDay) || 0)));
+  return { residents, roundTripsPerDay, passengerJourneysPerDay: roundTripsPerDay * 2 };
+}
+
 /** Project a selected tenant room's contribution after it is placed and occupied. */
 export function tenantPlacementMixPreview(state, kind, config) {
   const placement = tenantPlacementPreview(kind, config);
@@ -3411,6 +3689,320 @@ export function vacancyRankingReason(forecast) {
   return 'ranking decided by room desirability: F' + top.unit.floor + ' appeal ' + signed(topDemand.desirabilityBonus) +
     ' vs F' + runnerUp.unit.floor + ' appeal ' + signed(runnerDemand.desirabilityBonus) +
     ' after equal room quality, access/services, and tenant-mix demand';
+}
+
+/** Turn the combined vacancy ranking into one clear player-facing next step. */
+export function vacancyRankingGuidance(forecast) {
+  const candidates = forecast?.marketCandidates ?? [];
+  if (!candidates.length) {
+    return { key: 'none', label: 'no vacancy choice yet', detail: 'wait for a vacancy to clear the room-quality and market-timing gates' };
+  }
+  const top = candidates[0];
+  if (candidates.length === 1) {
+    return {
+      key: 'single',
+      label: 'start with F' + top.unit.floor + ' ' + top.unit.kind,
+      detail: 'this is the only eligible vacancy; its priority combines room quality, tenant mix, access, and room appeal',
+      unitId: top.unit.id,
+      floor: top.unit.floor,
+    };
+  }
+  return {
+    key: 'compare',
+    label: 'start with F' + top.unit.floor + ' ' + top.unit.kind,
+    detail: 'this room leads the combined vacancy ranking; compare its room quality, tenant mix, access, and appeal with the next vacancy before committing',
+    unitId: top.unit.id,
+    floor: top.unit.floor,
+    runnerFloor: candidates[1].unit.floor,
+  };
+}
+
+/** Explain whether the room being confirmed is the combined vacancy choice. */
+export function vacancyPreFillGuidance(forecast, unitId) {
+  const candidates = forecast?.marketCandidates ?? [];
+  const selectedIndex = candidates.findIndex((candidate) => candidate.unit?.id === unitId);
+  const selected = selectedIndex >= 0 ? candidates[selectedIndex] : null;
+  const top = candidates[0] ?? null;
+  if (!selected) {
+    return {
+      key: 'not-ranked',
+      label: 'not in the current vacancy ranking',
+      detail: 'this room is not yet eligible on the combined room-quality, tenant-mix, access, and market-timing checks',
+    };
+  }
+  if (selectedIndex === 0) {
+    return {
+      key: 'recommended',
+      label: 'combined choice: F' + selected.unit.floor + ' ' + selected.unit.kind,
+      detail: 'this room ranks first after combining room quality, tenant mix, access, and appeal',
+      rank: 1,
+      unitId: selected.unit.id,
+      floor: selected.unit.floor,
+    };
+  }
+  return {
+    key: 'alternative',
+    label: 'combined choice: F' + top.unit.floor + ' ' + top.unit.kind,
+    detail: 'this room is rank ' + (selectedIndex + 1) + '; the combined ranking favors F' + top.unit.floor + ' before it on room quality, tenant mix, access, and appeal',
+    rank: selectedIndex + 1,
+    unitId: selected.unit.id,
+    floor: selected.unit.floor,
+    recommendedUnitId: top.unit.id,
+    recommendedFloor: top.unit.floor,
+  };
+}
+
+/** Combine the vacancy choice with the tenant and mix outcome shown before re-rent. */
+function vacancyCandidateRankingBreakdown(candidate, rank) {
+  if (!candidate) return null;
+  const demand = candidate.experienceDemand ?? {};
+  return {
+    rank,
+    unitId: candidate.unit.id,
+    floor: candidate.unit.floor,
+    kind: candidate.unit.kind,
+    roomQuality: Number(candidate.evaluation?.score) || 0,
+    experience: Number(demand.experienceBonus) || 0,
+    tenantMix: Number(candidate.marketDemandBonus) || 0,
+    access: Number(demand.transportAccessBonus) || 0,
+    appeal: Number(demand.desirabilityBonus) || 0,
+    total: (Number(candidate.evaluation?.score) || 0) + (Number(candidate.marketDemandBonus) || 0) + (Number(demand.bonus) || 0),
+  };
+}
+
+export function vacancyPreFillOverrideComponent(preview) {
+  if (!preview || preview.key === 'recommended' || !preview.ranking || !preview.recommendedRanking) return null;
+  const labels = { roomQuality: 'room quality', experience: 'experience', tenantMix: 'tenant mix', access: 'access', appeal: 'appeal' };
+  const fields = Object.keys(labels);
+  const strongest = fields.reduce((best, field) => {
+    const delta = (Number(preview.ranking[field]) || 0) - (Number(preview.recommendedRanking[field]) || 0);
+    return !best || delta > best.delta ? { key: field, delta } : best;
+  }, null);
+  if (!strongest || strongest.delta <= 0) {
+    return { key: 'none', label: 'no clear component pull', detail: 'the selected room was an override without a higher saved component score' };
+  }
+  return {
+    key: strongest.key,
+    label: labels[strongest.key],
+    delta: strongest.delta,
+    detail: 'selected F' + preview.ranking.floor + ' had +' + strongest.delta + ' ' + labels[strongest.key] + ' versus recommended F' + preview.recommendedRanking.floor,
+  };
+}
+
+/** Put the override component into the player's pre-confirmation guidance. */
+export function vacancyPreFillOverrideGuidance(preview) {
+  const component = preview?.overrideComponent;
+  return component?.key && component.key !== 'none'
+    ? ' · override pull: ' + component.label + ' — ' + component.detail
+    : '';
+}
+
+/** Build the short labeled lines shown in a manual re-rent confirmation. */
+export function vacancyPreFillConfirmationLines(preview) {
+  if (!preview) return [];
+  const override = vacancyPreFillOverrideGuidance(preview).replace(/^ · /, '');
+  return [
+    'choice: ' + preview.label + ' — ' + preview.detail,
+    override,
+    'tenant: likely ' + preview.tenantKind + ' ' + preview.role + ' (' + preview.capacity + ')',
+    'mix: ' + Math.round(preview.currentShare * 100) + '% → ' + Math.round(preview.projectedShare * 100) + '% / ' + Math.round(preview.targetShare * 100) + '% target · balance ' +
+      (preview.balanceDelta >= 0 ? '+' : '') + Math.round(preview.balanceDelta) + ' pts',
+  ].filter(Boolean);
+}
+
+export function vacancyPreFillOutcome(state, unit, config, forecast = null) {
+  if (!unit || unit.occupied) return { key: 'occupied', label: 'occupied room', detail: 'occupied rooms do not have a pre-fill outcome' };
+  const leasing = forecast ?? leasingForecast(state, config);
+  const ranking = vacancyPreFillGuidance(leasing, unit.id);
+  const candidateIndex = (leasing.marketCandidates ?? []).findIndex((candidate) => candidate.unit?.id === unit.id);
+  const candidate = candidateIndex >= 0 ? leasing.marketCandidates[candidateIndex] : null;
+  const rankingBreakdown = vacancyCandidateRankingBreakdown(candidate, candidateIndex + 1);
+  const recommendedRanking = vacancyCandidateRankingBreakdown(leasing.marketCandidates?.[0], 1);
+  const mix = tenantPlacementMixPreview(state, unit.kind, config);
+  const outcome = {
+    ...ranking,
+    ranking: rankingBreakdown,
+    recommendedRanking,
+    tenantKind: unit.kind,
+    role: mix.role,
+    capacity: mix.capacity,
+    currentShare: mix.currentShare,
+    projectedShare: mix.projectedShare,
+    targetShare: mix.targetShare,
+    balanceBefore: mix.balanceBefore,
+    balanceAfter: mix.balanceAfter,
+    balanceDelta: mix.balanceDelta,
+  };
+  outcome.overrideComponent = vacancyPreFillOverrideComponent(outcome);
+  return outcome;
+}
+
+/** Compare a re-rented room's actual mix contribution with its pre-fill forecast. */
+export function vacancyPreFillResult(preview, state, unit, config) {
+  if (!preview || !state || !unit || !unit.occupied) {
+    return { key: 'pending', label: 'result pending', detail: 'the room has not been filled yet' };
+  }
+  const actualMix = tenantMixDemand(state, config);
+  const actualEntry = actualMix.find((entry) => entry.kind === unit.kind);
+  const actualShare = actualEntry?.share ?? 0;
+  const actualBalance = mixBalance(actualMix);
+  const shareDelta = actualShare - preview.projectedShare;
+  const balanceDelta = actualBalance - preview.balanceAfter;
+  const matched = Math.abs(shareDelta) <= 0.01 && Math.abs(balanceDelta) <= 1;
+  return {
+    key: matched ? 'matched' : balanceDelta > 0 ? 'better' : 'different',
+    label: matched ? 'forecast matched' : balanceDelta > 0 ? 'better than forecast' : 'forecast differed',
+    detail: 'F' + unit.floor + ' now has ' + unit.kind + ' tenants; actual mix is ' + Math.round(actualShare * 100) +
+      '% versus ' + Math.round(preview.projectedShare * 100) + '% forecast and balance is ' + actualBalance +
+      '% versus ' + preview.balanceAfter + '% forecast',
+    unitId: unit.id,
+    floor: unit.floor,
+    tenantKind: unit.kind,
+    actualShare,
+    projectedShare: preview.projectedShare,
+    actualBalance,
+    projectedBalance: preview.balanceAfter,
+    shareDelta,
+    balanceDelta,
+    ranking: preview.ranking ?? null,
+    recommendedRanking: preview.recommendedRanking ?? null,
+    overrideComponent: preview.overrideComponent ?? null,
+    followedRecommendation: preview.key === 'recommended',
+    followThroughLabel: preview.key === 'recommended' ? 'followed recommendation' : 'overrode recommendation',
+  };
+}
+
+/** Format the ranking signals captured before a manual re-rent. */
+export function vacancyPreFillRankingLabel(result) {
+  const ranking = result?.ranking;
+  if (!ranking) return 'ranking breakdown unavailable';
+  const signed = (value) => (value >= 0 ? '+' : '') + value;
+  return 'rank ' + ranking.rank + ' · score ' + ranking.total + ' = room ' + ranking.roomQuality +
+    ' + experience ' + ranking.experience + ' + mix ' + signed(ranking.tenantMix) +
+    ' + access ' + signed(ranking.access) + ' + appeal ' + signed(ranking.appeal);
+}
+
+/** Retain a small session history of manual re-rent forecast checks. */
+export function rememberVacancyPreFillResultHistory(history, result, maxEntries = 3) {
+  if (!result || result.key === 'pending') return history ?? [];
+  const limit = Math.max(1, Math.floor(Number(maxEntries) || 3));
+  return [...(history ?? []), result].slice(-limit);
+}
+
+/** Keep recent manual re-rent checks compact enough for the management panel. */
+export function vacancyPreFillResultHistoryLabel(history, maxEntries = 3) {
+  const entries = (history ?? []).slice(-Math.max(1, Math.floor(Number(maxEntries) || 3)));
+  if (!entries.length) return 'no manual re-rent forecasts yet';
+  return entries.map((entry) => 'D' + entry.day + ' ' + (entry.followThroughLabel ?? (entry.followedRecommendation ? 'followed recommendation' : 'overrode recommendation')) +
+    ' · F' + entry.floor + ' ' + entry.label + ' · ' + entry.tenantKind +
+    ' mix ' + Math.round(entry.projectedShare * 100) + '% → ' + Math.round(entry.actualShare * 100) + '% · ' + vacancyPreFillRankingLabel(entry) +
+    (entry.overrideComponent?.key && entry.overrideComponent.key !== 'none' ? ' · pull ' + entry.overrideComponent.label : '')).join(' · ');
+}
+
+/** Build scan-friendly rows for the recent manual re-rent checks. */
+export function vacancyPreFillResultHistoryLines(history, maxEntries = 3) {
+  const entries = (history ?? []).slice(-Math.max(1, Math.floor(Number(maxEntries) || 3)));
+  if (!entries.length) return ['no manual re-rent forecasts yet'];
+  return entries.map((entry) => {
+    const choice = entry.followThroughLabel ?? (entry.followedRecommendation ? 'followed recommendation' : 'overrode recommendation');
+    const tenant = entry.tenantKind ?? 'room';
+    const projected = Number.isFinite(Number(entry.projectedShare)) ? Math.round(Number(entry.projectedShare) * 100) : '—';
+    const actual = Number.isFinite(Number(entry.actualShare)) ? Math.round(Number(entry.actualShare) * 100) : '—';
+    const pull = entry.overrideComponent?.key && entry.overrideComponent.key !== 'none'
+      ? ' · pull ' + entry.overrideComponent.label
+      : '';
+    return 'D' + (entry.day ?? '—') + ' · F' + (entry.floor ?? '—') + ' ' + tenant + ' · ' + choice +
+      ' · ' + (entry.label ?? 'result pending') + ' · mix ' + projected + '% → ' + actual + '%' + pull;
+  });
+}
+
+/** Summarize repeated manual choices without automatically retuning the ranking. */
+export function vacancyPreFillChoiceSignal(history) {
+  const entries = (history ?? []).filter((entry) => typeof entry?.followedRecommendation === 'boolean' || entry?.followThroughLabel);
+  const followed = entries.filter((entry) => entry.followedRecommendation === true || entry.followThroughLabel === 'followed recommendation').length;
+  const overridden = entries.length - followed;
+  if (!entries.length) {
+    return { key: 'none', label: 'no choice signal yet', detail: 'complete more manual re-rents before judging whether the vacancy ranking needs tuning', followed: 0, overridden: 0, total: 0, followRate: null };
+  }
+  const key = followed === overridden ? 'mixed' : followed > overridden ? 'followed' : 'overridden';
+  const label = key === 'followed' ? 'ranking usually trusted' : key === 'overridden' ? 'ranking often overridden' : 'ranking choice is mixed';
+  const detail = followed + '/' + entries.length + ' choices followed the recommendation · ' + overridden + '/' + entries.length +
+    ' overrode it' + (entries.length < 2
+      ? ' · one reading is not enough to retune weights'
+      : ' · persistent overrides are a signal to review room quality, tenant mix, access, and appeal weights');
+  return { key, label, detail, followed, overridden, total: entries.length, followRate: followed / entries.length };
+}
+
+/** Identify the ranking component that most often pulls players toward an override. */
+export function vacancyPreFillOverrideSignal(history) {
+  const entries = (history ?? []).filter((entry) =>
+    !(entry.followedRecommendation === true || entry.followThroughLabel === 'followed recommendation') &&
+    entry.overrideComponent?.key && entry.overrideComponent.key !== 'none');
+  if (!entries.length) {
+    return { key: 'none', label: 'no repeated override pull yet', detail: 'complete more lower-ranked choices with component breakdowns before retuning a signal', total: 0 };
+  }
+  const counts = new Map();
+  for (const entry of entries) {
+    const component = entry.overrideComponent;
+    const current = counts.get(component.key) ?? { key: component.key, label: component.label, count: 0 };
+    current.count += 1;
+    counts.set(component.key, current);
+  }
+  const top = [...counts.values()].sort((a, b) => b.count - a.count || a.key.localeCompare(b.key))[0];
+  return {
+    key: top.key,
+    label: top.label + ' is the main override pull',
+    detail: top.count + '/' + entries.length + ' overrides favored this component over the ranked room · use it as a tuning lead, not an automatic change',
+    total: entries.length,
+    count: top.count,
+  };
+}
+
+/** Compare whether following or overriding the ranking produced healthy outcomes. */
+export function vacancyPreFillOutcomeSignal(history) {
+  const minimumSample = 3;
+  const entries = (history ?? []).filter((entry) =>
+    (typeof entry?.followedRecommendation === 'boolean' || entry?.followThroughLabel) &&
+    ['matched', 'better', 'different'].includes(entry?.key));
+  const followedEntries = entries.filter((entry) => entry.followedRecommendation === true || entry.followThroughLabel === 'followed recommendation');
+  const overriddenEntries = entries.filter((entry) => !followedEntries.includes(entry));
+  const healthy = (entry) => entry.key === 'matched' || entry.key === 'better';
+  const followedHealthy = followedEntries.filter(healthy).length;
+  const overriddenHealthy = overriddenEntries.filter(healthy).length;
+  if (!entries.length) {
+    return { key: 'none', label: 'no outcome signal yet', detail: 'complete manual re-rents with results before comparing the ranking to player overrides', followedHealthy: 0, overriddenHealthy: 0, followedTotal: 0, overriddenTotal: 0, total: 0, minimumSample, sampleReady: false };
+  }
+  if (entries.length < minimumSample) {
+    return {
+      key: 'insufficient',
+      label: 'more outcome evidence needed',
+      detail: entries.length + '/' + minimumSample + ' completed checks · raw results are visible, but this sample is too small to judge ranking weights',
+      followedHealthy,
+      overriddenHealthy,
+      followedTotal: followedEntries.length,
+      overriddenTotal: overriddenEntries.length,
+      total: entries.length,
+      minimumSample,
+      sampleReady: false,
+    };
+  }
+  const followedRate = followedEntries.length ? followedHealthy / followedEntries.length : null;
+  const overriddenRate = overriddenEntries.length ? overriddenHealthy / overriddenEntries.length : null;
+  const key = followedRate == null || overriddenRate == null
+    ? 'needs-comparison'
+    : overriddenRate > followedRate + 0.2
+      ? 'override-outperforms'
+      : followedRate > overriddenRate + 0.2 ? 'follow-outperforms' : 'mixed';
+  const label = key === 'override-outperforms' ? 'overrides are performing better'
+    : key === 'follow-outperforms' ? 'following is performing better'
+      : key === 'needs-comparison' ? 'more comparison needed' : 'outcomes are mixed';
+  const detail = 'followed: ' + followedHealthy + '/' + followedEntries.length + ' healthy · overrides: ' + overriddenHealthy + '/' + overriddenEntries.length + ' healthy' +
+    (key === 'needs-comparison'
+      ? ' · collect both kinds of choices before retuning'
+      : key === 'override-outperforms'
+        ? ' · persistent evidence would justify reviewing the ranking weights'
+        : ' · keep watching before changing room-quality, tenant-mix, access, or appeal weights');
+  return { key, label, detail, followedHealthy, overriddenHealthy, followedTotal: followedEntries.length, overriddenTotal: overriddenEntries.length, followedRate, overriddenRate, total: entries.length, minimumSample, sampleReady: true };
 }
 
 /** Keep the visible vacancy ranking compact while preserving each room's access contribution. */

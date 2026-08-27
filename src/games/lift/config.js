@@ -334,8 +334,8 @@ export const CONFIG = {
     shopDemandFollowupHistoryDays: 3,
     /** Placement asks for confirmation when the projected mix loses this many balance points. */
     tenantMixPlacementWarningDelta: 8,
-    /** Empty space still costs you. This is what turns a slump into a spiral. */
-    vacantUpkeep: 70,
+    /** Empty space still costs you, but leaves time to recover before bankruptcy. */
+    vacantUpkeep: 50,
   },
 
   economy: {

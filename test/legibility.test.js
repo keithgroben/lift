@@ -1,4 +1,4 @@
-import { appendServiceRoomStatusHistory, localRouteTargetStatus, placementGuideFloorStatus, placementGuideFloors, serviceFloorHeadcountCause, serviceFocusCoverage, serviceFocusFloors, serviceRoomStatus, serviceRoomStatusTrend, serviceRoomTrendAction, shaftQueueOriginFloors, shaftQueueTrendMarker, shaftWaitingBadgeText, unassignedQueueOriginFloors, waitingBadgeText, waitingPressure, tenantBadgeText, tenantCount } from '../src/games/lift/render/canvas.js';
+import { appendServiceRoomStatusHistory, localRouteTargetStatus, placementGuideFloorStatus, placementGuideFloors, serviceFloorHeadcountCause, serviceFocusCoverage, serviceFocusCoveredRoomDetails, serviceFocusCoveredRoomLabel, serviceFocusFloors, serviceFocusUncoveredRoomLabel, serviceRoomHealthSignal, serviceRoomStatus, serviceRoomStatusTrend, serviceRoomTrendAction, shaftQueueOriginFloors, shaftQueueTrendMarker, shaftWaitingBadgeText, unassignedQueueOriginFloors, waitingBadgeText, waitingPressure, tenantBadgeText, tenantCount } from '../src/games/lift/render/canvas.js';
 import { CONFIG } from '../src/games/lift/config.js';
 
 const assert = (c, m) => { if (!c) throw new Error(m); };
@@ -88,18 +88,26 @@ export const tests = {
     const focused = serviceFocusFloors({ kind: 'food', floor: 3 }, state, CONFIG);
     const bounded = serviceFocusFloors({ kind: 'medical', floor: 1 }, state, CONFIG);
     const coverage = serviceFocusCoverage({ kind: 'food', floor: 3 }, state, CONFIG);
+    const coveredRoomLabel = serviceFocusCoveredRoomLabel(coverage, state);
+    state.units[0].stress = 8;
+    const coveredRoomDetails = serviceFocusCoveredRoomDetails(coverage, state, CONFIG);
     state.units[2].occupied = false;
     const afterVacancy = serviceFocusCoverage({ kind: 'food', floor: 3 }, state, CONFIG);
     state.facilities = [];
     const afterServiceLoss = serviceFocusCoverage({ kind: 'food', floor: 3 }, state, CONFIG);
     assert(focused.join(',') === '2,3,4' && bounded.join(',') === '1,2,3,4' &&
       coverage.coveredRooms === 3 && coverage.requiredRooms === 3 && coverage.coveredHeads === 18 &&
+      coverage.coveredUnitIds.join(',') === '1,2,3' &&
+      coveredRoomDetails.length === 3 && coveredRoomDetails.every((room) => Number.isFinite(room.desirability) && Number.isFinite(room.stress)) &&
+      coveredRoomDetails.find((room) => room.id === 1)?.stress === 8 &&
+      coveredRoomLabel === 'F2 office (6 tenants), F3 office (6 tenants), F4 office (6 tenants)' &&
       afterVacancy.coveredRooms === 2 && afterVacancy.requiredRooms === 2 && afterVacancy.coveredHeads === 12 &&
       afterServiceLoss.uncoveredRooms === 2 && afterServiceLoss.uncoveredHeads === 12 &&
       afterServiceLoss.uncoveredFloors.join(',') === '2,3' && afterServiceLoss.uncoveredRoomsByFloor[2] === 1 &&
       afterServiceLoss.uncoveredUnitIds.join(',') === '1,2' && afterServiceLoss.requiredRoomsByFloor[2] === 1 &&
       afterServiceLoss.requiredHeadsByFloor[3] === 6 && afterServiceLoss.coveredRoomsByFloor[2] === undefined &&
       afterServiceLoss.uncoveredHeadsByFloor[3] === 6 &&
+      serviceFocusUncoveredRoomLabel(afterServiceLoss, state) === 'F2 office (6 tenants), F3 office (6 tenants)' &&
       serviceFocusCoverage({ kind: 'food', floor: 3 }, { ...state, units: state.units.map((unit) => ({ ...unit, occupied: false })) }, CONFIG).requiredHeads === 0,
       'service focus did not calculate live coverage inside the facility area');
   },
@@ -111,6 +119,18 @@ export const tests = {
     assert(vacancy.key === 'vacancy' && vacancy.requiredDelta === -6 &&
       coverage.key === 'coverage' && coverage.requiredDelta === 0 && stable.key === 'stable',
       'service headcount drop cause was not classified');
+  },
+
+  'served-room health combines appeal and transport stress'() {
+    const healthy = serviceRoomHealthSignal({ kind: 'office', desirability: 85, stress: 0 }, CONFIG);
+    const watch = serviceRoomHealthSignal({ kind: 'office', desirability: 70, stress: 0 }, CONFIG);
+    const risk = serviceRoomHealthSignal({ kind: 'office', desirability: 90, stress: CONFIG.units.office.vacateAt * 0.7 }, CONFIG);
+    const both = serviceRoomHealthSignal({ kind: 'office', desirability: 45, stress: CONFIG.units.office.vacateAt * 0.7 }, CONFIG);
+    assert(healthy.key === 'healthy' && healthy.label === 'HEALTHY' && healthy.colorKey === 'good' && healthy.driver === 'none' &&
+      watch.key === 'watch' && watch.colorKey === 'warn' && watch.driver === 'appeal' &&
+      risk.key === 'risk' && risk.label === 'AT RISK' && risk.colorKey === 'bad' && risk.driver === 'transport' &&
+      both.driver === 'appeal + transport',
+      'served-room health did not combine desirability and transport stress');
   },
 
   'service room history distinguishes vacancy and coverage states'() {

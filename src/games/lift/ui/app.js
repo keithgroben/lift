@@ -4,7 +4,7 @@ import { averageEvaluation, boundedEvaluationTrend, conversionPreview, evaluatio
 import { clampRentLevel, rentForLevel } from '../sim/pricing.js';
 import { foodDemand, medicalDemand, parkingDemand, recyclingDemand, securityDemand } from '../sim/services.js';
 import { localRouteOccupancy } from '../sim/demand.js';
-import { appendServiceRoomStatusHistory, localRouteTargetStatus, makeRenderer, placementGuideFloorStatus, serviceFocusCoverage, serviceFloorHeadcountCause, serviceRoomStatus, serviceRoomStatusTrend, serviceRoomTrendAction, waitingPressure } from '../render/canvas.js';
+import { appendServiceRoomStatusHistory, localRouteTargetStatus, makeRenderer, placementGuideFloorStatus, serviceFocusCoverage, serviceFocusCoveredRoomDetails, serviceFocusCoveredRoomLabel, serviceFocusUncoveredRoomLabel, serviceFloorHeadcountCause, serviceRoomHealthSignal, serviceRoomStatus, serviceRoomStatusTrend, serviceRoomTrendAction, waitingPressure } from '../render/canvas.js';
 import { makeJuice } from '../render/juice.js';
 import { shaftQueueTrend } from '../sim/evaluation.js';
 import { tenantLoadColorMeaning, waitingPressureColorMeaning } from '../sim/evaluation.js';
@@ -23,7 +23,10 @@ import { shaftCoverageDemandComparison } from '../sim/evaluation.js';
 import { shaftInvestmentComparison } from '../sim/evaluation.js';
 import { tenantDemandQuality } from '../sim/evaluation.js';
 import { shopTrafficTenantMixPreview } from '../sim/evaluation.js';
-import { vacancyRankingAccessSummary, vacancyRankingReason } from '../sim/evaluation.js';
+import { firstSessionPressureWarning, firstSessionRecoveryEvidence, firstSessionRecoveryReadings } from '../sim/evaluation.js';
+import { tenantPlacementServiceNeeds } from '../sim/evaluation.js';
+import { condoTransportPreview } from '../sim/evaluation.js';
+import { vacancyPreFillChoiceSignal, vacancyPreFillConfirmationLines, vacancyPreFillOutcome, vacancyPreFillOutcomeSignal, vacancyPreFillOverrideGuidance, vacancyPreFillOverrideSignal, vacancyPreFillRankingLabel, vacancyPreFillResult, vacancyPreFillResultHistoryLabel, vacancyPreFillResultHistoryLines, rememberVacancyPreFillResultHistory, vacancyRankingAccessSummary, vacancyRankingGuidance, vacancyRankingReason } from '../sim/evaluation.js';
 import { vacancyAppealChangeAction } from '../sim/evaluation.js';
 import { vacancyAppealFactorValue } from '../sim/evaluation.js';
 import { vacancyAppealFollowupResult, rememberVacancyAppealFollowupHistory } from '../sim/evaluation.js';
@@ -34,6 +37,7 @@ import { tenantRetentionRecommendation } from '../sim/evaluation.js';
 import { tenantAccessOutcomeForUnit } from '../sim/evaluation.js';
 import { vacancyRankingSignalSummary } from '../sim/evaluation.js';
 import { serviceCoverageChange, serviceCoverageSummary, servicePlacementBudgetImpact, servicePlacementComparison, servicePlacementCoveragePreview, servicePlacementRecommendation } from '../sim/evaluation.js';
+import { cashRunwaySummary, expansionSafetySummary } from '../sim/evaluation.js';
 
 const [, , GOOD, WARN, BAD, INFO] = CONFIG.feel.palette;
 const indicatorPaletteColor = (key) => key === 'good' ? GOOD : key === 'bad' ? BAD : WARN;
@@ -45,7 +49,7 @@ const juice = makeJuice(CONFIG);
 
 let state = boot(CONFIG, 1);
 let speed = 1;
-let tool = 'office';
+let tool = 'observe';
 let rentKind = 'office';
 let selectedUnitId = null;
 let conversionTargetKind = null;
@@ -53,6 +57,7 @@ let renovationTargetId = null;
 let rerentTargetId = null;
 let demolitionTargetId = null;
 let hoverFloor = -1;
+let hoverSlot = -1;
 let hoverShaftId = null;
 let hoverFacilityId = null;
 let selectedShaftId = null;
@@ -87,6 +92,9 @@ let pinnedComparisonFloor = null;
 let tenantUtilizationBaseline = null;
 let tenantUtilizationChange = null;
 let tenantUtilizationHistory = [];
+let lastVacancyPreFillResult = null;
+let vacancyPreFillResultHistory = [];
+let lastConfirmationOutcome = null;
 let managementHintConfirmation = null;
 let lastWaitingNow = null;
 let lastCarQueueSignature = null;
@@ -100,6 +108,8 @@ let localRouteDailyHistory = new Map();
 let localRouteDailyAccumulator = new Map();
 let routeInterventionOutcome = null;
 let routeInterventionHistory = [];
+let firstSessionLivePressure = null;
+let restartArmed = false;
 
 /**
  * Every action is recorded. Because the sim is deterministic and seeded, this
@@ -197,17 +207,30 @@ function onDayClose(closed, occupiedBefore) {
       net: closed.net,
       upkeep: closed.upkeep,
       serviceUpkeep: closed.serviceUpkeep ?? 0,
+      desirability: closed.desirability,
+      deliveryRate: closed.deliveryRate,
+      rep: closed.rep,
     };
     serviceResultBudget = { ...serviceResultBudget, realized };
     for (let i = serviceOutcomeHistory.length - 1; i >= 0; i--) {
       const entry = serviceOutcomeHistory[i];
       if (entry.kind !== serviceResultBudget.kind || entry.floor !== serviceResultBudget.floor || entry.day !== serviceResultBudget.builtDay) continue;
+      const targetUnit = entry.targetUnitId == null
+        ? null
+        : state.units.find((unit) => unit.id === entry.targetUnitId);
+      const realizedTargetDesirability = targetUnit
+        ? unitEvaluation(state, targetUnit, CONFIG).score
+        : entry.targetDesirabilityAfter;
       serviceOutcomeHistory[i] = {
         ...entry,
         realizedDay: realized.day,
         realizedNet: realized.net,
         realizedUpkeep: realized.upkeep,
         realizedServiceUpkeep: realized.serviceUpkeep,
+        realizedDesirability: realized.desirability,
+        realizedDeliveryRate: realized.deliveryRate,
+        realizedRep: realized.rep,
+        realizedTargetDesirability,
       };
       break;
     }
@@ -282,8 +305,81 @@ function onDayClose(closed, occupiedBefore) {
 
 // ---------------------------------------------------------------------- HUD
 const els = {};
-for (const id of ['money', 'day', 'pop', 'tenant-total', 'tenant-utilization', 'tenant-utilization-change', 'tenant-utilization-trend', 'tenant-utilization-recovery', 'star', 'milestone-copy', 'waiting-now', 'wait', 'rate', 'rep', 'eval', 'desirability', 'desirability-trend', 'clock', 'build', 'log', 'knobs', 'mode', 'goal-copy', 'transport', 'rent-control', 'rent-kind', 'rent-value', 'facility-inspector', 'shaft-inspector', 'unit-inspector', 'unit-title', 'unit-status', 'unit-detail', 'unit-utilization-context', 'conversion-controls', 'renovate-unit', 'rerent-unit', 'demolish-unit', 'recovery-warning', 'rerent-reason', 'placement-guide-legend', 'placement-preview'])
+for (const id of ['money', 'day', 'pop', 'tenant-total', 'tenant-utilization', 'tenant-utilization-change', 'tenant-utilization-trend', 'tenant-utilization-recovery', 'star', 'milestone-copy', 'waiting-now', 'wait', 'rate', 'rep', 'eval', 'desirability', 'desirability-trend', 'clock', 'build', 'expansion-safety', 'log', 'knobs', 'mode', 'cancel-tool', 'goal-copy', 'transport', 'rent-control', 'rent-kind', 'rent-value', 'facility-inspector', 'shaft-inspector', 'unit-inspector', 'unit-title', 'unit-status', 'unit-detail', 'unit-utilization-context', 'conversion-controls', 'renovate-unit', 'rerent-unit', 'demolish-unit', 'cancel-confirmation', 'recovery-warning', 'rerent-reason', 'placement-guide-legend', 'placement-preview', 'beta-path', 'developer-toggle', 'developer-panel', 'time-controls', 'quick-action', 'quick-action-button', 'quick-action-detail', 'restart-game'])
   els[id] = document.getElementById(id);
+
+let developerMode = false;
+function setDeveloperMode(open) {
+  developerMode = Boolean(open);
+  els['developer-panel'].hidden = !developerMode;
+  els['developer-toggle'].setAttribute('aria-expanded', String(developerMode));
+  els['developer-toggle'].textContent = developerMode ? 'hide developer details' : 'show developer details';
+}
+els['developer-toggle'].addEventListener('click', () => setDeveloperMode(!developerMode));
+els['restart-game'].addEventListener('click', () => {
+  if (!restartArmed) {
+    restartArmed = true;
+    els['restart-game'].textContent = 'confirm new session';
+    els['restart-game'].classList.add('armed');
+    toast('click confirm new session to reset this tower', WARN);
+    setTimeout(() => {
+      restartArmed = false;
+      els['restart-game'].textContent = 'new session';
+      els['restart-game'].classList.remove('armed');
+    }, 4000);
+    return;
+  }
+  restartArmed = false;
+  els['restart-game'].textContent = 'new session';
+  els['restart-game'].classList.remove('armed');
+  restart();
+});
+els['cancel-tool'].addEventListener('click', () => {
+  tool = 'observe';
+  placementWarning = null;
+  investmentTarget = null;
+  transportFocusTarget = null;
+  recommendedShaftId = null;
+  routeTarget = null;
+  refresh();
+  setMode();
+});
+
+function updateTimeControls() {
+  for (const button of els['time-controls'].querySelectorAll('button[data-speed]')) {
+    const selected = Number(button.dataset.speed) === speed;
+    button.classList.toggle('active', selected);
+    button.setAttribute('aria-pressed', String(selected));
+  }
+}
+els['time-controls'].addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-speed]');
+  if (!button) return;
+  speed = Number(button.dataset.speed);
+  updateTimeControls();
+  toast(speed === 0 ? 'paused' : speed + 'x', INFO);
+});
+
+function updateQuickAction(recommendation, transportResponse) {
+  const control = transportResponse.key !== 'monitor' && !transportResponse.existing && transportResponse.control
+    ? transportResponse.control
+    : null;
+  const button = control
+    ? els.build.querySelector('[data-do="' + control + '"], [data-kind="' + control + '"], [data-facility="' + control + '"]')
+    : null;
+  const available = Boolean(button);
+  els['quick-action'].hidden = !available;
+  if (!available) {
+    els['quick-action-button'].textContent = '—';
+    els['quick-action-detail'].textContent = 'Watch the next reading before spending.';
+    return;
+  }
+  els['quick-action-button'].textContent = transportResponse.label || recommendation.label || button.querySelector('.btn-label')?.textContent || 'take recommended action';
+  els['quick-action-button'].disabled = button.disabled;
+  els['quick-action-button'].title = transportResponse.detail || recommendation.detail || '';
+  els['quick-action-detail'].textContent = transportResponse.detail || recommendation.detail || 'This is the recommended next step.';
+  els['quick-action-button'].onclick = () => button.click();
+}
 
 const money = (n) => '$' + Math.round(n).toLocaleString();
 const signedMoney = (n) => (n >= 0 ? '+' : '-') + money(Math.abs(n));
@@ -291,11 +387,14 @@ const resultClassForFollowup = (result) => result?.key === 'improved' ? 'diag-go
 
 function serviceBudgetResultText(result) {
   const upkeepText = result.dailyUpkeep ? ' · +' + money(result.dailyUpkeep) + '/day upkeep' : '';
+  const targetText = result.targetUnitId == null
+    ? ''
+    : ' · target F' + result.targetFloor + ' ' + result.targetKind + ' (' + result.targetTenantLoad + ' tenants)';
   const realizedText = result.realized
     ? ' · D' + result.realized.day + ' realized ' + signedMoney(result.realized.net) + ' net · upkeep ' + money(result.realized.upkeep) +
       ' (services ' + money(result.realized.serviceUpkeep) + ')'
     : ' · realized result after first day close';
-  return result.label + ' placed — it covers ' + result.coverage + ' · upfront ' + money(result.upfrontCost) + upkeepText + realizedText + '.';
+  return result.label + ' placed on F' + result.floor + targetText + ' — it covers ' + result.coverage + ' · upfront ' + money(result.upfrontCost) + upkeepText + realizedText + '.';
 }
 
 function updateWaitingNowIndicator() {
@@ -480,11 +579,12 @@ function carToolModeText() {
 
 function modeText() {
   if (placementNotice) return placementNotice;
+  if (tool === 'observe') return 'WATCHING — let the next rush run, or choose a build action above.';
   if (tool === 'lobby') return 'LOBBY selected — click the ground floor to place it.';
   if (tool === 'lobby_wing') return 'LOBBY WING selected — click an open ground-floor slot to expand it.';
   if (tool === 'shaft') {
     const target = hoverFloor > (CONFIG.building.lobbyFloor ?? 0)
-      ? { floor: hoverFloor }
+      ? { floor: hoverFloor, slot: hoverSlot }
       : shaftToolTarget();
     const pressureText = target?.pressureFloors?.length
       ? ' for pressure at ' + target.pressureFloors.map((floor) => 'F' + floor).join(', ')
@@ -507,7 +607,10 @@ function modeText() {
     const fundsText = targetCost != null && state.money < targetCost
       ? ' · NOT ENOUGH MONEY (need ' + money(targetCost) + ', have ' + money(state.money) + ')'
       : '';
-    return 'SHAFT selected — click the top floor to place it.' + targetText + costText + capacityText + fundsText + investmentContext('shaft');
+    const columnText = hoverSlot >= 0
+      ? ' · column ' + (hoverSlot + 1) + ' selected'
+      : ' · hover a column to choose its placement';
+    return 'SHAFT selected — choose a clear column, then click its top floor.' + targetText + columnText + costText + capacityText + fundsText + investmentContext('shaft');
   }
   if (tool === 'car') return carToolModeText();
   if (tool === 'stairs' || tool === 'escalator') {
@@ -599,7 +702,7 @@ function shaftCost(top) {
 function shaftCanvasTarget() {
   if (tool !== 'shaft') return routeTarget;
   const bottom = CONFIG.building.lobbyFloor ?? 0;
-  if (hoverFloor > bottom) return { kind: 'shaft', floor: hoverFloor };
+  if (hoverFloor > bottom) return { kind: 'shaft', floor: hoverFloor, slot: hoverSlot };
   return shaftToolTarget();
 }
 
@@ -621,13 +724,19 @@ function investmentContext(kind) {
     const recommended = investmentTarget.recommendedFloor != null
       ? ' · recommended F' + investmentTarget.recommendedFloor + (investmentTarget.recommendedDetail ? ' · ' + investmentTarget.recommendedDetail : '')
       : '';
+    const targetUnit = investmentTarget.targetUnitId == null
+      ? null
+      : state.units.find((unit) => unit.id === investmentTarget.targetUnitId);
+    const targetContext = targetUnit
+      ? ' · target F' + targetUnit.floor + ' ' + targetUnit.kind + ' (' + Math.max(0, Math.round(targetUnit.heads ?? 0)) + ' tenants)'
+      : '';
     const funds = Number.isFinite(cost)
       ? state.money < cost
         ? ' · NOT ENOUGH MONEY (need ' + money(cost) + ', have ' + money(state.money) + ')'
         : ' · cost ' + money(cost) + ' · funds ' + money(state.money)
       : '';
     const upkeep = dailyUpkeep ? ' · +' + money(dailyUpkeep) + '/day upkeep' : '';
-    return ' · improvement target F' + investmentTarget.floor + recommended + funds + upkeep + ' · place on ' + range + hoverText;
+    return ' · improvement target F' + investmentTarget.floor + targetContext + recommended + funds + upkeep + ' · place on ' + range + hoverText;
   }
   if (kind === 'shaft') return ' · improvement target F' + investmentTarget.floor + ' · reach F' + investmentTarget.floor + ' or higher' + hoverText;
   return ' · improvement target F' + investmentTarget.floor + hoverText;
@@ -671,7 +780,7 @@ function hoverFloorSignalText() {
 }
 
 function hoverFacilitySignalText() {
-  if (hoverFacilityId == null || tool !== 'office') return '';
+  if (hoverFacilityId == null || (tool !== 'office' && tool !== 'observe')) return '';
   const facility = state.facilities?.find((candidate) => candidate.id === hoverFacilityId);
   if (!facility) return '';
   const label = facility.kind === 'food' ? 'CAFETERIA' : facility.kind === 'parking' ? 'PARKING'
@@ -680,7 +789,7 @@ function hoverFacilitySignalText() {
 }
 
 function hoverShaftSignalText() {
-  if (hoverShaftId == null || tool !== 'office') return '';
+  if (hoverShaftId == null || (tool !== 'office' && tool !== 'observe')) return '';
   const shaft = state.shafts.find((candidate) => candidate.id === hoverShaftId);
   if (!shaft) return '';
   const number = state.shafts.indexOf(shaft) + 1;
@@ -813,7 +922,8 @@ function renderInvestmentPreview() {
     (tool === 'car' || tool === 'stairs' || tool === 'escalator');
   const shopDemandToolPreview = shopDiagnosisContext?.diagnosis === 'mix' && tool === 'office' &&
     !investmentTarget && !investmentOutcome;
-  if (!investmentTarget && !investmentOutcome && !shaftToolPreview && !routeToolPreview && !shopDemandToolPreview) {
+  const condoPlacementPreview = tool === 'condo' && !investmentTarget && !investmentOutcome;
+  if (!investmentTarget && !investmentOutcome && !shaftToolPreview && !routeToolPreview && !shopDemandToolPreview && !condoPlacementPreview) {
     element.hidden = true;
     element.textContent = '';
     return;
@@ -999,6 +1109,57 @@ function renderInvestmentPreview() {
     element.style.color = placement.key === 'blocked' ? BAD : exceedsLimit || placement.key === 'invalid' ? WARN : GOOD;
     return;
   }
+  if (condoPlacementPreview) {
+    const mixPreview = tenantPlacementMixPreview(state, 'condo', CONFIG);
+    const floor = hoverFloor > 0 && hoverFloor < state.floors ? hoverFloor : null;
+    const floorPreview = floor == null ? null : tenantPlacementFloorComparison(state, 'condo', floor, CONFIG);
+    const floorText = floorPreview?.available
+      ? ' · F' + floor + ' room appeal ' + floorPreview.evaluation.score + '/100 · demand +' + floorPreview.demandQuality.bonus + ' ' + floorPreview.demandQuality.label
+      : floor != null
+        ? ' · F' + floor + ' unavailable: ' + floorPreview.reason
+        : ' · hover an upper floor to preview room appeal';
+    const cost = CONFIG.costs.condo;
+    const costText = state.money < cost
+      ? ' · NOT ENOUGH MONEY (need ' + money(cost) + ', have ' + money(state.money) + ')'
+      : ' · cost ' + money(cost) + ' · funds ' + money(state.money);
+    const serviceNeeds = tenantPlacementServiceNeeds('condo', CONFIG);
+    const serviceText = serviceNeeds.length
+      ? ' · services to plan: ' + serviceNeeds.map((service) => service.label).join(', ')
+      : '';
+    const transportPreview = condoTransportPreview(CONFIG);
+    const transportText = transportPreview.roundTripsPerDay
+      ? ' · resident travel +' + transportPreview.roundTripsPerDay + ' round trips/day (' + transportPreview.passengerJourneysPerDay + ' passenger journeys before route split)'
+      : '';
+    const transportResponse = transportResponseRecommendation(state, CONFIG, carQueueDailyHistory, localRouteDailyHistory);
+    const transportAction = transportResponse.key === 'car' && transportResponse.affordable !== false && transportResponse.shaftId != null
+      ? { kind: 'car', shaftId: transportResponse.shaftId }
+      : transportResponse.key === 'shaft' && transportResponse.affordable !== false
+        ? { kind: 'shaft', floor: transportResponse.targetFloor }
+        : transportResponse.key === 'local' && transportResponse.affordable !== false && transportResponse.kind
+          ? { kind: transportResponse.kind, floor: transportResponse.targetFloor }
+          : null;
+    const transportResponseText = transportResponse.key === 'monitor'
+      ? ' · transport: no current pressure; watch after placement'
+      : ' · transport response: ' + transportResponse.label + ' · why: ' + String(transportResponse.detail ?? '').split('. ')[0] +
+        (transportAction ? ' · resolve before adding residents' : ' · review transport panel');
+    element.hidden = false;
+    element.textContent = 'MIXED-USE PREVIEW · condo adds ' + tenantPlacementPreview('condo', CONFIG).capacity + ' residents · ' +
+      placementMixText(mixPreview) + transportText + transportResponseText + serviceText + floorText + costText + ' · click an upper floor to place it';
+    if (transportAction) {
+      element.appendChild(document.createTextNode(' '));
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'inspect-vacancy';
+      button.dataset.condoTransportResponse = transportAction.kind;
+      if (transportAction.shaftId != null) button.dataset.condoTransportShaft = String(transportAction.shaftId);
+      if (transportAction.floor != null) button.dataset.condoTransportFloor = String(transportAction.floor);
+      button.textContent = 'resolve transport first';
+      button.title = 'select the recommended transport response before adding condo residents';
+      element.appendChild(button);
+    }
+    element.style.color = state.money < cost ? BAD : mixPreview.balanceDelta < 0 ? WARN : GOOD;
+    return;
+  }
   if (!investmentTarget) {
     const delta = investmentOutcome.scoreDelta;
     const signed = delta > 0 ? '+' + delta : String(delta);
@@ -1127,9 +1288,15 @@ function renderInvestmentPreview() {
       ? ' · projected direct net change ' + signedMoney(budgetImpact.delta) + '/day'
       : ' · projected direct net ' + signedMoney(budgetImpact.beforeNet) + ' → ' + signedMoney(budgetImpact.afterNet) + '/day (' + signedMoney(budgetImpact.delta) + '/day upkeep)'
     : '';
+  const targetUnit = investmentTarget.targetUnitId == null
+    ? null
+    : state.units.find((unit) => unit.id === investmentTarget.targetUnitId);
+  const targetLabel = targetUnit
+    ? 'F' + targetUnit.floor + ' ' + targetUnit.kind + ' (' + Math.max(0, Math.round(targetUnit.heads ?? 0)) + ' tenants)'
+    : 'F' + preview.targetFloor;
   element.textContent = 'ROOM EVAL PREVIEW · ' + investmentTarget.tool.toUpperCase() +
     ' on F' + preview.placementFloor + ': ' + preview.before.score + ' → ' + preview.after.score +
-    ' (' + signed + ') for target F' + preview.targetFloor + demandDelta + coverageDelta + coverageComparisonText + costText + upkeepText + budgetImpactText + impacts;
+    ' (' + signed + ') for target ' + targetLabel + demandDelta + coverageDelta + coverageComparisonText + costText + upkeepText + budgetImpactText + impacts;
   element.style.color = state.money < cost ? BAD : delta > 0 ? GOOD : delta < 0 ? BAD : WARN;
 }
 
@@ -1155,7 +1322,7 @@ function rememberInvestmentOutcome(preview, extras = {}) {
   }, Math.max(30000, CONFIG.time.daySeconds * 1000 * 4));
 }
 
-function rememberServiceOutcome(kind, floor, before, after, targetUnitId = null, facilityId = null) {
+function rememberServiceOutcome(kind, floor, before, after, targetUnitId = null, facilityId = null, desirabilityBefore = null, desirabilityAfter = null, targetDesirabilityBefore = null, targetDesirabilityAfter = null) {
   if (!before?.available || !after?.available) return;
   const projection = {
     available: true,
@@ -1186,6 +1353,9 @@ function rememberServiceOutcome(kind, floor, before, after, targetUnitId = null,
     floor,
     facilityId,
     targetUnitId,
+    targetFloor: targetUnit?.floor ?? null,
+    targetKind: targetUnit?.kind ?? null,
+    targetTenantLoad: targetHeads,
     targetBeforeHeads: targetHeads == null ? null : before.coveredUnitIds.includes(targetUnitId) ? targetHeads : 0,
     targetAfterHeads: targetHeads == null ? null : after.coveredUnitIds.includes(targetUnitId) ? targetHeads : 0,
     coverageFloors: CONFIG.services?.[kind]?.coverageFloors ?? 0,
@@ -1199,6 +1369,14 @@ function rememberServiceOutcome(kind, floor, before, after, targetUnitId = null,
     beforeHeadsByFloor,
     afterHeadsByFloor,
     requiredHeadsByFloor,
+    desirabilityBefore,
+    desirabilityAfter,
+    targetDesirabilityBefore,
+    targetDesirabilityAfter,
+    realizedTargetDesirability: null,
+    realizedDesirability: null,
+    realizedDeliveryRate: null,
+    realizedRep: null,
     realizedDay: null,
     realizedNet: null,
     realizedUpkeep: null,
@@ -1405,7 +1583,12 @@ function renderTransport() {
   const budgetPanel = d
     ? '<div class="diag"><span>last close budget</span><span class="' + (d.net >= 0 ? 'diag-good' : 'diag-bad') + '">' + (d.net >= 0 ? '+' : '-') + money(Math.abs(d.net)) + ' net</span></div>' +
       '<div class="diag-sub">rent ' + money(d.rent) + ' + shop ' + money(d.shopRevenue) + ' + rewards ' + money(d.rewards) +
-      ' − upkeep ' + money(d.upkeep) + ' (services ' + money(d.serviceUpkeep ?? 0) + ') − build ' + money(d.spent) + '</div>'
+      ' − upkeep ' + money(d.upkeep) + ' (services ' + money(d.serviceUpkeep ?? 0) + ') − build ' + money(d.spent) + '</div>' +
+      (() => {
+        const runway = cashRunwaySummary(state);
+        const runwayClass = runway.key === 'positive' ? 'diag-good' : runway.key === 'critical' || runway.key === 'watch' ? 'diag-bad' : 'diag-warn';
+        return '<div class="diag-sub"><span class="' + runwayClass + '">' + runway.label + '</span> · cash ' + money(state.money) + '</div>';
+      })()
     : '<div class="diag-sub">budget: first day close pending</div>';
 
   const shaftRows = state.shafts.map((sh, i) => {
@@ -2048,6 +2231,7 @@ function renderTransport() {
     ? 'diag-warn' : utilizationHint.key === 'improved' ? 'diag-good' : utilizationHint.key === 'steady' ? 'diag-good' : 'diag-warn';
   const leasingForecastState = leasingForecast(state, CONFIG, d?.rep);
   const vacancyRankingExplanation = vacancyRankingReason(leasingForecastState);
+  const vacancyRankingGuidanceState = vacancyRankingGuidance(leasingForecastState);
   const vacancyRankingCandidates = vacancyRankingAccessSummary(leasingForecastState);
   const vacancyRankingSignals = vacancyRankingSignalSummary(leasingForecastState);
   const vacancyAccessForecast = leasingForecastState.transportAccess;
@@ -2081,6 +2265,7 @@ function renderTransport() {
     ).join('') + '<div class="diag-sub">' + (priorityVacancy?.experienceDemand.label ?? '') + '</div>' + vacancyAccessPanel +
       (vacancyRankingSignals ? '<div class="diag-sub">ranking comparison: ' + vacancyRankingSignals.detail + ' · room appeal and access remain separate contributors</div>' : '')
     : '<div class="diag-sub">no eligible vacancy is currently ready to inspect · ranked access contributions appear when a vacancy clears the gates</div>' + vacancyAccessPanel;
+  const vacancyRankingGuidancePanel = '<div class="diag-sub"><span class="' + (vacancyRankingGuidanceState.key === 'none' ? 'diag-warn' : 'diag-good') + '">vacancy choice</span>: ' + vacancyRankingGuidanceState.label + ' · ' + vacancyRankingGuidanceState.detail + '</div>';
   const vacancyStatuses = vacantRooms.map((u) => ({
     u, status: leaseStatus(state, u, CONFIG, d?.rep),
   }));
@@ -2097,6 +2282,7 @@ function renderTransport() {
         : 'no vacant rooms') + '</div>' +
     '<div class="diag-sub">forecast combines evaluation, access, floor services, reputation timing, tenant-mix demand, and ' + leasingForecastState.capacity + ' move-in slots / day</div>' +
     priorityVacancyPanel +
+    vacancyRankingGuidancePanel +
     (vacancyRankingExplanation ? '<div class="diag-sub"><span class="diag-good">' + vacancyRankingExplanation + '</span></div>' : '') +
     '<div class="diag-sub">tenant mix demand favors underrepresented types, up to +' + CONFIG.occupancy.marketDemandWeight + ' move-in priority · healthy reputation can shorten market delay by up to ' + CONFIG.occupancy.reputationRelistSpeedWeight + ' day</div>';
   const leasingOutcome = d?.leasing;
@@ -2104,6 +2290,23 @@ function renderTransport() {
     ? '<div class="diag-sub">last close: ' + (leasingOutcome.movedIn.length
       ? leasingOutcome.movedIn.map((move) => 'F' + move.floor + ' ' + move.unitKind + ' · demand +' + move.experienceDemandBonus + ' (' + move.experienceDemandScore + '/100) · access ' + ((move.transportAccessBonus ?? 0) >= 0 ? '+' : '') + (move.transportAccessBonus ?? 0) + ' · appeal ' + ((move.desirabilityDemandBonus ?? 0) >= 0 ? '+' : '') + (move.desirabilityDemandBonus ?? 0) + ' · mix +' + move.marketDemandBonus).join(' · ')
       : 'no move-ins') + ' · ' + leasingOutcome.candidates + ' eligible / ' + leasingOutcome.capacity + ' slots</div>'
+     : '';
+  const vacancyPreFillChoiceSignalState = vacancyPreFillChoiceSignal(vacancyPreFillResultHistory);
+  const vacancyPreFillOutcomeSignalState = vacancyPreFillOutcomeSignal(vacancyPreFillResultHistory);
+  const vacancyPreFillOverrideSignalState = vacancyPreFillOverrideSignal(vacancyPreFillResultHistory);
+  const vacancyPreFillResultHistoryLinesState = vacancyPreFillResultHistoryLines(vacancyPreFillResultHistory);
+  const vacancyPreFillResultPanel = lastVacancyPreFillResult
+    ? '<div class="diag-sub">last re-rent forecast: <span class="' + (lastVacancyPreFillResult.key === 'matched' || lastVacancyPreFillResult.key === 'better' ? 'diag-good' : 'diag-warn') + '">' +
+      lastVacancyPreFillResult.label + '</span> · D' + lastVacancyPreFillResult.day + ' · ' + lastVacancyPreFillResult.followThroughLabel + ' · ' + lastVacancyPreFillResult.detail +
+      '<br>ranking breakdown: ' + vacancyPreFillRankingLabel(lastVacancyPreFillResult) +
+      '<br>recent checks:<div class="vacancy-prefill-history">' + vacancyPreFillResultHistoryLinesState.map((line) =>
+        '<div class="vacancy-prefill-history-row">' + line.replace(/^(D[^·]+)/, '<span class="vacancy-prefill-day">$1</span>') + '</div>'
+      ).join('') + '</div>' +
+      '<br>choice signal: <span class="' + (vacancyPreFillChoiceSignalState.key === 'overridden' ? 'diag-warn' : vacancyPreFillChoiceSignalState.key === 'followed' ? 'diag-good' : 'diag-warn') + '">' +
+      vacancyPreFillChoiceSignalState.label + '</span> · ' + vacancyPreFillChoiceSignalState.detail +
+      '<br>outcome signal: <span class="' + (vacancyPreFillOutcomeSignalState.key === 'follow-outperforms' ? 'diag-good' : 'diag-warn') + '">' +
+      vacancyPreFillOutcomeSignalState.label + '</span> · ' + vacancyPreFillOutcomeSignalState.detail +
+      '<br>override pull: <span class="diag-warn">' + vacancyPreFillOverrideSignalState.label + '</span> · ' + vacancyPreFillOverrideSignalState.detail + '</div>'
     : '';
   const leasingHistory = tenantLeasingHistory(state, CONFIG);
   const leasingHistoryPanel = '<div class="diag-sub">leasing history: ' + (leasingHistory.length
@@ -2686,6 +2889,51 @@ function renderTransport() {
       ? ' · D' + entry.realizedDay + ' realized ' + signedMoney(entry.realizedNet) + ' net · upkeep ' + money(entry.realizedUpkeep) +
         ' (services ' + money(entry.realizedServiceUpkeep) + ')'
       : '';
+    const realizationStatusText = Number.isFinite(entry.realizedNet)
+      ? ' · <span class="diag-good">REALIZED D' + entry.realizedDay + '</span>'
+      : ' · <span class="diag-warn">PENDING · first day close</span>';
+    const targetRoomDesirabilityAfter = entry.realizedDay == null
+      ? entry.targetDesirabilityAfter
+      : (entry.realizedTargetDesirability ?? entry.targetDesirabilityAfter);
+    const targetRoomDesirabilityDelta = entry.targetDesirabilityBefore != null && targetRoomDesirabilityAfter != null
+      ? targetRoomDesirabilityAfter - entry.targetDesirabilityBefore
+      : null;
+    const targetRoomDesirabilitySignal = targetRoomDesirabilityDelta == null
+      ? ''
+      : targetRoomDesirabilityDelta > 0
+        ? ' (+' + targetRoomDesirabilityDelta + ' improved)'
+        : targetRoomDesirabilityDelta < 0
+          ? ' (' + targetRoomDesirabilityDelta + ' worsened)'
+          : ' (unchanged)';
+    const targetRoomDesirabilityText = entry.targetDesirabilityBefore != null && targetRoomDesirabilityAfter != null
+      ? ' · target room desirability ' + entry.targetDesirabilityBefore + ' → ' + targetRoomDesirabilityAfter + targetRoomDesirabilitySignal
+      : '';
+    const targetRoom = entry.targetUnitId == null
+      ? null
+      : state.units.find((unit) => unit.id === entry.targetUnitId);
+    const targetRoomEvaluation = targetRoom ? unitEvaluation(state, targetRoom, CONFIG) : null;
+    const targetRoomCurrentHeads = targetRoom?.occupied
+      ? Math.max(0, Math.round(targetRoom.heads ?? 0))
+      : 0;
+    const targetRoomCondition = !targetRoom
+      ? 'room no longer present'
+      : !targetRoom.occupied
+        ? 'vacant now'
+        : targetRoomEvaluation?.[entry.kind + 'Covered']
+          ? 'covered now'
+          : 'still uncovered';
+    const targetRoomConditionClass = targetRoomCondition === 'covered now'
+      ? 'diag-good'
+      : targetRoomCondition === 'still uncovered'
+        ? 'diag-bad' : 'diag-warn';
+    const targetRoomAction = targetRoom?.occupied && targetRoomCondition === 'still uncovered'
+      ? ' <button class="inspect-vacancy" data-uncovered-service-tool="' + entry.kind + '" data-uncovered-service-unit="' + targetRoom.id + '" title="select the ' + entry.kind + ' tool and target this room">select ' + entry.kind + ' tool</button>'
+      : '';
+    const targetRoomText = targetRoom
+      ? ' · target F' + targetRoom.floor + ' ' + targetRoom.kind + ' · tenants ' + (entry.targetTenantLoad ?? '—') + ' → ' + targetRoomCurrentHeads +
+        ' · <span class="' + targetRoomConditionClass + '">' + targetRoomCondition + '</span>' +
+        ' <button class="inspect-vacancy" data-inspect-unit="' + targetRoom.id + '" data-management-hint="service-result">inspect target room</button>' + targetRoomAction
+      : entry.targetUnitId != null ? ' · target room no longer present' : '';
     const focusLabel = focused
       ? entry.facilityId != null ? 'focused facility' : 'focused area'
       : entry.facilityId != null ? 'focus facility' : 'focus area';
@@ -2695,8 +2943,8 @@ function renderTransport() {
     return '<div class="diag-sub service-outcome-history"><span class="' + serviceOutcomeClass + '">' + (reverseIndex === 0 ? 'last facility result' : 'facility result') + '</span> · D' + entry.day +
       ' (' + (state.day - entry.day === 0 ? 'today' : Math.max(0, state.day - entry.day) + ' day' + (state.day - entry.day === 1 ? '' : 's') + ' ago') + ') · ' + entry.kind.toUpperCase() +
       ' on F' + entry.floor + ' · ' + entry.label + ' · coverage ' + entry.beforeRooms + '/' + entry.requiredRooms +
-      ' → ' + entry.afterRooms + '/' + entry.requiredRooms + ' rooms · heads ' + entry.beforeHeads + ' → ' + entry.afterHeads +
-      ' · changed ' + changedFloors + ' · area ' + area + realizedBudgetText + liveCoverageText + uncoveredActions + ' ' + focusButton + clearButton + '</div>';
+      ' → ' + entry.afterRooms + '/' + entry.requiredRooms + ' rooms · heads ' + entry.beforeHeads + ' → ' + entry.afterHeads + targetRoomDesirabilityText + targetRoomText +
+      ' · changed ' + changedFloors + ' · area ' + area + realizationStatusText + realizedBudgetText + liveCoverageText + uncoveredActions + ' ' + focusButton + clearButton + '</div>';
   }).join('');
   const recommendationClass = repRecommendation.key === 'steady' || repRecommendation.key === 'observe' ? 'diag-good' : repRecommendation.key === 'route' ? 'diag-warn' : 'diag-bad';
   const recommendationPanel = '<div class="diag"><span>recommended next move</span><span class="' + recommendationClass + '">' + repRecommendation.label + '</span></div>' +
@@ -2730,6 +2978,7 @@ function renderTransport() {
     recyclingRows +
     leasingRows +
     leasingOutcomePanel +
+    vacancyPreFillResultPanel +
     leasingHistoryPanel +
     vacancyAppealActionPanel +
     vacancyAppealFollowupPanel +
@@ -2740,6 +2989,23 @@ function renderTransport() {
     hotelFeedbackHistoryPanel +
     roomHealthPanel +
     '<div class="diag-sub">lowest room evaluations</div>' + tenantLoadLegend + evalRows;
+}
+
+function renderExpansionSafety() {
+  const floor = expansionSafetySummary(state, CONFIG.costs.floor);
+  const roomKind = CONFIG.units[tool] ? tool : 'office';
+  const room = expansionSafetySummary(state, CONFIG.costs[roomKind]);
+  const severity = [floor, room].some((summary) => summary.key === 'critical' || summary.key === 'unaffordable')
+    ? 'bad'
+    : [floor, room].some((summary) => summary.key === 'watch' || summary.key === 'break_even')
+      ? 'warn'
+      : 'good';
+  const roomLabel = roomKind === 'office' ? 'selected room' : roomKind.toUpperCase();
+  els['expansion-safety'].innerHTML = '<b>EXPANSION SAFETY</b> · next floor (' + money(CONFIG.costs.floor) + '): ' +
+    floor.label + '<br>' + roomLabel + ' (' + money(CONFIG.costs[roomKind]) + '): ' + room.label +
+    '<br><span>warning only · risky growth remains your choice</span>';
+  els['expansion-safety'].className = 'build-safety ' + severity;
+  els['expansion-safety'].setAttribute('aria-label', 'expansion safety; next floor: ' + floor.label + '; ' + roomLabel + ': ' + room.label + '; warning only, risky growth remains your choice');
 }
 
 function renderShaftInspector() {
@@ -2837,9 +3103,35 @@ function renderFacilityInspector() {
   const heads = coverage?.requiredHeads ?? 0;
   const coveredHeads = coverage?.coveredHeads ?? 0;
   const coverageClass = coveredRooms === rooms ? 'diag-good' : 'diag-warn';
+  const coveredRoomLabel = serviceFocusCoveredRoomLabel(coverage, state);
+  const coveredRoomDetails = serviceFocusCoveredRoomDetails(coverage, state, CONFIG);
+  const uncoveredRoomLabel = serviceFocusUncoveredRoomLabel(coverage, state);
   const coverageText = rooms
     ? '<span class="' + coverageClass + '">' + coveredRooms + '/' + rooms + ' rooms · tenant heads ' + coveredHeads + '/' + heads + '</span>'
     : '<span class="diag-good">no occupied rooms currently require this service</span>';
+  const uncoveredText = uncoveredRoomLabel
+    ? '<div class="facility-inspector-gap"><span class="diag-bad">remaining uncovered: ' + uncoveredRoomLabel + '</span></div>'
+    : '';
+  const coveredText = coveredRoomLabel
+    ? '<div class="facility-inspector-rooms"><span class="diag-good">serves:</span> ' + coveredRoomDetails.slice(0, 3).map((room) => {
+      const health = serviceRoomHealthSignal(room, CONFIG);
+      const driverText = health.driver && health.driver !== 'none' && health.driver !== 'unknown' ? ' · cause ' + health.driver : '';
+      const retention = health.driver.includes('appeal')
+        ? tenantRetentionRecommendation(state, state.units.find((unit) => unit.id === room.id), CONFIG)
+        : null;
+      const retentionButton = retention?.key === 'service' && retention.kind
+        ? els.build.querySelector('button[data-facility="' + retention.kind + '"]')
+        : null;
+      const appealAction = health.driver.includes('appeal')
+        ? '<button class="inspect-vacancy" data-facility-appeal-room-id="' + room.id + '" title="review the strongest appeal response for this room">' +
+          (retentionButton && !retentionButton.disabled ? 'select ' + retention.kind + ' tool' : 'review appeal') + '</button>'
+        : '';
+      const transportAction = health.driver.includes('transport')
+        ? '<button class="inspect-vacancy" data-facility-transport-room-id="' + room.id + '" title="focus the strongest transport response for this room">focus transport</button>'
+        : '';
+      return '<span class="facility-room-entry"><button class="inspect-vacancy facility-room-link" data-facility-room-id="' + room.id + '" title="inspect F' + room.floor + ' ' + room.kind + '">F' + room.floor + ' ' + room.kind + ' (' + room.heads + ' tenants) · desirability ' + (room.desirability == null ? '—' : room.desirability + '/100') + ' · transport stress ' + room.stress + '/' + (CONFIG.units[room.kind]?.vacateAt ?? '—') + ' · <span class="' + indicatorCssClass(health.colorKey) + '">' + health.label + driverText + '</span></button>' + appealAction + transportAction + '</span>';
+    }).join(' · ') + (coveredRoomDetails.length > 3 ? ' +' + (coveredRoomDetails.length - 3) + ' more' : '') + '</div>'
+    : '';
   const realized = serviceOutcomeHistory.slice().reverse().find((entry) =>
     entry.facilityId === facility.id && Number.isFinite(entry.realizedNet));
   const realizedBudgetText = realized
@@ -2849,6 +3141,8 @@ function renderFacilityInspector() {
   element.innerHTML = '<div id="facility-title">F' + facility.floor + ' ' + label + '</div>' +
     '<div id="facility-status">ACTIVE · +' + money(service.dailyUpkeep ?? 0) + '/day upkeep</div>' +
     '<div id="facility-detail">coverage F' + low + (low === high ? '' : '–F' + high) + ' · ' + coverageText + '</div>' +
+    coveredText +
+    uncoveredText +
     realizedBudgetText +
     '<div class="facility-inspector-note">live service demand; click another facility or its history result to change focus</div>' +
     '<button class="facility-clear" data-clear-facility-focus>clear facility focus</button>';
@@ -2856,6 +3150,78 @@ function renderFacilityInspector() {
 }
 
 els['facility-inspector'].addEventListener('click', (event) => {
+  const appealButton = event.target.closest('button[data-facility-appeal-room-id]');
+  const transportButton = event.target.closest('button[data-facility-transport-room-id]');
+  if (appealButton || transportButton) {
+    const id = Number((appealButton || transportButton).dataset.facilityAppealRoomId ?? (appealButton || transportButton).dataset.facilityTransportRoomId);
+    const unit = state.units.find((candidate) => candidate.id === id && candidate.occupied);
+    if (!unit) return;
+    selectedUnitId = id;
+    selectedFloor = unit.floor;
+    lastConfirmationOutcome = null;
+    conversionTargetKind = null;
+    renovationTargetId = null;
+    rerentTargetId = null;
+    demolitionTargetId = null;
+    placementWarning = null;
+    if (appealButton) {
+      const recommendation = tenantRetentionRecommendation(state, unit, CONFIG);
+      if (recommendation?.key === 'service' && recommendation.kind && selectServiceToolForUnit(recommendation.kind, id, 'facility health')) return;
+      refresh();
+      setMode('APPEAL ACTION → F' + unit.floor + ' ' + unit.kind + ' · review ' + (recommendation?.label ?? 'room appeal') + ' in the room inspector.', WARN);
+      toast('FACILITY → appeal response opened for F' + unit.floor, INFO);
+      return;
+    }
+    const response = transportResponseRecommendation(state, CONFIG, carQueueDailyHistory, localRouteDailyHistory);
+    if (response.affordable !== false && response.key === 'car' && Number.isFinite(Number(response.shaftId))) {
+      selectRouteAlternative('car', Number(response.shaftId));
+      selectedUnitId = id;
+      selectedFloor = unit.floor;
+      refresh();
+      setMode('TRANSPORT ACTION → F' + unit.floor + ' ' + unit.kind + ' · recommended car response selected.', WARN);
+      return;
+    }
+    if (response.affordable !== false && response.key === 'shaft') {
+      selectRouteAlternative('shaft', null, Number.isInteger(response.targetFloor) ? response.targetFloor : unit.floor);
+      selectedUnitId = id;
+      selectedFloor = unit.floor;
+      refresh();
+      setMode('TRANSPORT ACTION → F' + unit.floor + ' ' + unit.kind + ' · recommended shaft response selected.', WARN);
+      return;
+    }
+    if (response.affordable !== false && (response.kind === 'stairs' || response.kind === 'escalator')) {
+      tool = response.kind;
+      recommendedShaftId = null;
+      transportFocusTarget = Number.isInteger(response.targetFloor) ? { kind: response.kind, floor: response.targetFloor } : null;
+      routeTarget = Number.isInteger(response.targetFloor) ? { kind: response.kind, floor: response.targetFloor, recommended: true } : null;
+      refresh();
+      setMode(response.kind.toUpperCase() + ' selected from facility health · target F' + unit.floor + ' ' + unit.kind + ' · click the top floor to place it.', WARN);
+      toast(response.kind.toUpperCase() + ' selected from facility health', INFO);
+      return;
+    }
+    refresh();
+    setMode('TRANSPORT ACTION → F' + unit.floor + ' ' + unit.kind + ' · review the transport recommendation before placing capacity.', WARN);
+    toast('FACILITY → transport response opened for F' + unit.floor, INFO);
+    return;
+  }
+  const roomButton = event.target.closest('button[data-facility-room-id]');
+  if (roomButton) {
+    const id = Number(roomButton.dataset.facilityRoomId);
+    const unit = state.units.find((candidate) => candidate.id === id && candidate.occupied);
+    if (!unit) return;
+    selectedUnitId = id;
+    lastConfirmationOutcome = null;
+    conversionTargetKind = null;
+    renovationTargetId = null;
+    rerentTargetId = null;
+    demolitionTargetId = null;
+    placementWarning = null;
+    managementHintConfirmation = 'opened ' + tenantUtilizationHintFocusLabel(unit) + ' from the facility service list · now in focus';
+    refresh();
+    setMode('OCCUPIED room selected — read-only tenant-mix inspection on the right. Opened from the facility service list.', INFO);
+    toast('FACILITY → opened ' + tenantUtilizationHintFocusLabel(unit), INFO);
+    return;
+  }
   if (!event.target.closest('button[data-clear-facility-focus]')) return;
   serviceFocusTarget = null;
   refresh();
@@ -2963,6 +3329,24 @@ function renderInspector() {
   const retention = tenantRetentionPressure(state, unit, CONFIG);
   const retentionRecommendation = tenantRetentionRecommendation(state, unit, CONFIG);
   const demandQuality = tenantDemandQuality(state, unit, CONFIG);
+  const condoTransportResponse = unit.kind === 'condo'
+    ? transportResponseRecommendation(state, CONFIG, carQueueDailyHistory, localRouteDailyHistory)
+    : null;
+  const condoTransportAction = condoTransportResponse?.key === 'car' && condoTransportResponse.affordable !== false && condoTransportResponse.shaftId != null
+    ? { kind: 'car', shaftId: condoTransportResponse.shaftId }
+    : condoTransportResponse?.key === 'shaft' && condoTransportResponse.affordable !== false
+      ? { kind: 'shaft', floor: condoTransportResponse.targetFloor ?? unit.floor }
+      : condoTransportResponse?.key === 'local' && condoTransportResponse.affordable !== false && condoTransportResponse.kind
+        ? { kind: condoTransportResponse.kind, floor: condoTransportResponse.targetFloor ?? unit.floor }
+        : null;
+  const condoTransportCue = unit.kind === 'condo'
+    ? '<br>transport after placement: ' + (condoTransportResponse?.key === 'monitor'
+      ? 'no current pressure; keep watching W/T'
+      : condoTransportResponse?.label ?? 'response needed') +
+      (condoTransportAction
+        ? ' <button class="inspect-vacancy" data-room-transport-action="' + condoTransportAction.kind + '" data-room-transport-shaft="' + (condoTransportAction.shaftId ?? '') + '" data-room-transport-floor="' + (condoTransportAction.floor ?? '') + '">select ' + condoTransportAction.kind + '</button>'
+        : '')
+    : '';
   const tenantAccessOutcome = unit.occupied ? tenantAccessOutcomeForUnit(state, unit) : null;
   const accessForecastClass = tenantAccessOutcome?.forecastKey === 'helping' ? 'diag-good' : tenantAccessOutcome?.forecastKey === 'hurting' ? 'diag-bad' : 'diag-warn';
   const accessRealizedClass = tenantAccessOutcome?.realizedBonus > 0 ? 'diag-good' : tenantAccessOutcome?.realizedBonus < 0 ? 'diag-bad' : 'diag-warn';
@@ -2976,6 +3360,11 @@ function renderInspector() {
       ? '<span class="' + resultClassForFollowup(roomAppealFollowup.result) + '">' + roomAppealFollowup.result.label + '</span> · ' + roomAppealFollowup.result.detail
       : '<span class="diag-warn">' + roomAppealFollowup.action + ' recorded on D' + roomAppealFollowup.builtDay + ' · result after next day close</span>')
     : '';
+  const condoServiceStatusCue = unit.kind === 'condo'
+    ? '<br>condo services: ' + tenantPlacementServiceNeeds('condo', CONFIG).map((service) =>
+      '<span class="' + (evaluation[service.kind + 'Covered'] ? 'diag-good' : 'diag-bad') + '">' + service.label + ' ' +
+      (evaluation[service.kind + 'Covered'] ? 'covered' : 'missing') + '</span>').join(' · ')
+    : '';
   const vacancyDemand = unit.occupied ? null : vacancyDemandSummary(state, unit, CONFIG, state.log.at(-1)?.rep);
   const vacancyTransportAccess = vacancyDemand?.transportAccess;
   const vacancyTransportAccessClass = vacancyTransportAccess?.key === 'helping' ? 'diag-good' : vacancyTransportAccess?.key === 'hurting' ? 'diag-bad' : 'diag-warn';
@@ -2984,6 +3373,8 @@ function renderInspector() {
     : '';
   const status = unit.occupied ? null : leaseStatus(state, unit, CONFIG);
   const recoveryComparison = unit.occupied ? null : vacancyRecoveryComparison(state, unit, CONFIG, state.log.at(-1)?.rep);
+  const vacancyForecast = unit.occupied ? null : leasingForecast(state, CONFIG, state.log.at(-1)?.rep);
+  const vacancyPreFill = unit.occupied ? null : vacancyPreFillOutcome(state, unit, CONFIG, vacancyForecast);
   const baseRelistDays = CONFIG.units[unit.kind]?.relistDays ?? 0;
   const renovationCost = CONFIG.costs.renovation;
   const conversionCost = CONFIG.costs.conversion;
@@ -3042,14 +3433,23 @@ function renderInspector() {
   const renovationArmed = !unit.occupied && renovationTargetId === unit.id;
   const rerentArmed = !unit.occupied && rerentTargetId === unit.id;
   const demolitionArmed = !unit.occupied && demolitionTargetId === unit.id;
+  const confirmationArmed = renovationArmed || rerentArmed || demolitionArmed || Boolean(conversionTargetKind);
   const renovationOption = recoveryComparison?.options.find((option) => option.key === 'renovate');
+  const rerentOption = recoveryComparison?.options.find((option) => option.key === 'rerent');
+  const vacancyPreFillConfirmationLinesState = vacancyPreFillConfirmationLines(vacancyPreFill);
   const confirmationText = renovationArmed
     ? 'Confirm renovation: $' + renovationCost.toLocaleString() + ' · evaluation ' + evaluation.score + ' → ' + renovationOption?.projectedEvaluation + ' · income after lease ' + incomeBreakdownText(unit.kind, renovationOption?.dailyRent ?? 0, renovationOption?.variableRevenue ?? 0, renovationOption?.dailyIncome ?? 0, renovationOption?.potentialVariableRevenue ?? 0, renovationOption?.deliveryFactor) + ' · room stays vacant until gates clear.'
     : rerentArmed
-      ? 'Confirm re-rent: $' + cost.toLocaleString() + ' · fills this room now with ' + unit.kind + ' capacity · income ' + incomeBreakdownText(unit.kind, rerentOption?.dailyRent ?? 0, rerentOption?.variableRevenue ?? 0, rerentOption?.dailyIncome ?? 0, rerentOption?.potentialVariableRevenue ?? 0, rerentOption?.deliveryFactor) + ' · stress resets to 0.'
+      ? ['CONFIRM RE-RENT',
+        'cost: $' + cost.toLocaleString(),
+        'income: ' + incomeBreakdownText(unit.kind, rerentOption?.dailyRent ?? 0, rerentOption?.variableRevenue ?? 0, rerentOption?.dailyIncome ?? 0, rerentOption?.potentialVariableRevenue ?? 0, rerentOption?.deliveryFactor),
+        ...vacancyPreFillConfirmationLinesState,
+        'stress: resets to 0',
+      ].join('\n')
       : demolitionArmed
         ? 'Confirm demolition: $' + demolitionCost.toLocaleString() + ' · permanent removal · removes ' + incomeBreakdownText(unit.kind, 0, 0, 0) + ' future income (currently ' + money((recoveryComparison?.options.find((option) => option.key === 'demolish')?.dailyIncomeDelta ?? 0) * -1) + '/day potential) · frees F' + unit.floor + ' slot ' + unit.slot + ' for a new room.'
         : '';
+  const confirmationOutcomeText = !confirmationText && lastConfirmationOutcome ? lastConfirmationOutcome : '';
   const inspectorTenantLoadLabel = 'T ' + load.tenants + '/' + load.capacity + ' tenants/capacity; ' + load.label + '; ' + tenantLoadColorMeaning(load.key);
   els['unit-title'].textContent = 'F' + unit.floor + ' ' + unit.kind.toUpperCase();
   els['unit-status'].style.color = unit.occupied ? INFO : BAD;
@@ -3065,7 +3465,7 @@ function renderInspector() {
     : 'abandoned room; tenant load is not active');
   els['unit-detail'].textContent = 'evaluation ' + evaluation.score + '/100 · stress ' + evaluation.stress +
     ' · appeal pressure ' + Number((Number(unit.desirabilityPressure) || 0).toFixed(1)) + '/' + retention.vacateAt +
-    (retentionRecommendation?.key !== 'monitor' ? ' · next: ' + retentionRecommendation.label : '') +
+    (retentionRecommendation && retentionRecommendation.key !== 'monitor' ? ' · next: ' + retentionRecommendation.label : '') +
     ' · fit -' + evaluation.preferencePenalty + ' (prefers F' + evaluation.preferredFloor + ')' +
     ' · layout +' + evaluation.layoutBonus + ' · view +' + evaluation.viewBonus + ' · amenity +' + evaluation.amenityBonus +
     ' · market +' + marketDemandBonus(state, unit, CONFIG) + ' · quality +' + demandQuality.bonus +
@@ -3080,6 +3480,8 @@ function renderInspector() {
     els['unit-utilization-context'].innerHTML += vacancyTransportAccessCue;
   }
   els['unit-utilization-context'].innerHTML += occupiedTransportAccessCue;
+  els['unit-utilization-context'].innerHTML += condoTransportCue;
+  els['unit-utilization-context'].innerHTML += condoServiceStatusCue;
   els['unit-utilization-context'].innerHTML += roomAppealFollowupCue;
   if (retentionRecommendation?.key !== 'monitor') {
     els['unit-utilization-context'].innerHTML += '<br>retention recommendation: ' + retentionRecommendation.detail;
@@ -3125,8 +3527,12 @@ function renderInspector() {
     : demolitionArmed
     ? 'Click again to permanently remove this room'
     : canDemolish ? 'Arm permanent demolition' : 'Need more money to demolish';
-  els['recovery-warning'].classList.toggle('open', Boolean(confirmationText));
-  els['recovery-warning'].textContent = confirmationText;
+  els['cancel-confirmation'].hidden = !confirmationArmed;
+  els['cancel-confirmation'].disabled = !confirmationArmed;
+  els['cancel-confirmation'].title = confirmationArmed ? 'Clear this preview without changing the room' : 'No pending preview to cancel';
+  els['recovery-warning'].classList.toggle('open', Boolean(confirmationText || confirmationOutcomeText));
+  els['recovery-warning'].classList.toggle('outcome', Boolean(confirmationOutcomeText));
+  els['recovery-warning'].textContent = confirmationText || confirmationOutcomeText;
   els['rerent-reason'].textContent = unit.occupied
     ? 'Occupied rooms cannot be changed here; inspect a vacant room to renovate, convert, re-rent, or demolish it.'
     : canRerent
@@ -3145,6 +3551,8 @@ function renderInspector() {
 
 function refresh() {
   const d = state.log[state.log.length - 1];
+  updateTimeControls();
+  renderFirstSessionPath();
   const recommendation = reputationRecommendation(state, CONFIG);
   const transportResponse = transportResponseRecommendation(state, CONFIG, carQueueDailyHistory, localRouteDailyHistory);
   const placementPreview = placementWarning && !placementWarning.full
@@ -3244,6 +3652,7 @@ function refresh() {
   renderFacilityInspector();
   renderInspector();
   renderInvestmentPreview();
+  renderExpansionSafety();
 
   const costs = {
     floor: money(CONFIG.costs.floor),
@@ -3338,6 +3747,8 @@ function refresh() {
     if (cost) cost.textContent = locked ? 'unlock at ' + (tier?.pop || '?') + ' pop' : money(CONFIG.costs[kind]);
     b.title = locked ? kind + ' unlocks at ' + (tier?.pop || '?') + ' population' : money(CONFIG.costs[kind]);
   }
+  els['cancel-tool'].hidden = tool === 'observe';
+  updateQuickAction(recommendation, transportResponse);
   setMode(undefined, placementWarning ? WARN : GOOD);
 }
 
@@ -3360,6 +3771,110 @@ function toast(msg, color) {
   toastT = setTimeout(() => { els.log.textContent = ''; }, 2600);
 }
 
+function firstSessionPath() {
+  const history = state.log ?? [];
+  const carRecommendation = shaftQueueReliefRecommendation(state, CONFIG, carQueueDailyHistory);
+  const recommendedCarShaft = carRecommendation.best
+    ? 'S' + (carRecommendation.best.shaftIndex + 1)
+    : null;
+  const shaftCostDetail = money(CONFIG.costs.shaft) + ' base + ' + money(CONFIG.costs.shaftPerFloor) + '/floor · starts with 1 car / ' + CONFIG.elevator.capacity + ' riders per dispatch';
+  const officeCostDetail = money(CONFIG.costs.office) + ' each · ' + CONFIG.units.office.workers + ' tenants each';
+  const carCostDetail = money(CONFIG.costs.car) + ' · +' + CONFIG.elevator.capacity + ' riders per dispatch';
+  const hasLobby = Boolean(state.lobby);
+  const hasLobbyShaft = state.shafts.some((shaft) => shaft.bottom === 0 && shaft.top > shaft.bottom);
+  const officeCount = state.units.filter((unit) => unit.kind === 'office').length;
+  const hasSecondCar = state.shafts.some((shaft) => shaft.cars.length >= 2);
+  const openingShaftSpan = Math.max(2, CONFIG.building.startFloors);
+  const openingShaftCost = CONFIG.costs.shaft + CONFIG.costs.shaftPerFloor * openingShaftSpan;
+  const fullPathCost = CONFIG.costs.lobby + openingShaftCost + CONFIG.costs.office * 3 + CONFIG.costs.car;
+  const remainingPathCost = (hasLobby ? 0 : CONFIG.costs.lobby) +
+    (hasLobbyShaft ? 0 : openingShaftCost) +
+    Math.max(0, 3 - officeCount) * CONFIG.costs.office +
+    (hasSecondCar ? 0 : CONFIG.costs.car);
+  const budgetBuffer = state.money - remainingPathCost;
+  const liveWarningState = firstSessionPressureWarning(state, CONFIG, recommendedCarShaft);
+  const liveWarning = liveWarningState.detail || null;
+  if (liveWarningState.active && !hasSecondCar && !firstSessionLivePressure) {
+    firstSessionLivePressure = {
+      day: state.day,
+      waiting: liveWarningState.waiting,
+      stressedUnits: liveWarningState.stressedUnits,
+      occupied: state.units.filter((unit) => unit.occupied).length,
+      vacant: state.units.filter((unit) => !unit.occupied).length,
+    };
+  }
+  const recoveryEvidence = firstSessionRecoveryEvidence(history, firstSessionLivePressure, CONFIG);
+  const { pressure, recoveryEntry } = recoveryEvidence;
+  const recovery = recoveryEvidence.recovered;
+  const recoveryReadings = firstSessionRecoveryReadings(state, CONFIG, history);
+  const recoveryWatch = hasSecondCar && !recovery ? recoveryReadings.detail : null;
+  const steps = [
+    { label: 'build a lobby entrance', detail: money(CONFIG.costs.lobby), cost: hasLobby ? 0 : CONFIG.costs.lobby, done: hasLobby },
+    { label: 'build a shaft from the lobby upward', detail: shaftCostDetail, cost: hasLobbyShaft ? 0 : openingShaftCost, done: hasLobbyShaft },
+    { label: 'fill three rooms with offices', detail: officeCostDetail, cost: Math.max(0, 3 - officeCount) * CONFIG.costs.office, done: officeCount >= 3 },
+    { label: 'observe an elevator pressure reading', cost: 0, done: recoveryEvidence.observed },
+    { label: recommendedCarShaft ? 'select + car, then click ' + recommendedCarShaft : 'select + car, then click the pressured shaft', detail: carCostDetail, cost: hasSecondCar ? 0 : CONFIG.costs.car, done: hasSecondCar },
+    { label: 'see delivery and reputation recover', cost: 0, done: recovery },
+  ];
+  const completed = steps.filter((step) => step.done).length;
+  const passed = completed === steps.length;
+  const next = steps.find((step) => !step.done)?.label ?? 'first session passed — keep tuning the tower';
+  const playerNext = !liveWarningState.active && next === 'observe an elevator pressure reading'
+    ? 'let the next rush run and watch W waiting'
+    : !liveWarningState.active && !hasSecondCar && next.startsWith('select + car')
+      ? 'let the next rush run; add a car when W turns amber or red'
+      : next;
+  const evidence = pressure && recoveryEntry
+    ? recoveryEvidence.source === 'live-warning'
+      ? 'live warning W ' + pressure.waiting + ' → D' + recoveryEntry.day + ' delivery ' + Math.round(recoveryEntry.deliveryRate) + '% · occupied ' + pressure.occupied + ' → ' + recoveryEntry.occupied + ' · reputation ' + Math.round(recoveryEntry.rep) + '% · desirability ' + recoveryEntry.desirability
+      : 'delivery ' + Math.round(pressure.deliveryRate) + '% → ' + Math.round(recoveryEntry.deliveryRate) + '% · occupied ' + pressure.occupied + ' → ' + recoveryEntry.occupied + ' · vacant ' + pressure.vacant + ' → ' + recoveryEntry.vacant + ' · reputation ' + Math.round(pressure.rep) + '% → ' + Math.round(recoveryEntry.rep) + '% · desirability ' + pressure.desirability + ' → ' + recoveryEntry.desirability
+    : null;
+  return { steps, completed, passed, next: playerNext, evidence, recoveryWatch, liveWarning, liveWarningAction: liveWarningState.active && liveWarningState.affordable ? liveWarningState.target : null, budget: { opening: CONFIG.economy.startMoney, fullPathCost, remainingPathCost, available: state.money, buffer: budgetBuffer } };
+}
+
+function renderFirstSessionPath() {
+  const path = firstSessionPath();
+  const nextStep = path.steps.find((step) => !step.done);
+  const budget = path.budget;
+  const bufferText = budget.buffer >= 0 ? 'buffer ' + money(budget.buffer) : 'shortfall ' + money(Math.abs(budget.buffer));
+  const budgetClass = budget.buffer >= 0 ? 'diag-good' : 'diag-bad';
+  const liveWarningText = path.liveWarning
+    ? '<div class="beta-path-warning">' + path.liveWarning + (path.liveWarningAction
+      ? ' <button type="button" class="beta-path-action" data-beta-car-action>select + car for ' + path.liveWarningAction + '</button>'
+      : '') + '</div>'
+    : '';
+  const evidenceText = path.passed && path.evidence
+    ? '<div class="beta-path-evidence">evidence: ' + path.evidence + '</div>'
+    : '';
+  const recoveryWatchText = path.recoveryWatch
+    ? '<div class="beta-path-recovery">' + path.recoveryWatch + '</div>'
+    : '';
+  const checklist = '<details class="beta-path-details"><summary>show session checklist</summary>' +
+    '<ol>' + path.steps.map((step) =>
+      '<li class="beta-path-step ' + (step.done ? 'done' : step === nextStep ? 'next' : '') + '">' +
+      (step.done ? '✓ ' : '○ ') + step.label + (step.detail ? ' <span class="beta-path-detail">· ' + step.detail + '</span>' : '') +
+      ' <span class="beta-path-affordability ' + (step.done || step.cost === 0 || step.cost <= budget.available ? 'diag-good' : 'diag-bad') + '">' +
+      (step.done ? 'completed' : step.cost === 0 ? 'no spend' : step.cost <= budget.available ? 'cost ' + money(step.cost) + ' · affordable now' : 'cost ' + money(step.cost) + ' · need ' + money(step.cost - budget.available) + ' more') +
+      '</span></li>'
+    ).join('') + '</ol>' +
+    '<div class="beta-path-budget">budget: start ' + money(budget.opening) + ' · full path ' + money(budget.fullPathCost) + ' · remaining ' + money(budget.remainingPathCost) + ' · cash ' + money(budget.available) + ' · <span class="' + budgetClass + '">' + bufferText + '</span></div>' +
+    recoveryWatchText + evidenceText + '</details>';
+  els['beta-path'].innerHTML = '<div class="beta-path-summary' + (path.passed ? ' pass' : '') + '">' + path.completed + '/' + path.steps.length + ' complete' + (path.passed ? ' · SESSION COMPLETE' : '') + '</div>' +
+    liveWarningText +
+    '<div class="beta-path-next"><b>DO THIS NOW:</b> ' + path.next + '</div>' +
+    checklist;
+}
+
+els['beta-path'].addEventListener('click', (event) => {
+  if (!event.target.closest('[data-beta-car-action]')) return;
+  const carButton = els.build.querySelector('button[data-do="car"]');
+  if (!carButton || carButton.disabled) {
+    toast('the car is not currently available', WARN);
+    return;
+  }
+  carButton.click();
+});
+
 // ------------------------------------------------------------------- inputs
 function selectServiceToolForUnit(kind, unitId, source) {
   const unit = state.units.find((candidate) => candidate.id === unitId && candidate.occupied);
@@ -3379,8 +3894,9 @@ function selectServiceToolForUnit(kind, unitId, source) {
   floorDiagnosisResult = null;
   floorDiagnosisResults.delete(selectedFloor);
   refresh();
-  setMode(kind.toUpperCase() + ' selected from ' + source + ' — click a floor to place it.', WARN);
-  toast(kind.toUpperCase() + ' selected from ' + source + ' — choose its floor', INFO);
+  const targetDetail = ' · target F' + unit.floor + ' ' + unit.kind + ' (' + Math.max(0, Math.round(unit.heads ?? 0)) + ' tenants)';
+  setMode(kind.toUpperCase() + ' selected from ' + source + targetDetail + ' — click a floor to place it.', WARN);
+  toast(kind.toUpperCase() + ' selected from ' + source + targetDetail + ' — choose its floor', INFO);
   return true;
 }
 
@@ -3651,7 +4167,8 @@ els.transport.addEventListener('click', (e) => {
   if (!unit) return;
   const fromManagementHint = button.dataset.managementHint;
   const focusSource = fromManagementHint === 'retention' ? 'retention recommendation'
-    : fromManagementHint === 'service' ? 'service coverage cue' : 'management hint';
+    : fromManagementHint === 'service' ? 'service coverage cue'
+      : fromManagementHint === 'service-result' ? 'service result' : 'management hint';
   const fromFloorHandoff = button.dataset.floorHandoff === 'vacancy';
   floorHandoff = fromFloorHandoff
     ? { floor: Number(button.dataset.handoffFloor), kind: 'vacancy', unitId: id }
@@ -3663,6 +4180,7 @@ els.transport.addEventListener('click', (e) => {
     floorDiagnosisResults.delete(handoffFloor);
   }
   selectedUnitId = id;
+  lastConfirmationOutcome = null;
   conversionTargetKind = null;
   renovationTargetId = null;
   rerentTargetId = null;
@@ -3679,12 +4197,25 @@ els.transport.addEventListener('click', (e) => {
 });
 
 els['placement-preview'].addEventListener('click', (e) => {
+  const condoTransportButton = e.target.closest('button[data-condo-transport-response]');
+  if (condoTransportButton) {
+    const kind = condoTransportButton.dataset.condoTransportResponse;
+    const shaftId = Number(condoTransportButton.dataset.condoTransportShaft);
+    const floor = Number(condoTransportButton.dataset.condoTransportFloor);
+    if (kind === 'car' || kind === 'shaft' || kind === 'stairs' || kind === 'escalator') {
+      selectRouteAlternative(kind, kind === 'car' && Number.isFinite(shaftId) ? shaftId : null,
+        kind !== 'car' && Number.isInteger(floor) ? floor : null);
+      setMode('TRANSPORT FIRST → recommended ' + kind + ' selected before adding condo residents.', WARN);
+    }
+    return;
+  }
   const button = e.target.closest('button[data-investment-outcome-inspect]');
   if (!button) return;
   const id = Number(button.dataset.investmentOutcomeInspect);
   const unit = state.units.find((candidate) => candidate.id === id);
   if (!unit) return;
   selectedUnitId = id;
+  lastConfirmationOutcome = null;
   conversionTargetKind = null;
   renovationTargetId = null;
   rerentTargetId = null;
@@ -3702,8 +4233,10 @@ canvas.addEventListener('mousemove', (e) => {
   const floor = renderer.floorAt(state, px, py);
   const shaft = renderer.shaftAt(state, px, py);
   const facility = renderer.facilityAt(state, px, py);
-  if (floor === hoverFloor && shaft === hoverShaftId && facility === hoverFacilityId) return;
+  const slot = renderer.slotAt(state, px);
+  if (floor === hoverFloor && slot === hoverSlot && shaft === hoverShaftId && facility === hoverFacilityId) return;
   hoverFloor = floor;
+  hoverSlot = slot;
   hoverShaftId = shaft;
   hoverFacilityId = facility;
   if (tool === 'car' && shaft != null) {
@@ -3718,7 +4251,7 @@ canvas.addEventListener('mousemove', (e) => {
 });
 
 canvas.addEventListener('mouseleave', () => {
-  if (hoverFloor === -1 && hoverShaftId == null) return;
+  if (hoverFloor === -1 && hoverSlot === -1 && hoverShaftId == null) return;
   if (tool === 'car' && hoverShaftId != null) {
     transportFocusTarget = null;
     const recommendation = shaftQueueReliefRecommendation(state, CONFIG, carQueueDailyHistory);
@@ -3726,6 +4259,7 @@ canvas.addEventListener('mouseleave', () => {
     routeTarget = { kind: 'car', shaftId: recommendedShaftId };
   }
   hoverFloor = -1;
+  hoverSlot = -1;
   hoverShaftId = null;
   hoverFacilityId = null;
   placementWarning = null;
@@ -3748,18 +4282,18 @@ canvas.addEventListener('click', (e) => {
       transportFocusTarget = null;
       routeTarget = null;
       shopDiagnosisContext = null;
-      tool = 'office';
+      tool = 'observe';
       const shaftNumber = state.shafts.indexOf(shaft) + 1;
       const dispatchCapacity = shaft.cars.length * CONFIG.elevator.capacity;
       refresh();
       setMode('CAR ADDED · S' + shaftNumber + ' now ' + shaft.cars.length + '/' + CONFIG.elevator.maxCarsPerShaft +
-        ' cars · dispatch capacity ' + dispatchCapacity + ' riders · office selected; click an upper floor to place it.');
+        ' cars · dispatch capacity ' + dispatchCapacity + ' riders · watching tower; let the next rush run.');
     }
     return;
   }
   const clickedShaftId = renderer.shaftAt(state, px, py);
   const clickedShaft = state.shafts.find((shaft) => shaft.id === clickedShaftId);
-  if (clickedShaft && tool === 'office') {
+  if (clickedShaft && (tool === 'office' || tool === 'observe')) {
     selectedShaftId = clickedShaft.id;
     serviceFocusTarget = null;
     selectedUnitId = null;
@@ -3776,7 +4310,7 @@ canvas.addEventListener('click', (e) => {
   }
   const clickedFacilityId = renderer.facilityAt(state, px, py);
   const clickedFacility = state.facilities?.find((facility) => facility.id === clickedFacilityId);
-  if (clickedFacility && tool === 'office') {
+  if (clickedFacility && (tool === 'office' || tool === 'observe')) {
     const coverageFloors = CONFIG.services?.[clickedFacility.kind]?.coverageFloors ?? 0;
     const focus = { kind: clickedFacility.kind, floor: clickedFacility.floor, facilityId: clickedFacility.id, coverageFloors, changedFloors: [] };
     const coverage = serviceFocusCoverage(focus, state, CONFIG);
@@ -3804,6 +4338,7 @@ canvas.addEventListener('click', (e) => {
   const clickedUnit = state.units.find((u) => u.id === clickedUnitId);
   if (clickedUnit && !clickedUnit.occupied) {
     selectedUnitId = clickedUnit.id;
+    lastConfirmationOutcome = null;
     conversionTargetKind = null;
     renovationTargetId = null;
     rerentTargetId = null;
@@ -3815,6 +4350,7 @@ canvas.addEventListener('click', (e) => {
   }
   const floor = renderer.floorAt(state, px, py);
   if (floor < 0) return toast('click a floor', WARN);
+  if (tool === 'observe') return toast('choose a build action above, then click the tower', INFO);
   const investmentIssue = investmentPlacementIssue(tool, floor);
   if (investmentIssue) return toast(investmentIssue, WARN);
   if (tool === 'lobby') {
@@ -3889,14 +4425,16 @@ canvas.addEventListener('click', (e) => {
   }
   if (tool === 'shaft') {
     const bottom = CONFIG.building.lobbyFloor ?? 0;
+    const slot = renderer.slotAt(state, px);
+    if (slot < 0) return toast('choose a visible building column for the new shaft', WARN);
     const selectedTarget = shaftToolTarget();
     const top = floor === selectedTarget?.floor ? selectedTarget.floor : floor;
-    const placement = routePlacementStatus('shaft', bottom, top, state, CONFIG);
+    const placement = routePlacementStatus('shaft', bottom, top, state, CONFIG, null, slot);
     if (placement.key !== 'ready') return toast(placement.detail, WARN);
     const cost = shaftCost(top);
     if (state.money < cost) return toast('not enough money for this shaft span: need ' + money(cost) + ', have ' + money(state.money), WARN);
     const forecast = activeInvestmentForecast(top);
-    const built = act('build_shaft', { bottom, top });
+    const built = act('build_shaft', { bottom, top, slot });
     if (built.ok) {
       floorHandoff = null;
       rememberInvestmentOutcome(forecast);
@@ -3954,7 +4492,9 @@ canvas.addEventListener('click', (e) => {
         ? { before: coverageBefore, after: coverageAfter }
         : null;
       if (serviceCoverage) {
-        rememberServiceOutcome(kind, floor, coverageBefore, coverageAfter, investmentTarget?.targetUnitId ?? null, built.id);
+        const desirabilityAfter = towerDesirabilitySummary(state, CONFIG).score;
+        const appealTargetAfter = appealTargetUnit ? unitEvaluation(state, appealTargetUnit, CONFIG) : null;
+        rememberServiceOutcome(kind, floor, coverageBefore, coverageAfter, investmentTarget?.targetUnitId ?? null, built.id, appealBeforeDesirability, desirabilityAfter, appealTargetBefore?.score ?? null, appealTargetAfter?.score ?? null);
         recordServiceRoomStatus(state.day);
       }
       if (appealTargetUnit && appealTargetBefore) {
@@ -3988,6 +4528,10 @@ canvas.addEventListener('click', (e) => {
         floor,
         label,
         coverage,
+        targetUnitId: appealTargetUnit?.id ?? null,
+        targetFloor: appealTargetUnit?.floor ?? null,
+        targetKind: appealTargetUnit?.kind ?? null,
+        targetTenantLoad: appealTargetUnit ? Math.max(0, Math.round(appealTargetUnit.heads ?? 0)) : null,
         upfrontCost: CONFIG.costs[kind] ?? 0,
         dailyUpkeep: CONFIG.services?.[kind]?.dailyUpkeep ?? 0,
         builtDay: state.day,
@@ -4076,6 +4620,14 @@ canvas.addEventListener('click', (e) => {
       }
       reconcileInvestmentOutcome(built.id);
       shopDiagnosisContext = null;
+      if (tool === 'condo') {
+        selectedUnitId = built.id;
+        selectedFloor = floor;
+        placementNotice = 'CONDO placed on F' + floor + ' · room opened for inspection';
+        refresh();
+        setMode(placementNotice, INFO);
+        toast('CONDO placed on F' + floor + ' · service follow-up is now visible', INFO);
+      }
     }
     return;
   }
@@ -4092,6 +4644,7 @@ function rerentSelectedUnit(fromUtilizationHint = false) {
   const unit = state.units.find((candidate) => candidate.id === id);
   if (!unit || unit.occupied) return;
   if (rerentTargetId !== id) {
+    lastConfirmationOutcome = null;
     conversionTargetKind = null;
     renovationTargetId = null;
     rerentTargetId = id;
@@ -4101,8 +4654,15 @@ function rerentSelectedUnit(fromUtilizationHint = false) {
     return;
   }
   const beforeTenantSummary = tenantLoadSummary(state, CONFIG);
+  const preFill = vacancyPreFillOutcome(state, unit, CONFIG);
   const r = act('rerent_unit', { id });
   if (r.ok) {
+    lastConfirmationOutcome = null;
+    lastVacancyPreFillResult = {
+      ...vacancyPreFillResult(preFill, state, unit, CONFIG),
+      day: state.day,
+    };
+    vacancyPreFillResultHistory = rememberVacancyPreFillResultHistory(vacancyPreFillResultHistory, lastVacancyPreFillResult);
     const focus = tenantUtilizationHintFocusLabel(unit);
     const afterTenantSummary = tenantLoadSummary(state, CONFIG);
     const recovery = tenantUtilizationRecoveryResult(beforeTenantSummary.ratio, afterTenantSummary.ratio);
@@ -4156,7 +4716,30 @@ function currentRouteInterventionTenantReading() {
 
 els['rerent-unit'].addEventListener('click', () => rerentSelectedUnit());
 
+els['cancel-confirmation'].addEventListener('click', () => {
+  if (!renovationTargetId && !rerentTargetId && !demolitionTargetId && !conversionTargetKind) return;
+  renovationTargetId = null;
+  rerentTargetId = null;
+  demolitionTargetId = null;
+  lastConfirmationOutcome = 'PREVIEW CANCELED — no room changes made.';
+  conversionTargetKind = null;
+  refresh();
+  setMode('PREVIEW CANCELED — no room changes made.', INFO);
+});
+
 els['unit-utilization-context'].addEventListener('click', (e) => {
+  const roomTransportButton = e.target.closest('button[data-room-transport-action]');
+  if (roomTransportButton) {
+    const kind = roomTransportButton.dataset.roomTransportAction;
+    const shaftId = Number(roomTransportButton.dataset.roomTransportShaft);
+    const floor = Number(roomTransportButton.dataset.roomTransportFloor);
+    if (kind === 'car' || kind === 'shaft' || kind === 'stairs' || kind === 'escalator') {
+      selectRouteAlternative(kind, kind === 'car' && Number.isFinite(shaftId) ? shaftId : null,
+        kind !== 'car' && Number.isInteger(floor) ? floor : null);
+      setMode('TRANSPORT ACTION → condo response selected; confirm the highlighted ' + kind + ' placement.', WARN);
+    }
+    return;
+  }
   const roomServiceToolButton = e.target.closest('button[data-room-service-tool]');
   if (roomServiceToolButton) {
     selectServiceToolForUnit(
@@ -4176,6 +4759,7 @@ els['renovate-unit'].addEventListener('click', () => {
   const unit = state.units.find((candidate) => candidate.id === id);
   if (!unit || unit.occupied || unit.renovated) return;
   if (renovationTargetId !== id) {
+    lastConfirmationOutcome = null;
     conversionTargetKind = null;
     renovationTargetId = id;
     rerentTargetId = null;
@@ -4189,6 +4773,7 @@ els['renovate-unit'].addEventListener('click', () => {
   const beforeDemand = vacancyDemandSummary(state, unit, CONFIG, state.log.at(-1)?.rep);
   const r = act('renovate_unit', { id });
   if (r.ok) {
+    lastConfirmationOutcome = null;
     vacancyAppealFollowups = [...vacancyAppealFollowups, {
       unitId: id,
       floor: unit.floor,
@@ -4213,6 +4798,7 @@ els['demolish-unit'].addEventListener('click', () => {
   if (selectedUnitId == null) return;
   const id = selectedUnitId;
   if (demolitionTargetId !== id) {
+    lastConfirmationOutcome = null;
     conversionTargetKind = null;
     renovationTargetId = null;
     rerentTargetId = null;
@@ -4223,6 +4809,7 @@ els['demolish-unit'].addEventListener('click', () => {
   }
   const r = act('demolish_unit', { id });
   if (r.ok) {
+    lastConfirmationOutcome = null;
     selectedUnitId = null;
     renovationTargetId = null;
     rerentTargetId = null;
@@ -4237,6 +4824,7 @@ els['conversion-controls'].addEventListener('click', (e) => {
   if (!b || selectedUnitId == null) return;
   const kind = b.dataset.convertKind;
   if (conversionTargetKind !== kind) {
+    lastConfirmationOutcome = null;
     renovationTargetId = null;
     rerentTargetId = null;
     demolitionTargetId = null;
@@ -4247,6 +4835,7 @@ els['conversion-controls'].addEventListener('click', (e) => {
   }
   const r = act('convert_unit', { id: selectedUnitId, kind });
   if (r.ok) {
+    lastConfirmationOutcome = null;
     conversionTargetKind = null;
     renovationTargetId = null;
     rerentTargetId = null;
@@ -4312,9 +4901,11 @@ els.build.addEventListener('click', (e) => {
   if (b.dataset.do === 'car') {
     if (!state.shafts.length) return toast('build a shaft first', WARN);
     tool = 'car';
-    transportFocusTarget = null;
     const recommendation = shaftQueueReliefRecommendation(state, CONFIG, carQueueDailyHistory);
     recommendedShaftId = recommendation.bestShaftId;
+    transportFocusTarget = recommendedShaftId == null
+      ? null
+      : { kind: 'car', shaftId: recommendedShaftId };
     routeTarget = recommendedShaftId == null ? null : { kind: 'car', shaftId: recommendedShaftId };
     setMode();
     toast(recommendedShaftId == null
@@ -4357,23 +4948,28 @@ els['rent-control'].addEventListener('click', (e) => {
 });
 
 addEventListener('keydown', (e) => {
-  if (e.key === ' ') { e.preventDefault(); speed = speed ? 0 : 1; toast(speed ? 'running' : 'paused', INFO); }
-  if (e.key === '1') { speed = 1; toast('1x', INFO); }
-  if (e.key === '2') { speed = 4; toast('4x', INFO); }
-  if (e.key === '3') { speed = 12; toast('12x', INFO); }
+  if (e.key === ' ') { e.preventDefault(); speed = speed ? 0 : 1; updateTimeControls(); toast(speed ? 'running' : 'paused', INFO); }
+  if (e.key === '1') { speed = 1; updateTimeControls(); toast('1x', INFO); }
+  if (e.key === '2') { speed = 4; updateTimeControls(); toast('4x', INFO); }
+  if (e.key === '3') { speed = 12; updateTimeControls(); toast('12x', INFO); }
   if (e.key.toLowerCase() === 'r') restart();
   if (e.key.toLowerCase() === 'e') exportTape();
-  if (e.key.toLowerCase() === 'd') els.knobs.classList.toggle('open');
+  if (e.key.toLowerCase() === 'd') setDeveloperMode(!developerMode);
 });
 
 function restart() {
+  restartArmed = false;
+  els['restart-game'].textContent = 'new session';
+  els['restart-game'].classList.remove('armed');
   state = boot(CONFIG, (state.seed % 9999) + 1);
+  tool = 'observe';
   tenantUtilizationBaseline = tenantLoadSummary(state, CONFIG).ratio;
   tenantUtilizationChange = null;
   tenantUtilizationHistory = [{ day: state.day, ratio: tenantUtilizationBaseline }];
   managementHintConfirmation = null;
   tape = [];
   hoverFloor = -1;
+  hoverSlot = -1;
   hoverShaftId = null;
   hoverFacilityId = null;
   selectedShaftId = null;
@@ -4406,6 +5002,7 @@ function restart() {
   shopTrafficBaselineDay = null;
   routeInterventionOutcome = null;
   routeInterventionHistory = [];
+  firstSessionLivePressure = null;
   clearInvestmentOutcome();
   serviceOutcomeHistory = [];
   serviceRoomStatusHistory = [];
@@ -4503,7 +5100,13 @@ renderer.resize();
 
 // Opening position: one shaft, a few offices. Nobody should stare at an empty lot.
 applyAction(state, { type: 'build_lobby', slot: CONFIG.building.lobbySlot }, CONFIG);
-applyAction(state, { type: 'build_shaft', bottom: 0, top: state.floors - 1 }, CONFIG);
+applyAction(state, {
+  type: 'build_shaft',
+  bottom: 0,
+  top: state.floors - 1,
+  // The opening shaft is the leftmost clear column beside the entrance.
+  slot: Math.min(CONFIG.building.slotsPerFloor - 1, CONFIG.building.lobbySlot + 1),
+}, CONFIG);
 for (let f = 1; f < state.floors; f++) {
   applyAction(state, { type: 'build_unit', kind: 'office', floor: f }, CONFIG);
 }
@@ -4511,6 +5114,6 @@ tenantUtilizationBaseline = tenantLoadSummary(state, CONFIG).ratio;
 tenantUtilizationHistory = [{ day: state.day, ratio: tenantUtilizationBaseline }];
 
 refresh();
-toast('space = pause · 1/2/3 = speed · D = knobs · E = export · R = restart', INFO);
+toast('space = pause · 1/2/3 = speed · D = developer details · E = export · R = restart', INFO);
 requestAnimationFrame(frame);
 requestAnimationFrame(drawClock);
