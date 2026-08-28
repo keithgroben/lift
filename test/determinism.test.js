@@ -27,12 +27,22 @@ export const tests = {
   },
 
   'no Math.random anywhere under src/sim'() {
-    // Determinism is a property of the whole directory, not of one entry point.
-    const dir = path.join(process.cwd(), 'src', 'games', 'lift', 'sim');
-    for (const f of fs.readdirSync(dir)) {
+    // Determinism is a property of the whole directory TREE, not of one
+    // entry point or one directory level — sim/evaluation/ is still sim/.
+    const root = path.join(process.cwd(), 'src', 'games', 'lift', 'sim');
+    const files = [];
+    (function walk(dir) {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else files.push(full);
+      }
+    })(root);
+    for (const full of files) {
+      const f = path.relative(root, full);
       // Strip comments first: a comment SAYING "no Math.random" is not a call,
       // and matching it made this test fail on the file that proves the point.
-      const src = fs.readFileSync(path.join(dir, f), 'utf8')
+      const src = fs.readFileSync(full, 'utf8')
         .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
       assert(!/Math\.random/.test(src), `${f} calls Math.random — that breaks replay`);
       assert(!/\bdocument\b|\bwindow\b/.test(src), `${f} touches the DOM — the sim must run headless`);

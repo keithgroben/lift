@@ -5,9 +5,16 @@
   "type": "module",
   "description": "Human-first tower-management game with a pure, headless simulation.",
   "scripts": {
+    "dev": "vite",
     "play": "node harness/serve.js",
     "test": "node test/run.js",
     "sim": "node harness/run.js",
     "sweep": "node harness/sweep.js"
+  },
+  "devDependencies": {
+    "solid-js": "^1.9.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2",
+    "vite-plugin-solid": "^2.11.14"
   }
 }

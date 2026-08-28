@@ -7,7 +7,7 @@ const assert = (c, m) => { if (!c) throw new Error(m); };
 export const tests = {
   'lobby occupies its ground-floor slot before a shaft is built'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     const state = boot(config, 119);
     const lobby = applyAction(state, { type: 'build_lobby', slot: 0 }, config);
     assert(lobby.ok, lobby.reason);
@@ -23,7 +23,7 @@ export const tests = {
 
   'lobby placement adds walking distance to every ground-floor trip'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     const withLobby = boot(config, 120);
     assert(applyAction(withLobby, { type: 'build_lobby', slot: 0 }, config).ok,
       'could not build lobby');
@@ -47,7 +47,7 @@ export const tests = {
 
   'lobby expansion occupies a new slot and shortens access to nearby circulation'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     const state = boot(config, 122);
     assert(applyAction(state, { type: 'build_lobby', slot: 0 }, config).ok,
       'could not build lobby');

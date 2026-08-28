@@ -1,4 +1,4 @@
-import { nid, servingShafts, pushEvent } from './state.js';
+import { nid, servingShafts, multiHopRoute, pushEvent } from './state.js';
 
 /** Count people currently moving through one local route. */
 export function localRouteOccupancy(state, kind, id) {
@@ -179,9 +179,36 @@ function spawnTrip(state, t, config) {
   state.today.trips++;
 
   if (!serving.length && !stairs.length && !escalators.length) {
-    // Stranded: no shaft reaches this trip. Charged as a full-length abandon —
-    // a rider with no elevator waited forever, not zero. Logging it as zero let
-    // a tower that served nobody post the shortest average wait in the sweep.
+    // No shaft reaches this trip in one leg — try a chain of sky-lobby
+    // handoffs before giving up on it entirely.
+    const path = multiHopRoute(state, t.from, t.to);
+    if (path) {
+      const legs = [];
+      for (let i = 0; i < path.length - 1; i++) {
+        const legServing = servingShafts(state, path[i], path[i + 1]);
+        const legTrip = {
+          from: path[i], to: path[i + 1],
+          fromUnit: i === 0 ? t.fromUnit : null,
+          toUnit: i === path.length - 2 ? t.toUnit : null,
+        };
+        const legShaft = chooseServingShaft(state, legTrip, legServing, config);
+        legs.push({ to: path[i + 1], shaftId: legShaft.id, accessT: shaftAccessSeconds(state, legTrip, legShaft, config) });
+      }
+      const first = legs.shift();
+      state.today.elevatorTrips++;
+      state.people.push({
+        id: nid(state), from: t.from, to: first.to, unit: t.unit, kind: t.kind,
+        shop: t.shop ?? null, shaft: first.shaftId,
+        remainingLegs: legs,
+        accessT: first.accessT, carId: null,
+        state: 'waiting', waitT: 0, rideT: 0,
+      });
+      return;
+    }
+    // Stranded: no route reaches this trip, even via a transfer. Charged as
+    // a full-length abandon — a rider with no elevator waited forever, not
+    // zero. Logging it as zero let a tower that served nobody post the
+    // shortest average wait in the sweep.
     const full = config.demand.abandonAfter;
     state.today.abandoned++;
     state.today.waitTotal += full;

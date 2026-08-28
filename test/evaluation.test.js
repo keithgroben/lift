@@ -180,7 +180,7 @@ export const tests = {
     const afterSummary = serviceCoverageSummary(state, 'food', config);
     const partial = serviceCoverageChange({ available: true, requiredRooms: 3, beforeRooms: 1, afterRooms: 2, roomsDelta: 1, headsDelta: 6 });
     const flat = serviceCoverageChange({ available: true, requiredRooms: 3, beforeRooms: 2, afterRooms: 2, roomsDelta: 0, headsDelta: 0 });
-    const budgetImpact = servicePlacementBudgetImpact({ log: [{ net: 400 }] }, 'food', config);
+    const budgetImpact = servicePlacementBudgetImpact({ log: [{ net: 40000 }] }, 'food', config);
     assert(recommendation.key === 'ready' && recommendation.floor === 2 &&
       recommendation.targetCovered && recommendation.coveredRooms === 2 &&
       recommendation.coveredHeads === 12 && recommendation.beforeRooms === 0 &&
@@ -191,7 +191,7 @@ export const tests = {
       coverage.beforeHeads === 0 && coverage.afterHeads === 12 && coverage.headsDelta === 12 &&
       servicePlacementComparison(alternateCoverage, coverage).key === 'worse' &&
       servicePlacementComparison(alternateCoverage, coverage).label.includes('vs recommended F2') &&
-      budgetImpact.dailyUpkeep === 45 && budgetImpact.beforeNet === 400 && budgetImpact.afterNet === 355 && budgetImpact.delta === -45 &&
+      budgetImpact.dailyUpkeep === 4500 && budgetImpact.beforeNet === 40000 && budgetImpact.afterNet === 35500 && budgetImpact.delta === -4500 &&
       beforeSummary.coveredRooms === 0 && afterSummary.coveredRooms === 2 && afterSummary.coveredHeads === 12 &&
       serviceCoverageChange(coverage).key === 'strong' && partial.key === 'partial' && flat.key === 'flat',
       'service guidance did not choose the strongest open nearby floor');
@@ -278,7 +278,7 @@ export const tests = {
 
   'floor tenant mix reports actual shares and buildable slots'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     config.stars.tiers[1].pop = 0;
     const state = boot(config, 38);
     assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 1 }, config).ok,
@@ -295,7 +295,7 @@ export const tests = {
 
   'placement mix preview projects the selected room after construction'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     config.stars.tiers[1].pop = 0;
     const state = boot(config, 39);
     assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 1 }, config).ok &&
@@ -325,7 +325,7 @@ export const tests = {
 
   'condo placement forecast combines mixed-use and floor quality'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     config.stars.tiers[1].pop = 0;
     config.building.startFloors = 6;
     const state = boot(config, 44);
@@ -344,7 +344,7 @@ export const tests = {
 
   'floor placement preview combines room evaluation and mix impact'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     const state = boot(config, 41);
     assert(applyAction(state, { type: 'build_lobby', slot: 0 }, config).ok &&
       applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok,
@@ -359,7 +359,7 @@ export const tests = {
 
   'floor placement comparison identifies why another floor is better'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     config.building.startFloors = 20;
     const state = boot(config, 42);
     assert(applyAction(state, { type: 'build_lobby', slot: 0 }, config).ok &&
@@ -373,7 +373,7 @@ export const tests = {
 
   'two candidate floors retain independent previews across tenant types'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     config.building.startFloors = 20;
     const state = boot(config, 43);
     assert(applyAction(state, { type: 'build_lobby', slot: 0 }, config).ok &&
@@ -396,7 +396,7 @@ export const tests = {
 
   'a selected comparison floor exposes its combined placement signals'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     config.building.startFloors = 20;
     const state = boot(config, 46);
     assert(applyAction(state, { type: 'build_lobby', slot: 0 }, config).ok &&
@@ -478,9 +478,9 @@ export const tests = {
   'placement warning distinguishes floor choice from infrastructure investment'() {
     const readyState = boot(CONFIG, 1);
     const lowMoneyState = boot(CONFIG, 2);
-    lowMoneyState.money = 1000;
+    lowMoneyState.money = 100000;
     const blockedState = boot(CONFIG, 3);
-    blockedState.money = 50000;
+    blockedState.money = 5000000;
     blockedState.units = Array.from({ length: blockedState.floors - 1 }, (_, floorIndex) =>
       Array.from({ length: CONFIG.building.slotsPerFloor }, (_, slot) => ({
         id: floorIndex * CONFIG.building.slotsPerFloor + slot,
@@ -504,12 +504,12 @@ export const tests = {
         medicalCovered: true,
         medicalPenalty: 0,
       },
-      }, readyState, CONFIG) === 'or keep F3 and invest in shaft $1,260 (ready); cafeteria $1,800 (ready); parking $2,200 (ready) · smallest useful: shaft $1,260 (ready)' &&
+      }, readyState, CONFIG) === 'or keep F3 and invest in shaft $126,000 (ready); cafeteria $180,000 (ready); parking $220,000 (ready) · smallest useful: shaft $126,000 (ready)' &&
       tenantPlacementInvestmentReason({
         available: true,
         floor: 3,
         evaluation: { accessPenalty: 9, foodCovered: false, foodPenalty: 12 },
-      }, lowMoneyState, CONFIG) === 'or keep F3 and invest in shaft $1,260 (save $260 more); cafeteria $1,800 (save $800 more) · smallest useful: shaft $1,260 (save $260 more)' &&
+      }, lowMoneyState, CONFIG) === 'or keep F3 and invest in shaft $126,000 (save $26,000 more); cafeteria $180,000 (save $80,000 more) · smallest useful: shaft $126,000 (save $26,000 more)' &&
       tenantPlacementInvestmentReason({
         available: true,
         floor: 3,
@@ -519,8 +519,8 @@ export const tests = {
         available: true,
         floor: 3,
         evaluation: { accessPenalty: 9, foodCovered: false, foodPenalty: 12, parkingCovered: false, parkingPenalty: 10 },
-      }, blockedState, CONFIG) === 'or keep F3 and invest in shaft $1,260 (no open covered floor); cafeteria $1,800 (no open covered floor); parking $2,200 (no open covered floor)' &&
-      smallest?.kind === 'shaft' && smallest.text === 'shaft $1,260 (ready)' &&
+      }, blockedState, CONFIG) === 'or keep F3 and invest in shaft $126,000 (no open covered floor); cafeteria $180,000 (no open covered floor); parking $220,000 (no open covered floor)' &&
+      smallest?.kind === 'shaft' && smallest.text === 'shaft $126,000 (ready)' &&
       tenantPlacementInvestmentReason({
         available: true,
         floor: 2,
@@ -532,7 +532,7 @@ export const tests = {
 
   'placement investment preview reports the expected room-evaluation gain'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     const routedState = boot(config, 47);
     assert(applyAction(routedState, { type: 'build_lobby', slot: 0 }, config).ok &&
       applyAction(routedState, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok,
@@ -579,7 +579,7 @@ export const tests = {
 
   'occupied room evaluation exposes first-day stress drift'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     const state = boot(config, 49);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok &&
       applyAction(state, { type: 'build_unit', kind: 'office', floor: 3 }, config).ok,
@@ -639,7 +639,7 @@ export const tests = {
 
   'tenant demand quality rewards useful access and required services'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     config.stars.tiers[1].pop = 0;
     config.occupancy.experienceDemandWeight = 8;
     const state = boot(config, 121);
@@ -670,7 +670,7 @@ export const tests = {
 
   'leasing forecast applies stable route access confidence separately from appeal and reputation'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     config.stars.tiers[1].pop = 0;
     config.occupancy.transportAccessDemandWeight = 2;
     const state = boot(config, 124);
@@ -766,7 +766,7 @@ export const tests = {
 
   'vacancy appeal follow-up compares the next closed day with the action baseline'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     const state = boot(config, 124);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok &&
       applyAction(state, { type: 'build_unit', kind: 'office', floor: 3 }, config).ok,
@@ -803,7 +803,7 @@ export const tests = {
 
   'service appeal follow-up measures the targeted room after the next close'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     const state = boot(config, 125);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok &&
       applyAction(state, { type: 'build_unit', kind: 'office', floor: 3 }, config).ok,
@@ -830,7 +830,7 @@ export const tests = {
 
   'vacancy appeal follow-up names the tenant type that filled the room'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     const state = boot(config, 126);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok &&
       applyAction(state, { type: 'build_unit', kind: 'office', floor: 3 }, config).ok,
@@ -863,7 +863,7 @@ export const tests = {
 
   'vacancy demand summary explains the likely tenant and ranking'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     const state = boot(config, 122);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok &&
       applyAction(state, { type: 'build_unit', kind: 'office', floor: 3 }, config).ok,
@@ -880,7 +880,7 @@ export const tests = {
 
   'vacancy demand inspection exposes the current transport-access signal'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     config.stars.tiers[1].pop = 0;
     const state = boot(config, 123);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok &&
@@ -900,7 +900,7 @@ export const tests = {
 
   'leasing forecast keeps candidate access confidence separate for ranking'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     config.stars.tiers[1].pop = 0;
     const state = boot(config, 124);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok &&
@@ -1067,13 +1067,13 @@ export const tests = {
   'first-session pressure warning preserves a recovery window'() {
     const config = structuredClone(CONFIG);
     const live = firstSessionPressureWarning({
-      money: 2500,
+      money: 250000,
       people: [{ state: 'waiting' }],
       units: [{ kind: 'office', occupied: true, stress: 20 }],
       shafts: [{ cars: [{}] }],
     }, config, 'S1');
     const shortfall = firstSessionPressureWarning({
-      money: 1000,
+      money: 100000,
       people: [{ state: 'waiting' }],
       units: [{ kind: 'office', occupied: true, stress: 0 }],
       shafts: [{ cars: [{}] }],
@@ -1085,8 +1085,8 @@ export const tests = {
     }, config, 'S1');
     const quiet = firstSessionPressureWarning({ people: [], units: [], shafts: [] }, config, 'S1');
     assert(live.active && live.waiting === 1 && live.stressedUnits === 1 && live.affordable && live.detail.includes('select + car, then click S1') &&
-      live.detail.includes('car $1,400') && live.detail.includes('cash $2,500') && live.detail.includes('affordable now') &&
-      shortfall.detail.includes('need $400 more') &&
+      live.detail.includes('car $140,000') && live.detail.includes('cash $250,000') && live.detail.includes('affordable now') &&
+      shortfall.detail.includes('need $40,000 more') &&
       !answered.active && !quiet.active,
       'first-session pressure warning did not preserve or clear the recovery window correctly');
   },
@@ -1315,7 +1315,8 @@ export const tests = {
       projection.additionalCars === CONFIG.elevator.maxCarsPerShaft - 1 && projection.additionalCapacity === CONFIG.elevator.capacity * (CONFIG.elevator.maxCarsPerShaft - 1) &&
       projection.carCost === CONFIG.costs.car &&
       existingCapacity.currentCars === 2 && existingCapacity.currentCapacity === CONFIG.elevator.capacity * 2 &&
-      existingCapacity.remainingCars === CONFIG.elevator.maxCarsPerShaft - 2 && existingCapacity.remainingCapacity === CONFIG.elevator.capacity &&
+      existingCapacity.remainingCars === CONFIG.elevator.maxCarsPerShaft - 2 &&
+      existingCapacity.remainingCapacity === CONFIG.elevator.capacity * (CONFIG.elevator.maxCarsPerShaft - 2) &&
       existingCapacity.maxCapacity === CONFIG.elevator.capacity * CONFIG.elevator.maxCarsPerShaft && existingCapacity.carCost === CONFIG.costs.car &&
       shorter.detail.includes('shorter span through F2') && unavailable.disabled === true &&
       unavailable.detail.includes('no clear shaft column'),
@@ -1328,7 +1329,8 @@ export const tests = {
       people: Array.from({ length: 12 }, () => ({ state: 'waiting', shaft: 7 })),
     };
     const projection = shaftQueueReliefProjection(shaft, state, CONFIG);
-    const full = shaftQueueReliefProjection({ id: 7, cars: [{}, {}, {}] }, state, CONFIG);
+    const maxedCars = Array.from({ length: CONFIG.elevator.maxCarsPerShaft }, () => ({}));
+    const full = shaftQueueReliefProjection({ id: 7, cars: maxedCars }, state, CONFIG);
     assert(projection.queue === 12 && projection.currentCars === 1 && projection.nextCars === 2 &&
       projection.currentWaitSeconds > projection.nextWaitSeconds && projection.reliefSeconds > 0 &&
       projection.available === true && full.available === false &&
@@ -1341,7 +1343,7 @@ export const tests = {
       shafts: [
         { id: 7, cars: [{}] },
         { id: 8, cars: [{}] },
-        { id: 9, cars: [{}, {}, {}] },
+        { id: 9, cars: Array.from({ length: CONFIG.elevator.maxCarsPerShaft }, () => ({})) },
       ],
       people: [
         ...Array.from({ length: 12 }, () => ({ state: 'waiting', shaft: 7 })),
@@ -1502,7 +1504,7 @@ export const tests = {
       escalators: [],
       facilities: [],
       units: [],
-      money: 100000,
+      money: 10000000,
     };
     const readyState = {
       ...base,
@@ -1517,7 +1519,10 @@ export const tests = {
     const poor = localOverflowInterventionNextAction(comparison, { kind: 'escalator', id: 4, bottom: 0, top: 3 }, { ...base, money: 0 }, CONFIG);
     const blocked = localOverflowInterventionNextAction(comparison, { kind: 'escalator', id: 4, bottom: 0, top: 3 }, {
       ...base,
-      units: Array.from({ length: 32 }, (_, index) => ({ floor: Math.floor(index / 8), slot: index % 8 })),
+      units: Array.from({ length: 4 * CONFIG.building.slotsPerFloor }, (_, index) => ({
+        floor: Math.floor(index / CONFIG.building.slotsPerFloor),
+        slot: index % CONFIG.building.slotsPerFloor,
+      })),
     }, CONFIG);
     assert(action.key === 'add-capacity' && action.kind === 'escalator' && action.detail.includes('still pressured') &&
       monitor.key === 'monitor' && monitor.kind === null && ready.available && ready.affordable &&
@@ -1718,31 +1723,31 @@ export const tests = {
     }, CONFIG);
     const shaft = transportResponseRecommendation({
       ...base,
-      shafts: [{ id: 7, cars: [{}, {}, {}] }],
+      shafts: [{ id: 7, cars: Array.from({ length: CONFIG.elevator.maxCarsPerShaft }, () => ({})) }],
       people: Array.from({ length: 8 }, () => ({ state: 'waiting', shaft: 7, from: 3, to: 0 })),
     }, CONFIG);
     const local = transportResponseRecommendation({
       ...base,
       units: [
-        ...Array.from({ length: 7 }, (_, slot) => ({ floor: 0, slot: slot + 1 })),
-        ...Array.from({ length: 7 }, (_, slot) => ({ floor: 1, slot: slot + 1 })),
+        ...Array.from({ length: CONFIG.building.slotsPerFloor - 1 }, (_, slot) => ({ floor: 0, slot: slot + 1 })),
+        ...Array.from({ length: CONFIG.building.slotsPerFloor - 1 }, (_, slot) => ({ floor: 1, slot: slot + 1 })),
       ],
       stairs: [{ bottom: 0, top: 3, slot: 1 }],
-      shafts: [{ id: 7, cars: [{}, {}, {}], slot: 0, bottom: 0, top: 3 }],
+      shafts: [{ id: 7, cars: Array.from({ length: CONFIG.elevator.maxCarsPerShaft }, () => ({})), slot: 0, bottom: 0, top: 3 }],
       people: Array.from({ length: 8 }, () => ({ state: 'waiting', shaft: 7, from: 3, to: 0 })),
     }, CONFIG);
     const unaffordableCar = transportResponseRecommendation({
       ...base,
       money: 0,
-      log: [{ net: 700 }],
+      log: [{ net: 70000 }],
       shafts: [{ id: 7, cars: [{}] }],
       people: Array.from({ length: 8 }, () => ({ state: 'waiting', shaft: 7, from: 3, to: 0 })),
     }, CONFIG);
     const unaffordableShaft = transportResponseRecommendation({
       ...base,
       money: 0,
-      log: [{ net: 1000 }],
-      shafts: [{ id: 7, cars: [{}, {}, {}] }],
+      log: [{ net: 100000 }],
+      shafts: [{ id: 7, cars: Array.from({ length: CONFIG.elevator.maxCarsPerShaft }, () => ({})) }],
       people: Array.from({ length: 8 }, () => ({ state: 'waiting', shaft: 7, from: 3, to: 0 })),
     }, CONFIG);
     const noRunway = transportResponseRecommendation({
@@ -1752,10 +1757,10 @@ export const tests = {
       people: Array.from({ length: 8 }, () => ({ state: 'waiting', shaft: 7, from: 3, to: 0 })),
     }, CONFIG);
     assert(car.key === 'car' && car.kind === 'car' && car.basis === 'live queue' &&
-      car.detail.includes('Cost $1,400') && car.detail.includes('+12 riders per dispatch') &&
+      car.detail.includes('Cost $140,000') && car.detail.includes('+12 riders per dispatch') &&
       shaft.key === 'shaft' && shaft.kind === 'shaft' && shaft.label.includes('second shaft') &&
       shaft.targetFloor === 3 && shaft.targetFloors.includes(3) && shaft.detail.includes('F3') &&
-      shaft.detail.includes('Cost $1,380') && shaft.detail.includes('includes 1 car / 12 riders per dispatch') &&
+      shaft.detail.includes('Cost $138,000') && shaft.detail.includes('includes 1 car / 12 riders per dispatch') &&
       local.key === 'local' && local.kind === 'stairs' && local.basis === 'local route' && local.affordable === true &&
       local.targetFloor === 3 && local.routeBottom === 0 && local.routeTop === 3 && local.routeSlot === 1 &&
       local.routeOccupancy === 0 && local.routeCapacity === CONFIG.stairs.capacity &&
@@ -1852,7 +1857,7 @@ export const tests = {
     assert(mixed.key === 'mixed' && mixed.localFloors.includes(3) && mixed.buildableLocalFloors.includes(5) && mixed.elevatorFloors.includes(13) &&
       mixed.localBuildKind === 'escalator' && mixed.detail.includes('Use stairs for F3') && mixed.detail.includes('Build an escalator to serve F5') &&
       mixed.localBuildLegalTop === 11 && mixed.localBuildTargetTop === 5 && mixed.localBuildCost === CONFIG.costs.escalator + CONFIG.costs.escalatorPerFloor * 5 &&
-      mixed.detail.includes('legal span F0–F11') && mixed.detail.includes('estimated cost to F5 $3,300') &&
+      mixed.detail.includes('legal span F0–F11') && mixed.detail.includes('estimated cost to F5 $330,000') &&
       mixed.detail.includes('Build or extend an elevator shaft to reach F13') &&
       clear.key === 'clear' && clear.label === 'no missing route' &&
       localQueue.key === 'clear' && localQueue.detail.includes('elevator or local route'),
@@ -1863,14 +1868,14 @@ export const tests = {
     const response = transportResponseRecommendation({
       floors: 4,
       units: [
-        ...Array.from({ length: 7 }, (_, slot) => ({ floor: 0, slot: slot + 1 })),
-        ...Array.from({ length: 7 }, (_, slot) => ({ floor: 1, slot: slot + 1 })),
+        ...Array.from({ length: CONFIG.building.slotsPerFloor - 1 }, (_, slot) => ({ floor: 0, slot: slot + 1 })),
+        ...Array.from({ length: CONFIG.building.slotsPerFloor - 1 }, (_, slot) => ({ floor: 1, slot: slot + 1 })),
       ],
       facilities: [],
       lobby: { slot: 0, slots: [0] },
       stairs: [{ bottom: 0, top: 3, slot: 1 }],
       escalators: [{ bottom: 0, top: 3, slot: 2 }],
-      shafts: [{ id: 7, slot: 0, bottom: 0, top: 3, cars: [{}, {}, {}] }],
+      shafts: [{ id: 7, slot: 0, bottom: 0, top: 3, cars: Array.from({ length: CONFIG.elevator.maxCarsPerShaft }, () => ({})) }],
       people: Array.from({ length: 8 }, () => ({ state: 'waiting', shaft: 7, from: 3, to: 0 })),
     }, CONFIG);
     assert(response.key === 'local' && response.kind === 'escalator' &&
@@ -1882,10 +1887,10 @@ export const tests = {
   'local transport response skips a saturated route'() {
     const base = {
       floors: 4,
-      units: Array.from({ length: 7 }, (_, slot) => ({ floor: 3, slot: slot + 1 })),
+      units: Array.from({ length: CONFIG.building.slotsPerFloor - 1 }, (_, slot) => ({ floor: 3, slot: slot + 1 })),
       facilities: [],
       lobby: { slot: 0, slots: [0] },
-      shafts: [{ id: 7, slot: 0, bottom: 0, top: 3, cars: [{}, {}, {}] }],
+      shafts: [{ id: 7, slot: 0, bottom: 0, top: 3, cars: Array.from({ length: CONFIG.elevator.maxCarsPerShaft }, () => ({})) }],
       people: Array.from({ length: 8 }, () => ({ state: 'waiting', shaft: 7, from: 3, to: 0 })),
     };
     const alternate = transportResponseRecommendation({
@@ -1915,12 +1920,12 @@ export const tests = {
   'transport response uses sustained local-route history'() {
     const state = {
       floors: 4,
-      units: Array.from({ length: 7 }, (_, slot) => ({ floor: 3, slot: slot + 1 })),
+      units: Array.from({ length: CONFIG.building.slotsPerFloor - 1 }, (_, slot) => ({ floor: 3, slot: slot + 1 })),
       facilities: [],
       lobby: { slot: 0, slots: [0] },
       stairs: [{ id: 3, bottom: 0, top: 3, slot: 1 }],
       escalators: [{ id: 4, bottom: 0, top: 3, slot: 2 }],
-      shafts: [{ id: 7, slot: 0, bottom: 0, top: 3, cars: [{}, {}, {}] }],
+      shafts: [{ id: 7, slot: 0, bottom: 0, top: 3, cars: Array.from({ length: CONFIG.elevator.maxCarsPerShaft }, () => ({})) }],
       people: Array.from({ length: 8 }, () => ({ state: 'waiting', shaft: 7, from: 3, to: 0 })),
     };
     const history = new Map([['stairs:3', [
@@ -1943,7 +1948,7 @@ export const tests = {
       lobby: { slot: 0, slots: [0] },
       stairs: [{ id: 3, bottom: 0, top: 3, slot: 1 }],
       escalators: [],
-      shafts: [{ id: 7, slot: 0, bottom: 0, top: 3, cars: [{}, {}, {}] }],
+      shafts: [{ id: 7, slot: 0, bottom: 0, top: 3, cars: Array.from({ length: CONFIG.elevator.maxCarsPerShaft }, () => ({})) }],
       people: [],
       log: [
         { day: 1, localOverflowAverage: 0.4, localOverflowPeak: 1,
@@ -1963,12 +1968,12 @@ export const tests = {
   'second-shaft response does not promise coverage beyond the legal span'() {
     const state = {
       floors: 4,
-      units: Array.from({ length: 7 }, (_, slot) => ({ floor: 3, slot: slot + 1 })),
+      units: Array.from({ length: CONFIG.building.slotsPerFloor - 1 }, (_, slot) => ({ floor: 3, slot: slot + 1 })),
       facilities: [],
       lobby: { slot: 0, slots: [0] },
       stairs: [],
       escalators: [],
-      shafts: [{ id: 7, slot: 0, bottom: 0, top: 3, cars: [{}, {}, {}] }],
+      shafts: [{ id: 7, slot: 0, bottom: 0, top: 3, cars: Array.from({ length: CONFIG.elevator.maxCarsPerShaft }, () => ({})) }],
       people: Array.from({ length: 8 }, () => ({ state: 'waiting', shaft: 7, from: 3, to: 0 })),
     };
     const response = transportResponseRecommendation(state, CONFIG);
@@ -1991,7 +1996,7 @@ export const tests = {
     const shaft = { id: 7, cars: [{}] };
     const state = { people: Array.from({ length: 12 }, () => ({ state: 'waiting', shaft: 7 })) };
     const comparison = shaftInvestmentComparison(shaft, 0, 3, state, CONFIG);
-    const full = shaftInvestmentComparison({ id: 7, cars: [{}, {}, {}] }, 0, 3, state, CONFIG);
+    const full = shaftInvestmentComparison({ id: 7, cars: Array.from({ length: CONFIG.elevator.maxCarsPerShaft }, () => ({})) }, 0, 3, state, CONFIG);
     assert(comparison.shaftFloors === 4 && comparison.shaftCapacityGain === CONFIG.elevator.capacity &&
       comparison.shaftCost === CONFIG.costs.shaft + CONFIG.costs.shaftPerFloor * 4 &&
       comparison.carAvailable === true && comparison.carCapacityGain === CONFIG.elevator.capacity &&
@@ -2011,7 +2016,7 @@ export const tests = {
       shafts: [{ id: 7, bottom: 0, top: 3, slot: 1, cars: [{}] }],
       people: Array.from({ length: 8 }, () => ({ state: 'waiting', shaft: 7, from: 3, to: 0 })),
       log: [],
-      money: 5000,
+      money: 500000,
     };
     const response = transportResponseRecommendation(state, CONFIG);
     const choices = transportInvestmentChoices(state, CONFIG, response);
@@ -2020,12 +2025,12 @@ export const tests = {
       choices.car.nextCapacity === choices.car.currentCapacity + CONFIG.elevator.capacity &&
       choices.car.coveredTrips === 8 && choices.car.elevatorTripsRelieved === 8 &&
       choices.car.firstWaveCapacity === CONFIG.elevator.capacity && choices.car.firstWaveTrips === 8 && choices.car.overflowTrips === 0 &&
-      choices.car.costPerCoveredWait === 175 &&
+      choices.car.costPerCoveredWait === 17500 &&
       choices.car.coverageLabel.includes('coverage tie') &&
       choices.shaft.available && choices.shaft.cost === CONFIG.costs.shaft + CONFIG.costs.shaftPerFloor * 4 &&
       choices.shaft.startingCapacity === CONFIG.elevator.capacity && choices.shaft.coveredTrips === 8 &&
       choices.shaft.firstWaveCapacity === CONFIG.elevator.capacity && choices.shaft.firstWaveTrips === 8 && choices.shaft.overflowTrips === 0 &&
-      choices.shaft.elevatorTripsRelieved === 8 && choices.shaft.costPerCoveredWait === 172.5 &&
+      choices.shaft.elevatorTripsRelieved === 8 && choices.shaft.costPerCoveredWait === 17250 &&
       choices.shaft.coverageLabel.includes('coverage tie') && choices.local.available &&
       choices.local.kind === 'stairs' && choices.local.capacity === CONFIG.stairs.capacity &&
       choices.local.speedSecondsPerFloor === CONFIG.stairs.walkSecondsPerFloor &&
@@ -2034,13 +2039,13 @@ export const tests = {
       choices.local.coveredTrips === 8 && choices.local.elevatorTripsRelieved === 8 &&
       choices.local.localTripsRelieved === 0 && choices.local.unassignedTripsRelieved === 0 &&
       choices.local.firstWaveCapacity === CONFIG.stairs.capacity && choices.local.firstWaveTrips === CONFIG.stairs.capacity && choices.local.overflowTrips === 2 &&
-      choices.local.averageSeconds > 0 && choices.local.costPerCoveredWait === 170 &&
+      choices.local.averageSeconds > 0 && choices.local.costPerCoveredWait === 17000 &&
       choices.local.coverageLabel.includes('coverage tie') &&
       choices.localOptions.length === 2 && choices.localOptions[1].kind === 'escalator' &&
       choices.localOptions[1].speedSecondsPerFloor === CONFIG.escalator.travelSecondsPerFloor &&
       choices.localOptions[1].capacity === CONFIG.escalator.capacity &&
       choices.localOptions[1].cost === CONFIG.costs.escalator + CONFIG.costs.escalatorPerFloor * 3 &&
-      choices.localOptions[1].costPerCoveredWait === 337.5 &&
+      choices.localOptions[1].costPerCoveredWait === 33750 &&
       choices.localOptions[1].coveredTrips === 8 && choices.localOptions[1].elevatorTripsRelieved === 8 &&
       choices.localOptions[1].firstWaveCapacity === CONFIG.escalator.capacity && choices.localOptions[1].firstWaveTrips === 8 && choices.localOptions[1].overflowTrips === 0,
       'transport investment choices did not put comparable current-demand coverage beside each option');
@@ -2049,7 +2054,7 @@ export const tests = {
       'transport investment choices disappeared while the shaft tool was selected');
     const fullCarState = {
       ...state,
-      shafts: [{ ...state.shafts[0], cars: [{}, {}, {}] }],
+      shafts: [{ ...state.shafts[0], cars: Array.from({ length: CONFIG.elevator.maxCarsPerShaft }, () => ({})) }],
       people: [],
     };
     const blockedCar = transportInvestmentChoices(fullCarState, CONFIG, { kind: 'shaft' });
@@ -2075,10 +2080,10 @@ export const tests = {
     }, CONFIG, null, 2);
     const blockedShaft = routePlacementStatus('shaft', 0, 3, blocked, CONFIG);
     const readyCar = routePlacementStatus('car', null, null, base, CONFIG, { cars: [{ riders: [] }] });
-    const fullCar = routePlacementStatus('car', null, null, base, CONFIG, { cars: [{}, {}, {}] });
+    const fullCar = routePlacementStatus('car', null, null, base, CONFIG, { cars: Array.from({ length: CONFIG.elevator.maxCarsPerShaft }, () => ({})) });
     const alternateState = {
       ...base,
-      shafts: [{ id: 10, cars: [{}, {}, {}] }, { id: 11, cars: [{}] }],
+      shafts: [{ id: 10, cars: Array.from({ length: CONFIG.elevator.maxCarsPerShaft }, () => ({})) }, { id: 11, cars: [{}] }],
     };
     const fullWithAlternate = routePlacementStatus('car', null, null, alternateState, CONFIG, alternateState.shafts[0]);
     assert(readyShaft.key === 'ready' && readySelectedShaft.key === 'ready' && readySelectedShaft.slot === 2 &&
@@ -2365,7 +2370,7 @@ export const tests = {
 
   'replacement previews exclude compared floors and keep open alternatives'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     config.building.startFloors = 4;
     const state = boot(config, 44);
     assert(applyAction(state, { type: 'build_lobby', slot: 0 }, config).ok &&
@@ -2397,7 +2402,7 @@ export const tests = {
 
   'replacement previews rank combined decision strength before score'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     config.building.startFloors = 20;
     config.evaluation.relistMinScore = 68.5;
     const state = boot(config, 45);
@@ -2420,7 +2425,7 @@ export const tests = {
 
   'room evaluation combines access and stress'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     const state = boot(config, 31);
     const shaft = applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config);
     assert(shaft.ok, shaft.reason);
@@ -2440,7 +2445,7 @@ export const tests = {
 
   'higher floors receive a capped view desirability bonus'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     config.building.startFloors = 20;
     const state = boot(config, 33);
     const shaft = applyAction(state, { type: 'build_shaft', bottom: 0, top: 19 }, config);
@@ -2461,7 +2466,7 @@ export const tests = {
 
   'tenant floor preference is explicit and bounded'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     config.building.startFloors = 20;
     const state = boot(config, 35);
     const shaft = applyAction(state, { type: 'build_shaft', bottom: 0, top: 19 }, config);
@@ -2483,7 +2488,7 @@ export const tests = {
 
   'mixed-use neighbors add one bounded layout bonus'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     config.stars.tiers[1].pop = 0;
     config.stars.tiers[2].pop = 0;
     const state = boot(config, 36);
@@ -2506,7 +2511,7 @@ export const tests = {
 
   'cafeteria coverage adds one clear amenity bonus without stacking'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     const state = boot(config, 34);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok,
       'could not build cafeteria evaluation shaft');
@@ -2528,7 +2533,7 @@ export const tests = {
 
   'poor room evaluation blocks re-letting without a shaft'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     const state = boot(config, 32);
     const unit = applyAction(state, { type: 'build_unit', kind: 'office', floor: 3 }, config);
     assert(unit.ok, unit.reason);

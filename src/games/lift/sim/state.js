@@ -53,6 +53,20 @@ export function blankDayStats() {
 
 export const nid = (s) => s.nextId++;
 
+/**
+ * Per-tenant departure jitter, drawn at the moment a room becomes occupied.
+ * Desynchronizes the mass exodus (spec/lift-vision.md, boom-bust dampers):
+ * with jitter, marginal tenants leave as a visible leak instead of a
+ * synchronized cliff. The rng stream is consumed ONLY when a knob is on, so
+ * existing seeds replay identically with the dampers off.
+ */
+export function assignTenantJitter(state, unit, config) {
+  const range = Math.max(0, Number(config.occupancy?.vacateJitterRange) || 0);
+  const graceDays = Math.max(0, Math.floor(Number(config.occupancy?.graceJitterDays) || 0));
+  unit.vacateJitter = range > 0 ? 1 + (state.rng.next() * 2 - 1) * range : 1;
+  unit.graceJitter = graceDays > 0 ? state.rng.int(graceDays + 1) : 0;
+}
+
 export function population(state) {
   let p = 0;
   for (const u of state.units) if (u.occupied) p += u.heads;
@@ -99,10 +113,59 @@ export function freeSlot(state, config, floor) {
   return -1;
 }
 
-/** Shafts that can carry a rider from `a` to `b`. */
+/**
+ * Shafts that can carry a rider from `a` to `b` directly, in one leg. An
+ * express shaft only stops at its own bottom and top — anything it spans
+ * without landing on doesn't count as served, the whole point of one is to
+ * skip those floors.
+ */
 export function servingShafts(state, a, b) {
   const lo = Math.min(a, b), hi = Math.max(a, b);
-  return state.shafts.filter((s) => s.bottom <= lo && s.top >= hi);
+  return state.shafts.filter((s) => {
+    if (s.bottom > lo || s.top < hi) return false;
+    if (s.kind === 'express') return s.bottom === lo && s.top === hi;
+    return true;
+  });
+}
+
+/**
+ * A route from `a` to `b` via any chain of sky-lobby transfers, up to
+ * `maxHops` legs. Transfer floors are restricted to an existing shaft's own
+ * endpoint — that is what makes a floor a deliberate sky lobby rather than
+ * an arbitrary stop, matching how a player actually builds one (a shaft
+ * ending where the next one begins). A tower with three zones needs two
+ * transfers to reach its top zone from the lobby; capping local-shaft-only
+ * single-tier towers at one hop would make a second sky lobby pointless.
+ *
+ * Returns the floor sequence [a, X1, X2, ..., b], or null if no chain
+ * within maxHops connects them. Breadth-first, so the result uses the
+ * fewest transfers possible — not exhaustive route-scoring, just enough to
+ * make a well-placed chain of sky lobbies actually work.
+ */
+export function multiHopRoute(state, a, b, maxHops = 3) {
+  if (servingShafts(state, a, b).length) return [a, b];
+  const nodes = new Set([a, b]);
+  for (const s of state.shafts) { nodes.add(s.bottom); nodes.add(s.top); }
+
+  const visited = new Set([a]);
+  let frontier = [[a]];
+  for (let hop = 0; hop < maxHops; hop++) {
+    const next = [];
+    for (const path of frontier) {
+      const last = path[path.length - 1];
+      for (const floor of nodes) {
+        if (floor === last || visited.has(floor)) continue;
+        if (!servingShafts(state, last, floor).length) continue;
+        const extended = [...path, floor];
+        if (floor === b) return extended;
+        visited.add(floor);
+        next.push(extended);
+      }
+    }
+    frontier = next;
+    if (!frontier.length) break;
+  }
+  return null;
 }
 
 export function pushEvent(state, kind, data = {}) {

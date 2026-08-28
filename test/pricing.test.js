@@ -8,7 +8,7 @@ const assert = (c, m) => { if (!c) throw new Error(m); };
 export const tests = {
   'rent is a visible evaluation tradeoff'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     const state = boot(config, 41);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok, 'could not build shaft');
     assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 3 }, config).ok, 'could not build office');

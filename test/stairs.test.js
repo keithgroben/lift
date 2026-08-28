@@ -17,7 +17,7 @@ function setup(config, seed) {
 export const tests = {
   'stairs reserve a continuous column and cannot overlap a shaft'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     const state = setup(config, 301);
     const built = applyAction(state, { type: 'build_stairs', bottom: 0, top: 3 }, config);
     assert(built.ok, built.reason);
@@ -34,7 +34,7 @@ export const tests = {
 
   'stairs deliver a trip without an elevator car'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     const state = setup(config, 302);
     const built = applyAction(state, { type: 'build_stairs', bottom: 0, top: 3 }, config);
     assert(built.ok, built.reason);
@@ -65,7 +65,7 @@ export const tests = {
 
   'stairs form a local queue when simultaneous occupancy is full'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     const state = setup(config, 303);
     const built = applyAction(state, { type: 'build_stairs', bottom: 0, top: 3 }, config);
     assert(built.ok, built.reason);

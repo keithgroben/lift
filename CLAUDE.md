@@ -35,8 +35,9 @@ This file is the only agent-instruction file in the repo. Do not create
 ## Commands
 
 ```bash
-npm test                               # 20 tests, zero deps
-npm run play                           # http://localhost:5173 — game picker
+npm test                               # 247 tests
+npm run play                           # http://localhost:5173 — game picker (bloom, and lift's non-UI parts)
+npm run dev                            # http://localhost:5174 — Vite, needed for lift's UI (Solid + TS)
 node harness/run.js lift naive 40 1    # one run: game, policy, days, seed
 node harness/sweep.js bloom 60 5       # all policies x seeds -> out/<game>-sweep.csv
 node harness/tune.js bloom plant.growthCurve 1 2 3 4
@@ -48,8 +49,13 @@ harness knows **nothing** about a game beyond that manifest — if you catch
 yourself special-casing a game name inside `harness/`, the logic belongs in the
 manifest instead.
 
-No dependencies, no build step, Node 20+. `npm install` does nothing and is not
-needed.
+`sim/` and `harness/` stay zero-dependency, zero-build, Node 20+ — that
+invariant is load-bearing (see "the one architectural rule" above) and
+`npm install` must never become required to run a test or a headless sweep.
+Lift's `ui/` layer is the one exception: as of the Solid migration it needs
+`npm install` and Vite (`npm run dev`) to run in a browser, because it's
+TypeScript + JSX now. Bloom's UI is untouched and still zero-build via
+`npm run play`.
 
 ## The two questions, and which one you can answer
 
@@ -98,8 +104,16 @@ broken instrument until proven otherwise.
 
 ## Conventions
 
-- Plain ES modules. Same files run in the browser and in Node — no bundler, no
-  transpile, no `vm` sandbox trick.
+- Plain ES modules for `sim/**` and `harness/**`: the same files run in the
+  browser and in Node — no bundler, no transpile, no `vm` sandbox trick. This
+  is what keeps the headless harness honest; do not let a build step creep
+  into anything under `sim/`.
+- Lift's `ui/` is the exception: it's mid-migration to Solid + TypeScript,
+  built with Vite (`npm run dev`). New HUD code goes in `.tsx` under
+  `src/games/lift/ui/`; `app.js` still owns everything not yet migrated and
+  pushes computed values into `ui/hud/store.ts`'s `setHud(...)` for the parts
+  that are. `render/canvas.js` stays plain JS — canvas drawing is imperative
+  already and doesn't benefit from a reactive framework.
 - Fixed timestep everywhere. The sim never sees a variable `dt`.
 - Comments explain *why*, especially where a number was chosen by a sweep.
 - `out/` and `node_modules/` are gitignored. `replay/` is committed.

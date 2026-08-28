@@ -8,7 +8,7 @@ const assert = (c, m) => { if (!c) throw new Error(m); };
 export const tests = {
   'security desk coverage improves nearby tenant evaluation'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     config.building.startFloors = 7;
     const state = boot(config, 91);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 6 }, config).ok,
@@ -42,7 +42,7 @@ export const tests = {
 
   'security demand follows unit needs rather than every facility'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     const state = boot(config, 92);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok,
       'could not build shaft');

@@ -1,6 +1,6 @@
-import { nid, freeSlot, slotsUsed, unlocked, pushEvent } from './state.js';
+import { nid, freeSlot, slotsUsed, unlocked, pushEvent, assignTenantJitter } from './state.js';
 import { clampRentLevel, rentForLevel } from './pricing.js';
-import { unitEvaluation } from './evaluation.js';
+import { unitEvaluation, leasingForecast } from './evaluation.js';
 
 /**
  * The ONLY way state changes outside of step(). Every player click and every
@@ -136,6 +136,18 @@ const ACTIONS = {
     if (a.floor < 1 || a.floor >= state.floors) return { ok: false, reason: 'no such floor' };
     const slot = a.slot ?? freeSlot(state, config, a.floor);
     if (slot < 0 || slotsUsed(state, a.floor).has(slot)) return { ok: false, reason: 'floor is full' };
+    // Tenant demand is capped at the tower's current move-in capacity, so
+    // rooms built faster than that just sit empty racking up vacant-unit
+    // upkeep — a bankruptcy trap that has nothing to do with elevator
+    // throughput. Gating construction on the vacancy backlog relative to
+    // TODAY's capacity (which grows with the tower) keeps growth paced to
+    // actual leasing speed without capping every tower at the same size.
+    const vacantRentable = state.units.filter((existing) => !existing.occupied).length;
+    const dailyCapacity = Math.max(1, leasingForecast(state, config).capacity);
+    const vacancyLimit = dailyCapacity * config.occupancy.vacancyBufferDays;
+    if (vacantRentable >= vacancyLimit) {
+      return { ok: false, reason: 'too many vacant rooms already — let existing space fill before building more' };
+    }
     if (!charge(state, config.costs[kind])) return { ok: false, reason: 'not enough money' };
 
     const rentLevel = state.rentLevels?.[kind] ?? 0;
@@ -144,9 +156,11 @@ const ACTIONS = {
       heads: HEADS(config, kind),
       rentLevel, rent: rentForLevel(config, kind, rentLevel),
       occupied: true, stress: 0, desirabilityPressure: 0, vacantDays: 0,
+      daysOccupied: 0,
       renovated: false,
       servedToday: 0,
     };
+    assignTenantJitter(state, u, config);
     state.units.push(u);
     state.today.movedIn++;
     if (kind === 'condo') { state.money += config.units.condo.salePrice; }
@@ -250,20 +264,31 @@ const ACTIONS = {
     unit.stress = 0;
     unit.desirabilityPressure = 0;
     unit.vacantDays = 0;
+    unit.daysOccupied = 0;
     if (unit.kind === 'hotel') unit.heads = config.units.hotel.guests;
     unit.servedToday = 0;
+    assignTenantJitter(state, unit, config);
     state.today.movedIn++;
     pushEvent(state, 'rerented', { unitKind: unit.kind, floor: unit.floor });
     return { ok: true, id: unit.id, evaluation: evaluation.score };
   },
 
   build_shaft(state, a, config) {
+    const kind = a.kind === 'express' ? 'express' : 'local';
     const bottom = Math.max(0, a.bottom ?? 0);
     const top = Math.min(a.top ?? state.floors - 1, state.floors - 1);
     if (top <= bottom) return { ok: false, reason: 'shaft must span 2+ floors' };
+    // Express only makes sense as a nonstop hop between two floors; a "skip
+    // everything" shaft with no floors to skip is just a slower local one.
+    if (kind === 'express' && top - bottom < 2) {
+      return { ok: false, reason: 'express shafts need at least one floor to skip' };
+    }
     const span = top - bottom + 1;
-    if (span > config.elevator.maxSpan) {
-      return { ok: false, reason: `local shafts cap at ${config.elevator.maxSpan} floors` };
+    const maxSpan = kind === 'express'
+      ? (config.elevator.express?.maxSpan ?? config.elevator.maxSpan)
+      : config.elevator.maxSpan;
+    if (span > maxSpan) {
+      return { ok: false, reason: `${kind} shafts cap at ${maxSpan} floors` };
     }
     // A shaft needs the same free column on every floor it passes through.
     // UI callers may choose a column; headless policies keep the old
@@ -293,17 +318,43 @@ const ACTIONS = {
     }
     if (slot < 0) return { ok: false, reason: requestedSlot == null ? 'no clear column for a shaft' : 'selected shaft column is blocked across this span' };
 
-    const cost = config.costs.shaft + config.costs.shaftPerFloor * span;
+    const cost = kind === 'express'
+      ? (config.costs.expressShaft ?? config.costs.shaft) + (config.costs.expressShaftPerFloor ?? config.costs.shaftPerFloor) * span
+      : config.costs.shaft + config.costs.shaftPerFloor * span;
     if (!charge(state, cost)) return { ok: false, reason: 'not enough money' };
 
     const sh = {
-      id: nid(state), slot, bottom, top,
+      id: nid(state), slot, bottom, top, kind,
       cars: [makeCar(state, bottom)],
       /** Hall calls waiting on each floor, by direction. */
       calls: {},
     };
     state.shafts.push(sh);
-    pushEvent(state, 'shaft_built', { bottom, top, slot });
+    pushEvent(state, 'shaft_built', { bottom, top, slot, kind });
+    return { ok: true, id: sh.id };
+  },
+
+  /**
+   * Shafts can only be extended taller, never shortened — so reconfiguring a
+   * zone (turning a too-tall local run into an express-to-sky-lobby handoff,
+   * or freeing a column for something else) means removing one outright and
+   * rebuilding it, the same "demolish, don't patch" pattern rooms already
+   * use. Refuses to strand anyone mid-ride rather than dropping them.
+   */
+  delete_shaft(state, a, config) {
+    const index = state.shafts.findIndex((sh) => sh.id === a.id);
+    if (index < 0) return { ok: false, reason: 'no such shaft' };
+    const sh = state.shafts[index];
+    const hasRiders = sh.cars.some((car) => car.riders.length > 0);
+    if (hasRiders) return { ok: false, reason: 'shaft has riders in transit' };
+    if (!charge(state, config.costs.shaftDemolition)) return { ok: false, reason: 'not enough money' };
+    state.shafts.splice(index, 1);
+    // Anyone still waiting for this shaft is left alone, not force-resolved:
+    // no car will ever come now, so they ride out the existing abandonAfter
+    // timeout and correctly count as abandoned — same path a genuinely
+    // stranded rider already takes, not a new "deleted out from under them"
+    // special case that would need its own accounting.
+    pushEvent(state, 'shaft_demolished', { bottom: sh.bottom, top: sh.top, slot: sh.slot });
     return { ok: true, id: sh.id };
   },
 
@@ -312,8 +363,11 @@ const ACTIONS = {
     if (!sh) return { ok: false, reason: 'no such shaft' };
     const top = Math.min(a.top, state.floors - 1);
     if (top <= sh.top) return { ok: false, reason: 'not an extension' };
-    if (top - sh.bottom + 1 > config.elevator.maxSpan) {
-      return { ok: false, reason: `local shafts cap at ${config.elevator.maxSpan} floors` };
+    const extendMax = sh.kind === 'express'
+      ? (config.elevator.express?.maxSpan ?? config.elevator.maxSpan)
+      : config.elevator.maxSpan;
+    if (top - sh.bottom + 1 > extendMax) {
+      return { ok: false, reason: `${sh.kind ?? 'local'} shafts cap at ${extendMax} floors` };
     }
     for (let f = sh.top + 1; f <= top; f++) {
       for (const u of state.units) {
@@ -339,12 +393,17 @@ const ACTIONS = {
   add_car(state, a, config) {
     const sh = state.shafts.find((s) => s.id === a.id);
     if (!sh) return { ok: false, reason: 'no such shaft' };
-    if (sh.cars.length >= config.elevator.maxCarsPerShaft) {
+    const express = sh.kind === 'express';
+    const maxCars = express
+      ? (config.elevator.express?.maxCarsPerShaft ?? config.elevator.maxCarsPerShaft)
+      : config.elevator.maxCarsPerShaft;
+    if (sh.cars.length >= maxCars) {
       return { ok: false, reason: 'shaft is full of cars' };
     }
-    if (!charge(state, config.costs.car)) return { ok: false, reason: 'not enough money' };
+    const cost = express ? (config.costs.expressCar ?? config.costs.car) : config.costs.car;
+    if (!charge(state, cost)) return { ok: false, reason: 'not enough money' };
     // Park new cars spread across the span so they answer calls from different ends.
-    const frac = sh.cars.length / config.elevator.maxCarsPerShaft;
+    const frac = sh.cars.length / maxCars;
     sh.cars.push(makeCar(state, sh.bottom + Math.round((sh.top - sh.bottom) * frac)));
     pushEvent(state, 'car_added', { id: sh.id, cars: sh.cars.length });
     return { ok: true };

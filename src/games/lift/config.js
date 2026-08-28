@@ -29,8 +29,18 @@ export const CONFIG = {
   building: {
     startFloors: 4,
     maxFloors: 60,
-    /** Unit slots per floor, excluding the columns consumed by shafts. */
-    slotsPerFloor: 8,
+    /**
+     * Unit slots per floor, excluding the columns consumed by shafts.
+     * 10, up from 8 (2026-08-28): the column-war sweeps showed every zoned-
+     * tower failure mode tracing back to grid scarcity — a real transport
+     * core (2 local columns + 1 express per sky lobby + capacity twins) eats
+     * 35-45% of an 8-slot grid, and the 10-slot A/B posted the best
+     * sustained delivery ever recorded (73-74%, CV 0.25). At 10 slots the
+     * core costs ~the 15-25% overhead the maxed-out win's 75%-coverage bar
+     * always assumed, so the summit becomes geometrically honest. Keith
+     * had already approved widening alongside decorations.
+     */
+    slotsPerFloor: 10,
     /** Elevator shafts occupy a slot column across every floor they span. */
     lobbyFloor: 0,
     /** Default entrance slot used by the playable setup. */
@@ -107,30 +117,42 @@ export const CONFIG = {
     stepMultiplier: 0.25,
   },
 
+  // Dollar figures throughout this config are scaled ×100 from the original
+  // prototype's toy-scale numbers, uniformly, so every ratio this session's
+  // balance work depended on (vacancy gate math, health-gate thresholds,
+  // affordability checks) stays exactly equivalent — only the digit count
+  // changed, aiming for a real-skyscraper-tycoon FEEL rather than any
+  // specific historical figures.
   costs: {
-    floor: 400,
-    office: 1200,
-    condo: 2000,
-    shop: 1500,
-    hotel: 3200,
-    shaft: 900,          // flat
-    shaftPerFloor: 120,  // × floors spanned
-    car: 1400,
-    food: 1800,
-    parking: 2200,
-    medical: 2600,
-    security: 2000,
-    recycling: 1600,
-    renovation: 900,
-    conversion: 1000,
-    demolition: 250,
-    lobby: 500,
-    stairs: 700,
-    stairsPerFloor: 220,
-    escalator: 1800,
-    escalatorPerFloor: 300,
-    lobbyExpansion: 350,
-    rerent: 600,
+    floor: 40000,
+    office: 120000,
+    condo: 200000,
+    shop: 150000,
+    hotel: 320000,
+    shaft: 90000,          // flat
+    shaftPerFloor: 12000,  // × floors spanned
+    /** Express is premium infrastructure: pricier to sink, cheaper per floor
+     *  passed (no doors, no landings on skipped floors). */
+    expressShaft: 200000,
+    expressShaftPerFloor: 10000,
+    car: 140000,
+    expressCar: 220000,
+    food: 180000,
+    parking: 220000,
+    medical: 260000,
+    security: 200000,
+    recycling: 160000,
+    renovation: 90000,
+    conversion: 100000,
+    demolition: 25000,
+    shaftDemolition: 50000,
+    lobby: 50000,
+    stairs: 70000,
+    stairsPerFloor: 22000,
+    escalator: 180000,
+    escalatorPerFloor: 30000,
+    lobbyExpansion: 35000,
+    rerent: 60000,
   },
 
   units: {
@@ -147,7 +169,7 @@ export const CONFIG = {
       noise: 1,
       noiseTolerance: 2.5,
       /** Paid at end of day, per occupied office. */
-      rent: 300,
+      rent: 30000,
       /** Total access + wait seconds tolerated per trip before stress accrues. */
       patience: 6,
       /** Stress added per second of wait beyond patience, per worker. */
@@ -172,9 +194,9 @@ export const CONFIG = {
       /** Condos are quieter and more sensitive to neighboring noise. */
       noise: 0.2,
       noiseTolerance: 0.8,
-      rent: 90,
+      rent: 9000,
       /** Condos pay a lump sum on sale, then trickle. */
-      salePrice: 2600,
+      salePrice: 260000,
       patience: 10,
       stressPerSec: 0.6,
       stressDecay: 12,
@@ -194,8 +216,8 @@ export const CONFIG = {
       noise: 1.2,
       noiseTolerance: 1.5,
       /** Shops earn per lunch customer actually delivered, not per day. */
-      rent: 40,
-      revenuePerCustomer: 22,
+      rent: 4000,
+      revenuePerCustomer: 2200,
       patience: 8,
       stressPerSec: 0.7,
       stressDecay: 16,
@@ -225,7 +247,7 @@ export const CONFIG = {
       noise: 0.5,
       noiseTolerance: 1.2,
       /** Hotel rent is charged per occupied guest-night. */
-      rent: 110,
+      rent: 11000,
       patience: 12,
       stressPerSec: 0.45,
       stressDecay: 18,
@@ -236,15 +258,15 @@ export const CONFIG = {
 
   services: {
     /** The first facility covers its own floor and the floors immediately above/below. */
-    food: { coverageFloors: 1, dailyUpkeep: 45 },
+    food: { coverageFloors: 1, dailyUpkeep: 4500 },
     /** Parking is a wider, lower-intensity floor service. */
-    parking: { coverageFloors: 2, dailyUpkeep: 35 },
+    parking: { coverageFloors: 2, dailyUpkeep: 3500 },
     /** Clinics are intentionally wider coverage so one supports a small tower. */
-    medical: { coverageFloors: 3, dailyUpkeep: 60 },
+    medical: { coverageFloors: 3, dailyUpkeep: 6000 },
     /** A security desk watches a wider vertical neighborhood. */
-    security: { coverageFloors: 4, dailyUpkeep: 30 },
+    security: { coverageFloors: 4, dailyUpkeep: 3000 },
     /** Recycling is a local utility; waste does not travel far. */
-    recycling: { coverageFloors: 2, dailyUpkeep: 25 },
+    recycling: { coverageFloors: 2, dailyUpkeep: 2500 },
   },
 
   elevator: {
@@ -257,7 +279,28 @@ export const CONFIG = {
     /** A local shaft cannot span more than this many floors. Forces restructure. */
     maxSpan: 24,
     /** Cars in one shaft stagger their idle parking across the span. */
-    maxCarsPerShaft: 3,
+    maxCarsPerShaft: 7,
+    /** Zone band height used by zoned building strategies (sky lobby every N
+     *  floors). 20 rather than 12: each extra zone costs a full-height express
+     *  COLUMN, and at 8 slots per floor the grid can only afford two sky
+     *  lobbies (F20, F40) before transport eats the building. Locals span
+     *  zoneHeight+1 <= maxSpan. */
+    zoneHeight: 20,
+    /**
+     * Express shuttles: nonstop between their own bottom and top, skipping
+     * everything between (routing and the cars both already enforce this).
+     * The throughput probe (spec/lift-vision.md) showed raising real carrying
+     * capacity is what flattens the boom-bust wave — express is that
+     * throughput, delivered as a structure the player must plan, not as
+     * magically bigger local cars.
+     */
+    express: {
+      speed: 4.8,
+      capacity: 20,
+      maxCarsPerShaft: 8,
+      /** Can run the full tower height — that is its entire reason to exist. */
+      maxSpan: 60,
+    },
   },
 
   demand: {
@@ -276,12 +319,22 @@ export const CONFIG = {
   },
 
   stars: {
-    /** Population gates. Each unlocks what you may build. */
+    /**
+     * Population gates. Each unlocks what you may build, and is meant to
+     * read the way SimTower's own rating does: 1-3 star is the core mixed-
+     * use loop, 4-5 star is a real, hard-won skyscraper. A disciplined
+     * autoplayer that manages cars, services, and paces growth to the
+     * tower's own health (see policies.js "skyscraper") tops out around
+     * 150-230 population over hundreds of days — 4-5 star are calibrated
+     * above that bot's ceiling on purpose, so they stay a genuine stretch
+     * for a human playing with more judgment than a fixed heuristic has.
+     */
     tiers: [
       { pop: 0,   name: '1 star', unlocks: ['office', 'shaft', 'car', 'stairs', 'escalator', 'food', 'parking', 'security', 'recycling'] },
-      { pop: 60,  name: '2 star', reward: 4000, unlocks: ['condo', 'medical'] },
-      { pop: 160, name: '3 star', reward: 8000, unlocks: ['shop', 'hotel'] },
-      { pop: 320, name: '4 star', reward: 16000, unlocks: ['express'] },
+      { pop: 60,  name: '2 star', reward: 400000, unlocks: ['condo', 'medical'] },
+      { pop: 160, name: '3 star', reward: 800000, unlocks: ['shop', 'hotel'] },
+      { pop: 320, name: '4 star', reward: 1600000, unlocks: [] },
+      { pop: 500, name: '5 star', reward: 3200000, unlocks: [] },
     ],
   },
 
@@ -294,14 +347,60 @@ export const CONFIG = {
   occupancy: {
     /** Building-wide delivery rate (%) below which nobody new will move in. */
     relistMinDeliveryRate: 55,
+    /**
+     * Boom-bust dampers (spec/lift-vision.md, "the boom-bust churn cycle").
+     * All four default to OFF — exactly the historical binary-gate behavior —
+     * so existing seeds replay identically. The lab A/Bs them by override.
+     */
+    /** Reputation at which applicant flow reaches 100%. Above relistMin, flow
+     *  ramps linearly from 0 at the gate to full here; equal = binary gate. */
+    moveInFullFlowRate: 55,
+    /** Hard cap on rooms leased per day. 0 = uncapped. Caps the flood that
+     *  otherwise grows with occupancy and refills an empty tower in days. */
+    moveInCapacityMax: 0,
+    /** Per-tenant spread (±fraction) on the stress vacate threshold, drawn
+     *  from the seeded rng at move-in. Desynchronizes the mass exodus into a
+     *  visible leak. 0 = everyone marches off the same cliff together. */
+    vacateJitterRange: 0,
+    /** Extra settling-in days (0..N, per tenant, seeded) on top of the
+     *  transport grace window, staggering when cohorts become vulnerable. */
+    graceJitterDays: 0,
     /** Days of that rate averaged into the reputation a mover-in checks. */
     reputationWindow: 3,
     /** Average excess local-route riders cost this many reputation points per day. */
     localOverflowReputationWeight: 3,
     /** Keep local crowding from overwhelming the main delivery-rate signal. */
     localOverflowReputationCap: 8,
-    /** Daily tenant demand is finite; the best available rooms win it first. */
+    /**
+     * Daily tenant demand is finite; the best available rooms win it first.
+     * This is a floor, not a ceiling: an established, occupied tower draws
+     * more daily interest than a brand-new one, so actual capacity also
+     * grows with occupiedHeads * moveInCapacityGrowthRate (see
+     * leasingForecast). Without that growth term, every tower — no matter
+     * how healthy — is stuck leasing at the same trickle a 3-office opening
+     * gets, which caps every tower at the same small size regardless of how
+     * well it is run.
+     */
     moveInCapacity: 2,
+    /** Additional daily move-in capacity per current occupied head. */
+    moveInCapacityGrowthRate: 0.2,
+    /**
+     * Refuse new rentable construction once vacant units reach this many
+     * days' worth of the tower's CURRENT move-in capacity. At $50/day vacant
+     * upkeep against rents that assume a filled room, building faster than
+     * demand can absorb is a bankruptcy trap, not a growth strategy — this
+     * keeps construction paced to actual leasing speed, whatever that speed
+     * currently is, instead of a number fixed at game start.
+     */
+    vacancyBufferDays: 2,
+    /**
+     * A tenant who just moved in cannot be pushed out by transport stress for
+     * this many days. Without it, a newly built room that instantly fills to
+     * capacity gets judged on rush-hour queues the player has not yet had a
+     * chance to react to, and the tower loses its first tenants before the
+     * player has even seen a recommendation to add capacity.
+     */
+    newTenantTransportGraceDays: 3,
     /** Vacancies of underrepresented tenant types get a small selection bonus. */
     marketDemandWeight: 6,
     /** Access and required floor services add a small, bounded applicant preference. */
@@ -335,13 +434,13 @@ export const CONFIG = {
     /** Placement asks for confirmation when the projected mix loses this many balance points. */
     tenantMixPlacementWarningDelta: 8,
     /** Empty space still costs you, but leaves time to recover before bankruptcy. */
-    vacantUpkeep: 50,
+    vacantUpkeep: 5000,
   },
 
   economy: {
-    startMoney: 12000,
+    startMoney: 1200000,
     /** Daily fixed operating cost, scales with floors. Keeps idling from paying. */
-    upkeepPerFloor: 35,
+    upkeepPerFloor: 3500,
   },
 
   /** Read by the renderer only. Never read by src/sim. */

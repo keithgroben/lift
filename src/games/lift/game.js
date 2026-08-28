@@ -42,3 +42,45 @@ meta.summary = (state) => {
   return 'ended at ' + d.floors + ' floors, ' + d.pop + ' population, '
        + d.deliveryRate + '% of trips delivered';
 };
+
+/**
+ * The maxed-out win: the tower is FULL, HEALTHY, and PROFITABLE — all three
+ * at once, sustained. One golden day crowns nothing; the tower must hold the
+ * standard for a whole window. This predicate is the single source of truth
+ * for "won": the harness reports it, the lab displays it, and the 5-star
+ * fireworks will eventually fire off it (spec/lift-vision.md, "endgame
+ * guarantee").
+ *
+ * Thresholds, and why:
+ * - floors === maxFloors, built rooms >= 75% of gross slots. Transport
+ *   columns legitimately eat ~15% of the grid in a 3-zone tower, so 75% of
+ *   gross is roughly 90% of what is actually buildable — "the map is
+ *   covered" without punishing the player for having elevators.
+ * - occupancy >= 85%: covered means TENANTED, not just constructed.
+ * - deliveryRate >= 80 and rep >= 80: a win demands excellence, not the 55%
+ *   survival floor.
+ * - net > 0 every day of the window: profitable as a FLOW. `net` subtracts
+ *   construction spending, so this also means the tower stands on operations
+ *   rather than still digging — which is exactly what "finished" means.
+ */
+meta.win = (log) => {
+  const WINDOW = 14;
+  const goodDay = (d) =>
+    d.floors >= C.building.maxFloors &&
+    d.units >= C.building.maxFloors * C.building.slotsPerFloor * 0.75 &&
+    d.units > 0 && d.occupied / d.units >= 0.85 &&
+    d.deliveryRate >= 80 && d.rep >= 80 && d.net > 0;
+  let streak = 0;
+  for (const d of log) {
+    streak = goodDay(d) ? streak + 1 : 0;
+    if (streak >= WINDOW) {
+      return {
+        day: d.day,
+        label: 'MAXED-OUT WIN on day ' + d.day + ': ' + d.floors + ' floors, '
+             + d.occupied + '/' + d.units + ' rooms tenanted, ' + d.pop + ' population, '
+             + 'held delivery/rep >= 80 and positive net for ' + WINDOW + ' days',
+      };
+    }
+  }
+  return null;
+};

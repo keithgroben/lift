@@ -8,7 +8,7 @@ const assert = (c, m) => { if (!c) throw new Error(m); };
 export const tests = {
   'limited move-in demand chooses the highest-evaluated eligible room'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     config.occupancy.moveInCapacity = 1;
     const state = boot(config, 118);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok,
@@ -37,8 +37,11 @@ export const tests = {
 
   'move-in demand gives underrepresented tenant types a bounded priority'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     config.occupancy.moveInCapacity = 1;
+    // Isolate the fixed capacity from the occupied-heads growth term so this
+    // stays a test of priority-among-candidates, not of how big capacity is.
+    config.occupancy.moveInCapacityGrowthRate = 0;
     config.stars.tiers[1].pop = 0;
     for (const key of ['stressWeight', 'accessWeight', 'rentWeight', 'noiseWeight', 'foodWeight',
       'parkingWeight', 'medicalWeight', 'securityWeight', 'recyclingWeight', 'amenityWeight',
@@ -80,7 +83,7 @@ export const tests = {
 
   'tenant demand breakdown reports occupied shares against targets'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     config.stars.tiers[1].pop = 0;
     const state = boot(config, 120);
     assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 3, slot: 1 }, config).ok,
@@ -133,7 +136,7 @@ export const tests = {
 
   'leasing forecast mirrors evaluation, reputation timing, and daily capacity'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     config.occupancy.moveInCapacity = 1;
     const state = boot(config, 128);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok,
@@ -164,7 +167,7 @@ export const tests = {
 
   'tenant mix history records movement toward target shares'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     config.stars.tiers[1].pop = 0;
     const state = boot(config, 129);
     assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 1 }, config).ok,
@@ -201,7 +204,7 @@ export const tests = {
 
   'tenant mix response suggests conversion only for a vacant over-supplied room'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     config.stars.tiers[1].pop = 0;
     const state = boot(config, 131);
     assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 1 }, config).ok &&
@@ -244,7 +247,8 @@ export const tests = {
       'poor reputation without shafts did not recommend a shaft');
     assert(reputationRecommendation(state, config).control === 'shaft',
       'shaft recommendation did not identify its build control');
-    state.shafts = [{ cars: [{}, {}] }];
+    // One below the car limit, so the push below lands exactly on it.
+    state.shafts = [{ cars: Array.from({ length: config.elevator.maxCarsPerShaft - 1 }, () => ({})) }];
     state.money = 0;
     assert(reputationRecommendation(state, config).key === 'budget',
       'unaffordable elevator car did not recommend saving for it');
@@ -286,7 +290,7 @@ export const tests = {
 
   'vacancy lease status identifies the active refill gate'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     const state = boot(config, 121);
     const built = applyAction(state, { type: 'build_unit', kind: 'office', floor: 3, slot: 1 }, config);
     assert(built.ok, built.reason);
@@ -309,7 +313,7 @@ export const tests = {
 
   'vacancy recovery comparison explains timing and reputation gates'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     const state = boot(config, 122);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok,
       'could not build recovery-comparison shaft');
@@ -336,7 +340,7 @@ export const tests = {
 
   'demolition removes a vacant room and frees its floor slot'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     const state = boot(config, 116);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok,
       'could not build shaft');
@@ -367,7 +371,7 @@ export const tests = {
 
   'demolition refuses occupied rooms and unaffordable rooms'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     const state = boot(config, 117);
     assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 3 }, config).ok,
       'could not build office');
@@ -384,7 +388,7 @@ export const tests = {
 
   'converting a vacant room changes its tenant profile without filling it'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     const state = boot(config, 114);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok,
       'could not build shaft');
@@ -433,7 +437,7 @@ export const tests = {
 
   'conversion requires a vacant room and an unlocked target type'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     const state = boot(config, 115);
     assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 3 }, config).ok,
       'could not build office');
@@ -449,7 +453,7 @@ export const tests = {
 
   'renovating an abandoned room raises evaluation without re-renting it'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     const state = boot(config, 110);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok,
       'could not build shaft');
@@ -472,7 +476,7 @@ export const tests = {
 
   'renovation is limited to one upgrade on a vacant room'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     const state = boot(config, 113);
     assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 3 }, config).ok,
       'could not build office');
@@ -490,7 +494,7 @@ export const tests = {
 
   'an abandoned room can be inspected and re-rented when viable'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     const state = boot(config, 111);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok,
       'could not build shaft');
@@ -516,7 +520,7 @@ export const tests = {
 
   'a room without elevator access cannot be re-rented yet'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     const state = boot(config, 112);
     assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 3 }, config).ok,
       'could not build office');
@@ -531,7 +535,7 @@ export const tests = {
 
   'room appeal and transport stress departures are logged separately'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     config.occupancy.desirabilityRetentionThreshold = 100;
     config.occupancy.desirabilityRetentionPressureWeight = 2;
     config.occupancy.desirabilityRetentionVacateAt = 1;
@@ -556,6 +560,9 @@ export const tests = {
     assert(applyAction(stressState, { type: 'build_unit', kind: 'office', floor: 3 }, config).ok,
       'could not build stress-retention office');
     stressState.units[0].stress = config.units.office.vacateAt + config.units.office.stressDecay + 1;
+    // Past the new-tenant grace window: this fixture is testing cause
+    // attribution for an established tenant, not first-session onboarding.
+    stressState.units[0].daysOccupied = config.occupancy.newTenantTransportGraceDays + 1;
     const stressClosed = dayClose(stressState, config);
     const stressExit = stressState.events.filter((event) => event.kind === 'vacated').at(-1);
     assert(stressClosed.vacatedByStress === 1 && stressClosed.vacatedByDesirability === 0 &&

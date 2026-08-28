@@ -11,7 +11,11 @@ const guide = read('../docs/HOW_TO_PLAY.md');
 export const tests = {
   'player page has one compact primary build menu before telemetry'() {
     assert((page.match(/id="build"/g) ?? []).length === 1, 'player page has duplicate build menus');
-    assert(page.indexOf('id="build"') < page.indexOf('id="money"'), 'build controls are below the first money telemetry row');
+    // The money/day/population telemetry row is a Solid component mounted at
+    // #stat-bar-mount (see ui/hud/StatBar.tsx) — it no longer has its own
+    // ids in the static HTML source, so the ordering check anchors on the
+    // mount point instead.
+    assert(page.indexOf('id="build"') < page.indexOf('id="stat-bar-mount"'), 'build controls are below the first telemetry row');
     assert(page.includes('id="quick-action"'), 'player page is missing the contextual next-action control');
     assert(page.includes('id="time-controls"'), 'player page is missing visible time controls');
     assert(page.includes('data-speed="0">pause'), 'player page is missing a visible pause control');

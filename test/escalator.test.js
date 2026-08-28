@@ -11,7 +11,7 @@ const assert = (c, m) => { if (!c) throw new Error(m); };
 export const tests = {
   'escalators occupy a continuous column and are faster than stairs'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     const state = boot(config, 401);
     assert(applyAction(state, { type: 'build_lobby', slot: 0 }, config).ok, 'could not build lobby');
     const stairs = applyAction(state, { type: 'build_stairs', bottom: 0, top: 3 }, config);
@@ -54,7 +54,7 @@ export const tests = {
 
   'escalators deliver a trip without an elevator and improve room access'() {
     const config = structuredClone(CONFIG);
-    config.economy.startMoney = 100000;
+    config.economy.startMoney = 10000000;
     const state = boot(config, 402);
     assert(applyAction(state, { type: 'build_lobby', slot: 0 }, config).ok, 'could not build lobby');
     const built = applyAction(state, { type: 'build_escalator', bottom: 0, top: 3 }, config);

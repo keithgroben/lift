@@ -1,4 +1,4 @@
-import { blankDayStats, population, starTier, pushEvent } from './state.js';
+import { blankDayStats, population, starTier, pushEvent, assignTenantJitter } from './state.js';
 import { hotelBookingFeedback, hotelExperienceSummary, leasingForecast, shopTrafficEstimate, tenantMixSnapshot, tenantRetentionPressure, towerDesirabilitySummary, unitEvaluation, vacancyRankingSignalSummary } from './evaluation.js';
 
 /** Rent, upkeep, stress bleed-off, move-outs and move-ins. Runs once per day. */
@@ -60,7 +60,13 @@ export function dayClose(state, config) {
         s.desirabilityPressureTotal += u.desirabilityPressure;
       }
       u.stress = Math.max(0, u.stress - tune.stressDecay);
-      const transportStressExit = u.stress > tune.vacateAt;
+      u.daysOccupied = (u.daysOccupied ?? 0) + 1;
+      // A tenant who just moved in has not seen the player react to a bad
+      // commute yet; give them a settling-in window before a rough rush can
+      // push them straight back out. Room appeal is a slower-moving signal
+      // the player set at build time, so it is not covered by the same grace.
+      const inTransportGrace = u.daysOccupied <= config.occupancy.newTenantTransportGraceDays + (u.graceJitter ?? 0);
+      const transportStressExit = !inTransportGrace && u.stress > tune.vacateAt * (u.vacateJitter ?? 1);
       const desirabilityExit = u.desirabilityPressure >= retention.vacateAt;
       if (transportStressExit || desirabilityExit) {
         const cause = transportStressExit ? 'transport_stress' : 'room_desirability';
@@ -140,7 +146,9 @@ export function dayClose(state, config) {
   for (const { unit: u, evaluation, marketDemandBonus: demandBonus, experienceDemand } of selectedCandidates) {
     u.occupied = true;
     u.vacantDays = 0;
+    u.daysOccupied = 0;
     if (u.kind === 'hotel') u.heads = config.units.hotel.guests;
+    assignTenantJitter(state, u, config);
     s.movedIn++;
     pushEvent(state, 'moved_in', {
       unitId: u.id, unitKind: u.kind, floor: u.floor, marketDemandBonus: demandBonus,

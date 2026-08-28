@@ -366,6 +366,7 @@
         <div class="build-more-grid">
           <button data-do="stairs"><span class="btn-label">+ stairs</span><small class="btn-cost">$700 + floor</small></button>
           <button data-do="escalator"><span class="btn-label">+ escalator</span><small class="btn-cost">$1,800 + floor</small></button>
+          <button data-do="express"><span class="btn-label">+ express</span><small class="btn-cost">$200,000 + span</small></button>
           <button data-do="extend"><span class="btn-label">extend shaft</span><small class="btn-cost">$120 / floor</small></button>
           <button data-facility="food"><span class="btn-label">cafeteria</span><small class="btn-cost">$1,800</small></button>
           <button data-facility="parking"><span class="btn-label">parking</span><small class="btn-cost">$2,200</small></button>
@@ -379,22 +380,7 @@
       </details>
     </div>
 
-    <div class="stat"><span>money</span><b id="money">—</b></div>
-    <div class="stat"><span>day</span><b id="day">—</b></div>
-    <div class="stat"><span>population</span><b id="pop">—</b></div>
-    <div class="stat"><span>tenants / capacity</span><b><span id="tenant-total">—</span><small id="tenant-utilization">—</small><small id="tenant-utilization-change">Δ —</small><small id="tenant-utilization-trend">trend —</small><small id="tenant-utilization-recovery">—</small></b></div>
-    <div class="stat"><span>rating</span><b id="star">—</b></div>
-    <div id="milestone"><strong>NEXT MILESTONE</strong><span id="milestone-copy">—</span></div>
-
-    <div class="rule"></div>
-
-    <div class="stat"><span>waiting now</span><b id="waiting-now">—</b></div>
-    <div class="metric-key" aria-label="headline metric key"><b>W</b> waiting people · <b>T</b> tenants / capacity<br><b>W</b>: <span class="diag-good">green 0 clear</span> · <span class="diag-warn">amber 1–11 watch/busy</span> · <span class="diag-bad">red 12+ critical</span><br><b>T</b>: <span class="diag-good">green 75%+ full</span> · <span class="diag-warn">amber 50–74% partial</span> · <span class="diag-bad">red &lt;50% light</span><br>route focus: <span style="color:#ffcf55">yellow outline = selected shaft route</span> · <span class="diag-bad">red dashed outline = no assigned shaft</span></div>
-    <div class="stat"><span>avg wait</span><b id="wait">—</b></div>
-    <div class="stat"><span>delivered</span><b id="rate">—</b></div>
-    <div class="stat"><span>reputation</span><b id="rep">—</b></div>
-    <div class="stat"><span>room eval</span><b id="eval">—</b></div>
-    <div class="stat"><span>desirability</span><b><span id="desirability">—</span><small id="desirability-trend">trend —</small></b></div>
+    <div id="stat-bar-mount"></div>
 
     <div class="rule"></div>
 
@@ -474,6 +460,7 @@
     </section>
   </aside>
 
+  <script type="module" src="./ui/main.tsx"></script>
   <script type="module" src="./ui/app.js"></script>
 </body>
 </html>

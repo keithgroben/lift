@@ -1,5 +1,5 @@
 import { lerp, mix } from './juice.js';
-import { shaftQueueTrend, tenantDemandQuality, tenantLoadStatus, unitEvaluation, waitingPressureSummary } from '../sim/evaluation.js';
+import { buildOccupiedFloorIndex, shaftQueueTrend, tenantDemandQuality, tenantLoadStatus, unitEvaluation, waitingPressureSummary } from '../sim/evaluation.js';
 import { localRouteOccupancy } from '../sim/demand.js';
 import { freeSlot, slotsUsed } from '../sim/state.js';
 
@@ -192,12 +192,12 @@ export function appendServiceRoomStatusHistory(history, reading, roomLimit = 6, 
 }
 
 /** Live occupied-room coverage inside a focused facility's area. */
-export function serviceFocusCoverage(focus, state, config) {
+export function serviceFocusCoverage(focus, state, config, floorIndex = null) {
   if (!focus || !state || !config?.services?.[focus.kind]) return null;
   const floors = new Set(serviceFocusFloors(focus, state, config));
   const required = state.units.filter((unit) =>
     unit.occupied && floors.has(unit.floor) && (config.units[unit.kind]?.[focus.kind + 'Need'] ?? 0) > 0);
-  const evaluated = required.map((unit) => ({ unit, covered: Boolean(unitEvaluation(state, unit, config)[focus.kind + 'Covered']) }));
+  const evaluated = required.map((unit) => ({ unit, covered: Boolean(unitEvaluation(state, unit, config, floorIndex)[focus.kind + 'Covered']) }));
   const covered = evaluated.filter(({ covered: isCovered }) => isCovered).map(({ unit }) => unit);
   const uncovered = evaluated.filter(({ covered: isCovered }) => !isCovered).map(({ unit }) => unit);
   const requiredRoomsByFloor = {};
@@ -313,6 +313,13 @@ export function makeRenderer(canvas, config) {
   const smooth = new Map();
   let W = 0, H = 0;
 
+  // Fixed relative positions (fraction of width, pixels from the top) so
+  // stars don't re-roll every frame or every reload.
+  const STARS = [
+    [0.06, 10], [0.13, 26], [0.19, 8], [0.27, 34], [0.34, 14], [0.41, 28],
+    [0.58, 12], [0.66, 30], [0.73, 6], [0.81, 22], [0.88, 36], [0.94, 16],
+  ];
+
   function resize() {
     const dpr = window.devicePixelRatio || 1;
     const r = canvas.getBoundingClientRect();
@@ -339,6 +346,11 @@ export function makeRenderer(canvas, config) {
     const dpr = window.devicePixelRatio || 1;
     const L = layout(state);
     const [sx, sy] = juice.offset();
+    // Built once per frame and shared across every room's evaluation below —
+    // without it, each occupied room re-scans the whole tower for noise and
+    // layout neighbors, 30 times a second, which is what made a grown tower
+    // peg a CPU core.
+    const floorIndex = buildOccupiedFloorIndex(state);
 
     ctx.setTransform(dpr, 0, 0, dpr, sx * dpr, sy * dpr);
     paintSky(state);
@@ -361,13 +373,13 @@ export function makeRenderer(canvas, config) {
       ctx.fillText(f === 0 ? 'L' : String(f), L.x0 - 12, y + L.fh * 0.68);
     }
 
-    drawServiceFocus(serviceFocus, state, L);
+    drawServiceFocus(serviceFocus, state, L, floorIndex);
     drawPlacementGuide(placementGuide, state, L, hoverFloor);
 
     if (state.lobby) drawLobby(state.lobby, L);
     for (const stair of state.stairs ?? []) drawStairs(stair, L, state);
     for (const escalator of state.escalators ?? []) drawEscalator(escalator, L, state);
-    for (const u of state.units) drawUnit(u, L, state);
+    for (const u of state.units) drawUnit(u, L, state, floorIndex);
     for (const facility of state.facilities ?? []) drawFacility(facility, L, serviceFocus?.facilityId === facility.id, hoverFacilityId === facility.id);
     for (const sh of state.shafts) drawShaft(sh, L, dtMs, state, shaftQueueHistory, selectedShaftId === sh.id, hoverShaftId === sh.id);
     drawRouteTarget(routeTarget, state, L, hoverFloor);
@@ -405,11 +417,11 @@ export function makeRenderer(canvas, config) {
     }
   }
 
-  function drawServiceFocus(focus, state, L) {
+  function drawServiceFocus(focus, state, L, floorIndex = null) {
     const floors = serviceFocusFloors(focus, state, config);
     if (!floors.length) return;
     const changed = new Set(focus.changedFloors ?? []);
-    const coverage = serviceFocusCoverage(focus, state, config);
+    const coverage = serviceFocusCoverage(focus, state, config, floorIndex);
     for (const floor of floors) {
       const y = L.floorY(floor);
       const isFacilityFloor = floor === focus.floor;
@@ -546,17 +558,41 @@ export function makeRenderer(canvas, config) {
 
   /** Sky shifts through the day. Cheap, and it makes a rush hour feel like one. */
   function paintSky(state) {
-    const night = [14, 17, 22], day = [24, 36, 50];
+    const night = [8, 10, 22], day = [66, 100, 138], dawnDusk = [214, 132, 84];
+    // Same day-ness curve the old version used: 0 through the night hours,
+    // 1 at midday, smooth in between. Reused below for the sun/moon arc too.
     const k = Math.sin(Math.PI * Math.min(1, Math.max(0, (state.tod - 0.05) / 0.9)));
-    const c = night.map((n, i) => Math.round(lerp(n, day[i], k)));
+    // Peaks mid-transition (dawn/dusk) and is 0 at full night or full day.
+    const twilight = Math.sin(Math.PI * k);
+    const c = night.map((n, i) => Math.round(lerp(lerp(n, day[i], k), dawnDusk[i], twilight * 0.35)));
     const g = ctx.createLinearGradient(0, 0, 0, H);
     g.addColorStop(0, 'rgb(' + c.join(',') + ')');
     g.addColorStop(1, BG);
     ctx.fillStyle = g;
     ctx.fillRect(-60, -60, W + 120, H + 120);
+
+    if (k < 0.4) {
+      const starAlpha = ((0.4 - k) / 0.4) * 0.8;
+      ctx.fillStyle = 'rgba(219,228,238,' + starAlpha.toFixed(2) + ')';
+      for (const [fx, sy] of STARS) {
+        ctx.beginPath();
+        ctx.arc(fx * W, sy, 1.1, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    const isDay = k > 0.5;
+    const x = 40 + state.tod * (W - 80);
+    const y = 26 + (1 - k) * 40;
+    ctx.globalAlpha = isDay ? 0.92 : 0.8;
+    ctx.fillStyle = isDay ? '#ffd76a' : '#cfd8e8';
+    ctx.beginPath();
+    ctx.arc(x, y, isDay ? 9 : 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
   }
 
-  function drawUnit(u, L, state) {
+  function drawUnit(u, L, state, floorIndex = null) {
     const x = L.x0 + u.slot * L.cw, y = L.floorY(u.floor);
     const tune = config.units[u.kind];
 
@@ -577,7 +613,7 @@ export function makeRenderer(canvas, config) {
       return;
     }
 
-    const evaluation = unitEvaluation(state, u, config);
+    const evaluation = unitEvaluation(state, u, config, floorIndex);
     const quality = 1 - evaluation.score / 100;
     const stress = Math.min(1, u.stress / tune.vacateAt);
     ctx.fillStyle = quality > 0.05 ? mix(KIND[u.kind], BAD, quality) : KIND[u.kind];
@@ -619,13 +655,34 @@ export function makeRenderer(canvas, config) {
   function drawShaft(sh, L, dtMs, state, shaftQueueHistory = null, focused = false, hovered = false) {
     const x = L.x0 + sh.slot * L.cw;
     const top = L.floorY(sh.top), bot = L.floorY(sh.bottom) + L.fh;
+    const express = sh.kind === 'express';
 
-    ctx.fillStyle = 'rgba(8,11,15,0.9)';
+    ctx.fillStyle = express ? 'rgba(24,13,36,0.92)' : 'rgba(8,11,15,0.9)';
     roundRect(ctx, x + 3, top + 1, L.cw - 6, bot - top - 2, 4);
     ctx.fill();
-    ctx.strokeStyle = 'rgba(142,202,230,0.22)';
+    ctx.strokeStyle = express ? 'rgba(199,125,255,0.55)' : 'rgba(142,202,230,0.22)';
     ctx.lineWidth = 1;
     ctx.stroke();
+
+    if (express) {
+      // Sky-lobby landings: the only two floors this shuttle serves. Everything
+      // between is deliberately skipped, and the dashed spine says so.
+      ctx.strokeStyle = 'rgba(199,125,255,0.45)';
+      ctx.setLineDash([3, 5]);
+      ctx.beginPath();
+      ctx.moveTo(x + L.cw / 2, top + 4);
+      ctx.lineTo(x + L.cw / 2, bot - 4);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#c77dff';
+      for (const landing of [sh.bottom, sh.top]) {
+        const y = L.floorY(landing);
+        ctx.fillRect(x + 4, y + L.fh - 5, L.cw - 8, 3);
+      }
+      ctx.textAlign = 'center';
+      ctx.font = '700 7px ui-monospace, monospace';
+      ctx.fillText('EXP', x + L.cw / 2, top + 9);
+    }
     if (focused || hovered) {
       ctx.strokeStyle = focused ? '#ffcf55' : '#ffffff';
       ctx.lineWidth = focused ? 3 : 2;
@@ -639,7 +696,8 @@ export function makeRenderer(canvas, config) {
       const next = lerp(cur, want, Math.min(1, dtMs / config.feel.tweenMs));
       smooth.set(car.id, next);
 
-      const full = car.riders.length / config.elevator.capacity;
+      const full = car.riders.length /
+        (express ? (config.elevator.express?.capacity ?? config.elevator.capacity) : config.elevator.capacity);
       ctx.fillStyle = car.state === 'doors' ? GOOD : mix(INFO, WARN, full);
       roundRect(ctx, x + 5, next, L.cw - 10, L.fh - 8, 3);
       ctx.fill();

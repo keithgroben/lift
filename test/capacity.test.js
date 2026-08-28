@@ -6,7 +6,7 @@ const assert = (c, m) => { if (!c) throw new Error(m); };
 /** A fixed, deliberately busy tower for comparing transport choices. */
 function runFixture(options = {}, seed = 1) {
   const config = structuredClone(CONFIG);
-  config.economy.startMoney = 100000;
+  config.economy.startMoney = 10000000;
   Object.assign(config.elevator, options);
 
   const state = boot(config, seed);

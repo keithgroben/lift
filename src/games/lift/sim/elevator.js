@@ -9,6 +9,17 @@ export function stepShafts(state, dt, config) {
   }
 }
 
+/** Express shuttles run their own physics; everything else uses the base tuning. */
+export function shaftParams(sh, config) {
+  if (sh.kind === 'express' && config.elevator.express) {
+    return {
+      speed: config.elevator.express.speed ?? config.elevator.speed,
+      capacity: config.elevator.express.capacity ?? config.elevator.capacity,
+    };
+  }
+  return { speed: config.elevator.speed, capacity: config.elevator.capacity };
+}
+
 function stepCar(state, sh, car, dt, config) {
   if (car.state === 'doors') {
     car.doorT -= dt;
@@ -29,15 +40,27 @@ function stepCar(state, sh, car, dt, config) {
 
   car.state = 'moving';
   car.dir = Math.sign(stop - car.y);
-  const travel = config.elevator.speed * dt;
+  const travel = shaftParams(sh, config).speed * dt;
   if (Math.abs(stop - car.y) <= travel) car.y = stop;
   else car.y += car.dir * travel;
 }
 
+/**
+ * An express shaft only ever stops at its two ends — that is the entire
+ * point of one, and routing (servingShafts) only ever assigns it trips
+ * between those ends, but the car itself stays the actual authority on
+ * where it opens its doors rather than trusting routing never to send it
+ * a bad floor.
+ */
+function isServiceableStop(sh, floor) {
+  return sh.kind !== 'express' || floor === sh.bottom || floor === sh.top;
+}
+
 /** Riders to drop here, or riders to pick up here going our way. */
 function shouldStop(state, sh, car, floor, config) {
+  if (!isServiceableStop(sh, floor)) return false;
   for (const p of car.riders) if (p.to === floor) return true;
-  if (car.riders.length >= config.elevator.capacity) return false;
+  if (car.riders.length >= shaftParams(sh, config).capacity) return false;
   for (const p of state.people) {
     if (p.state !== 'waiting' || p.shaft !== sh.id || p.from !== floor) continue;
     if (car.dir === 0) return true;
@@ -53,7 +76,21 @@ function serviceFloor(state, sh, car, floor, config) {
     const p = car.riders[i];
     if (p.to !== floor) continue;
     car.riders.splice(i, 1);
-    p.state = 'arrived';
+    if (p.remainingLegs && p.remainingLegs.length) {
+      // A sky-lobby handoff, not the real destination: rejoin the queue for
+      // the next leg rather than finalizing. waitT keeps accumulating across
+      // every leg, so a chain of transfers is never free — it costs exactly
+      // the extra waits it actually costs.
+      const nextLeg = p.remainingLegs.shift();
+      p.from = floor;
+      p.to = nextLeg.to;
+      p.shaft = nextLeg.shaftId;
+      p.carId = null;
+      p.accessT = 0;
+      p.state = 'waiting';
+    } else {
+      p.state = 'arrived';
+    }
     moved++;
   }
 
@@ -65,8 +102,9 @@ function serviceFloor(state, sh, car, floor, config) {
     car.dir = anyUp ? 1 : -1;
   }
 
+  const boardCapacity = shaftParams(sh, config).capacity;
   for (const p of state.people) {
-    if (car.riders.length >= config.elevator.capacity) break;
+    if (car.riders.length >= boardCapacity) break;
     if (p.state !== 'waiting' || p.shaft !== sh.id || p.from !== floor) continue;
     if (Math.sign(p.to - p.from) !== car.dir) continue;
     p.state = 'riding';
@@ -94,11 +132,12 @@ function collectStops(state, sh, car, dir, config) {
   let best = null;
   const consider = (f) => {
     if (f < sh.bottom || f > sh.top) return;
+    if (!isServiceableStop(sh, f)) return;
     if (dir > 0 ? f <= car.y : f >= car.y) return;
     if (best == null || Math.abs(f - car.y) < Math.abs(best - car.y)) best = f;
   };
   for (const p of car.riders) consider(p.to);
-  if (car.riders.length < config.elevator.capacity) {
+  if (car.riders.length < shaftParams(sh, config).capacity) {
     for (const p of state.people) {
       if (p.state === 'waiting' && p.shaft === sh.id) consider(p.from);
     }

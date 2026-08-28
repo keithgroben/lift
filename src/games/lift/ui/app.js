@@ -38,6 +38,7 @@ import { tenantAccessOutcomeForUnit } from '../sim/evaluation.js';
 import { vacancyRankingSignalSummary } from '../sim/evaluation.js';
 import { serviceCoverageChange, serviceCoverageSummary, servicePlacementBudgetImpact, servicePlacementComparison, servicePlacementCoveragePreview, servicePlacementRecommendation } from '../sim/evaluation.js';
 import { cashRunwaySummary, expansionSafetySummary } from '../sim/evaluation.js';
+import { setHud } from './hud/store';
 
 const [, , GOOD, WARN, BAD, INFO] = CONFIG.feel.palette;
 const indicatorPaletteColor = (key) => key === 'good' ? GOOD : key === 'bad' ? BAD : WARN;
@@ -333,7 +334,7 @@ function onDayClose(closed, occupiedBefore) {
 
 // ---------------------------------------------------------------------- HUD
 const els = {};
-for (const id of ['money', 'day', 'pop', 'tenant-total', 'tenant-utilization', 'tenant-utilization-change', 'tenant-utilization-trend', 'tenant-utilization-recovery', 'star', 'milestone-copy', 'waiting-now', 'wait', 'rate', 'rep', 'eval', 'desirability', 'desirability-trend', 'clock', 'build', 'expansion-safety', 'log', 'knobs', 'mode', 'cancel-tool', 'goal-copy', 'transport', 'rent-control', 'rent-kind', 'rent-value', 'facility-inspector', 'shaft-inspector', 'unit-inspector', 'unit-title', 'unit-status', 'unit-detail', 'unit-utilization-context', 'conversion-controls', 'renovate-unit', 'rerent-unit', 'demolish-unit', 'cancel-confirmation', 'recovery-warning', 'rerent-reason', 'placement-guide-legend', 'placement-preview', 'beta-path', 'developer-toggle', 'developer-panel', 'time-controls', 'quick-action', 'quick-action-button', 'quick-action-detail', 'restart-game'])
+for (const id of ['clock', 'build', 'expansion-safety', 'log', 'knobs', 'mode', 'cancel-tool', 'goal-copy', 'transport', 'rent-control', 'rent-kind', 'rent-value', 'facility-inspector', 'shaft-inspector', 'unit-inspector', 'unit-title', 'unit-status', 'unit-detail', 'unit-utilization-context', 'conversion-controls', 'renovate-unit', 'rerent-unit', 'demolish-unit', 'cancel-confirmation', 'recovery-warning', 'rerent-reason', 'placement-guide-legend', 'placement-preview', 'beta-path', 'developer-toggle', 'developer-panel', 'time-controls', 'quick-action', 'quick-action-button', 'quick-action-detail', 'restart-game'])
   els[id] = document.getElementById(id);
 
 let developerMode = false;
@@ -431,10 +432,14 @@ function updateWaitingNowIndicator() {
   lastWaitingNow = waitingNow;
   const pressure = waitingPressure(waitingNow);
   const waitingHeadlineLabel = 'W ' + waitingNow + ' waiting people; ' + waitingPressureColorMeaning(pressure.band) + ' across all floors';
-  els['waiting-now'].textContent = 'W ' + waitingNow;
-  els['waiting-now'].style.color = indicatorPaletteColor(pressure.colorKey);
-  els['waiting-now'].title = waitingHeadlineLabel;
-  els['waiting-now'].setAttribute('aria-label', waitingHeadlineLabel);
+  setHud({
+    waitingNow: {
+      text: 'W ' + waitingNow,
+      color: indicatorPaletteColor(pressure.colorKey),
+      title: waitingHeadlineLabel,
+      ariaLabel: waitingHeadlineLabel,
+    },
+  });
   return true;
 }
 
@@ -640,6 +645,17 @@ function modeText() {
       : ' · hover a column to choose its placement';
     return 'SHAFT selected — choose a clear column, then click its top floor.' + targetText + columnText + costText + capacityText + fundsText + investmentContext('shaft');
   }
+  if (tool === 'express') {
+    const bottom = CONFIG.building.lobbyFloor ?? 0;
+    const top = hoverFloor >= bottom + 2 ? hoverFloor : null;
+    const costText = top == null ? '' : ' · target F' + top + ' · cost ' + money(expressCost(top));
+    const fundsText = top != null && state.money < expressCost(top)
+      ? ' · NOT ENOUGH MONEY (need ' + money(expressCost(top)) + ', have ' + money(state.money) + ')'
+      : '';
+    return 'EXPRESS selected — a nonstop shuttle from the lobby: choose a clear column, then click its sky-lobby floor.' +
+      costText + ' · skips every floor between · ' + (CONFIG.elevator.express?.capacity ?? CONFIG.elevator.capacity) +
+      ' riders per dispatch at double speed' + fundsText;
+  }
   if (tool === 'car') return carToolModeText();
   if (tool === 'stairs' || tool === 'escalator') {
     const lockedTop = transportFocusTarget?.kind === tool && Number.isInteger(transportFocusTarget.floor)
@@ -725,6 +741,11 @@ function shaftToolTarget() {
 function shaftCost(top) {
   const bottom = CONFIG.building.lobbyFloor ?? 0;
   return CONFIG.costs.shaft + CONFIG.costs.shaftPerFloor * Math.max(0, top - bottom + 1);
+}
+
+function expressCost(top) {
+  const bottom = CONFIG.building.lobbyFloor ?? 0;
+  return CONFIG.costs.expressShaft + CONFIG.costs.expressShaftPerFloor * Math.max(0, top - bottom + 1);
 }
 
 function shaftCanvasTarget() {
@@ -3591,78 +3612,87 @@ function refresh() {
     : null;
   els['placement-guide-legend'].hidden = !placementGuideTarget();
   const tenantForecast = tenantDemandForecast(state, CONFIG, d?.rep);
-  els.money.textContent = '$' + Math.round(state.money).toLocaleString();
-  els.money.style.color = state.money < 2000 ? BAD : GOOD;
-  els.day.textContent = state.day;
-  els.pop.textContent = population(state);
   const tenantSummary = tenantLoadSummary(state, CONFIG);
-  els['tenant-total'].textContent = 'T ' + tenantSummary.tenants + '/' + tenantSummary.capacity;
-  els['tenant-utilization'].textContent = Math.round(tenantSummary.ratio * 100) + '%';
   const tenantLoadColor = indicatorPaletteColor(indicatorColorKey(tenantSummary.key));
-  els['tenant-total'].style.color = tenantLoadColor;
-  els['tenant-utilization'].style.color = tenantLoadColor;
   const tenantHeadlineLabel = 'T ' + tenantSummary.tenants + '/' + tenantSummary.capacity + ' tenants/capacity; ' + tenantSummary.label + '; ' + tenantLoadColorMeaning(tenantSummary.key);
-  els['tenant-total'].title = tenantHeadlineLabel;
-  els['tenant-total'].setAttribute('aria-label', tenantHeadlineLabel);
-  els['tenant-utilization'].title = 'occupied tenants ÷ built room capacity';
   const utilizationChange = tenantUtilizationChange ?? { key: 'unknown', label: 'no prior day' };
-  els['tenant-utilization-change'].textContent = utilizationChange.key === 'unknown'
-    ? 'Δ —'
-    : utilizationChange.label;
-  els['tenant-utilization-change'].style.color = utilizationChange.key === 'improved' ? GOOD
-    : utilizationChange.key === 'worsened' ? BAD : WARN;
-  els['tenant-utilization-change'].title = 'change in utilization since the previous day close';
   const utilizationTrend = tenantUtilizationTrend(tenantUtilizationHistory);
-  els['tenant-utilization-trend'].innerHTML = utilizationTrend.segments?.length
-    ? 'trend ' + utilizationTrend.segments.map((segment) => segment.event === 'recovery'
-      ? '<span class="recovery-reading" title="re-rent recovery">' + segment.bar + '</span>'
-      : segment.bar).join('')
-    : utilizationTrend.label;
-  els['tenant-utilization-trend'].style.color = utilizationTrend.key === 'improved' ? GOOD
-    : utilizationTrend.key === 'worsened' ? BAD : WARN;
-  els['tenant-utilization-trend'].title = 'recent utilization, oldest to newest; taller bars mean more occupied capacity';
   const recoverySummary = tenantUtilizationRecoverySummary(tenantUtilizationHistory, state.day);
-  els['tenant-utilization-recovery'].textContent = recoverySummary.label;
-  els['tenant-utilization-recovery'].style.color = recoverySummary.key === 'improved' ? GOOD
-    : recoverySummary.key === 'worsened' ? BAD
-      : recoverySummary.key === 'steady' ? WARN : '#6b8199';
-  els['tenant-utilization-recovery'].title = recoverySummary.key === 'none'
-    ? 'no re-rent recovery yet'
-    : 'latest re-rent recovery' + (recoverySummary.ageDays > 0 ? ' · ' + recoverySummary.ageDays + ' day' + (recoverySummary.ageDays === 1 ? '' : 's') + ' ago' : '') +
-      (recoverySummary.utilizationChange == null ? ''
-        : ' · ' + (recoverySummary.utilizationChange >= 0 ? '+' : '') + recoverySummary.utilizationChange + ' utilization points');
-  els.star.textContent = starTier(state, CONFIG).name;
   const nextTier = CONFIG.stars.tiers.find((tier) => tier.pop > population(state));
-  if (nextTier) {
-    const remaining = nextTier.pop - population(state);
-    els['milestone-copy'].textContent = nextTier.name + ' at ' + nextTier.pop + ' population · ' + remaining + ' to go' +
-      (nextTier.reward ? ' · reward ' + money(nextTier.reward) : '');
-  } else {
-    els['milestone-copy'].textContent = 'All star milestones reached.';
-  }
-  els.wait.textContent = d ? d.avgWait + 's' : '—';
-  els.wait.style.color = d && d.avgWait > CONFIG.units.office.patience ? BAD : GOOD;
-  els.wait.title = 'historical average from the most recently closed day; waiting now is the live queue count';
-  els.rate.textContent = d ? d.deliveryRate + '%' : '—';
-  els.rate.style.color = d && d.deliveryRate < 70 ? BAD : GOOD;
-  els.rep.textContent = d ? d.rep + '%' : '—';
-  els.rep.style.color = d && d.rep < CONFIG.occupancy.relistMinDeliveryRate ? BAD : GOOD;
+  const milestone = nextTier
+    ? nextTier.name + ' at ' + nextTier.pop + ' population · ' + (nextTier.pop - population(state)) + ' to go' +
+      (nextTier.reward ? ' · reward ' + money(nextTier.reward) : '')
+    : 'All star milestones reached.';
   const evalScore = averageEvaluation(state, CONFIG);
-  els.eval.textContent = state.units.some((u) => u.occupied) ? evalScore + '%' : '—';
-  els.eval.style.color = evalScore < CONFIG.evaluation.relistMinScore ? BAD : evalScore < 80 ? WARN : GOOD;
   const desirability = towerDesirabilitySummary(state, CONFIG);
-  els.desirability.textContent = desirability.score == null ? '—' : desirability.score + '%';
-  els.desirability.style.color = desirability.colorKey === 'good' ? GOOD : desirability.colorKey === 'bad' ? BAD : WARN;
-  els.desirability.title = desirability.detail;
-  els.desirability.setAttribute('aria-label', desirability.score == null
-    ? 'tower desirability unavailable; ' + desirability.detail
-    : 'tower desirability ' + desirability.score + ' out of 100; ' + desirability.detail);
   const desirabilityTrend = towerDesirabilityTrend(towerDesirabilityHistory(state));
   const desirabilityDelta = towerDesirabilityTrendDeltaLabel(desirabilityTrend);
-  els['desirability-trend'].textContent = desirabilityTrend.label + ' · ' + desirabilityDelta;
-  els['desirability-trend'].style.color = desirabilityTrend.key === 'improved' ? GOOD
-    : desirabilityTrend.key === 'worsened' ? BAD : WARN;
-  els['desirability-trend'].title = 'daily tower desirability, oldest to newest; ' + desirabilityDelta + '; history begins after day close';
+
+  setHud({
+    money: { text: '$' + Math.round(state.money).toLocaleString(), color: state.money < 2000 ? BAD : GOOD },
+    day: String(state.day),
+    population: String(population(state)),
+    tenantTotal: {
+      text: 'T ' + tenantSummary.tenants + '/' + tenantSummary.capacity,
+      color: tenantLoadColor,
+      title: tenantHeadlineLabel,
+      ariaLabel: tenantHeadlineLabel,
+    },
+    tenantUtilization: {
+      text: Math.round(tenantSummary.ratio * 100) + '%',
+      color: tenantLoadColor,
+      title: 'occupied tenants ÷ built room capacity',
+    },
+    tenantUtilizationChange: {
+      text: utilizationChange.key === 'unknown' ? 'Δ —' : utilizationChange.label,
+      color: utilizationChange.key === 'improved' ? GOOD : utilizationChange.key === 'worsened' ? BAD : WARN,
+      title: 'change in utilization since the previous day close',
+    },
+    tenantUtilizationTrendHtml: utilizationTrend.segments?.length
+      ? 'trend ' + utilizationTrend.segments.map((segment) => segment.event === 'recovery'
+        ? '<span class="recovery-reading" title="re-rent recovery">' + segment.bar + '</span>'
+        : segment.bar).join('')
+      : utilizationTrend.label,
+    tenantUtilizationTrendColor: utilizationTrend.key === 'improved' ? GOOD
+      : utilizationTrend.key === 'worsened' ? BAD : WARN,
+    tenantUtilizationRecovery: {
+      text: recoverySummary.label,
+      color: recoverySummary.key === 'improved' ? GOOD
+        : recoverySummary.key === 'worsened' ? BAD
+          : recoverySummary.key === 'steady' ? WARN : '#6b8199',
+      title: recoverySummary.key === 'none'
+        ? 'no re-rent recovery yet'
+        : 'latest re-rent recovery' + (recoverySummary.ageDays > 0 ? ' · ' + recoverySummary.ageDays + ' day' + (recoverySummary.ageDays === 1 ? '' : 's') + ' ago' : '') +
+          (recoverySummary.utilizationChange == null ? ''
+            : ' · ' + (recoverySummary.utilizationChange >= 0 ? '+' : '') + recoverySummary.utilizationChange + ' utilization points'),
+    },
+    star: starTier(state, CONFIG).name,
+    milestone,
+    wait: {
+      text: d ? d.avgWait + 's' : '—',
+      color: d && d.avgWait > CONFIG.units.office.patience ? BAD : GOOD,
+      title: 'historical average from the most recently closed day; waiting now is the live queue count',
+    },
+    rate: { text: d ? d.deliveryRate + '%' : '—', color: d && d.deliveryRate < 70 ? BAD : GOOD },
+    rep: { text: d ? d.rep + '%' : '—', color: d && d.rep < CONFIG.occupancy.relistMinDeliveryRate ? BAD : GOOD },
+    roomEval: {
+      text: state.units.some((u) => u.occupied) ? evalScore + '%' : '—',
+      color: evalScore < CONFIG.evaluation.relistMinScore ? BAD : evalScore < 80 ? WARN : GOOD,
+    },
+    desirability: {
+      text: desirability.score == null ? '—' : desirability.score + '%',
+      color: desirability.colorKey === 'good' ? GOOD : desirability.colorKey === 'bad' ? BAD : WARN,
+      title: desirability.detail,
+      ariaLabel: desirability.score == null
+        ? 'tower desirability unavailable; ' + desirability.detail
+        : 'tower desirability ' + desirability.score + ' out of 100; ' + desirability.detail,
+    },
+    desirabilityTrend: {
+      text: desirabilityTrend.label + ' · ' + desirabilityDelta,
+      color: desirabilityTrend.key === 'improved' ? GOOD : desirabilityTrend.key === 'worsened' ? BAD : WARN,
+      title: 'daily tower desirability, oldest to newest; ' + desirabilityDelta + '; history begins after day close',
+    },
+  });
   els['goal-copy'].textContent = d
     ? 'Keep delivery above ' + CONFIG.occupancy.relistMinDeliveryRate + '% · current ' + d.deliveryRate + '%.'
     : 'Keep delivery above ' + CONFIG.occupancy.relistMinDeliveryRate + '% so tenants stay.';
@@ -3685,6 +3715,7 @@ function refresh() {
   const costs = {
     floor: money(CONFIG.costs.floor),
     shaft: money(CONFIG.costs.shaft) + ' + span',
+    express: money(CONFIG.costs.expressShaft) + ' + span',
     car: money(CONFIG.costs.car),
     extend: money(CONFIG.costs.shaftPerFloor) + ' / floor',
     food: money(CONFIG.costs.food),
@@ -3742,6 +3773,12 @@ function refresh() {
       b.title = !state.shafts.length ? 'build a shaft first'
         : !carSlotAvailable ? 'every shaft is at its ' + CONFIG.elevator.maxCarsPerShaft + '-car limit; build a new shaft'
           : state.money < CONFIG.costs.car ? 'not enough money' : 'add a car to a shaft';
+    }
+    if (b.dataset.do === 'express') {
+      b.disabled = !state.lobby || state.money < CONFIG.costs.expressShaft;
+      b.title = !state.lobby ? 'build a lobby first'
+        : state.money < CONFIG.costs.expressShaft ? 'not enough money for the base express cost'
+          : 'nonstop shuttle: lobby to a sky-lobby floor, skipping everything between';
     }
     if (b.dataset.do === 'extend') b.title = !state.shafts.length ? 'build a shaft first' : 'extend the most recently built shaft';
     if (b.dataset.do === recommendedControl) b.title = 'Recommended: ' + b.title;
@@ -4457,6 +4494,22 @@ canvas.addEventListener('click', (e) => {
     }
     return;
   }
+  if (tool === 'express') {
+    const bottom = CONFIG.building.lobbyFloor ?? 0;
+    const slot = renderer.slotAt(state, px);
+    if (slot < 0) return toast('choose a visible building column for the express shaft', WARN);
+    if (floor < bottom + 2) return toast('an express shaft needs at least one floor to skip — click a higher sky-lobby floor', WARN);
+    const cost = expressCost(floor);
+    if (state.money < cost) return toast('not enough money for this express span: need ' + money(cost) + ', have ' + money(state.money), WARN);
+    const built = act('build_shaft', { bottom, top: floor, slot, kind: 'express' });
+    if (built.ok) {
+      toast('EXPRESS built — nonstop lobby ↔ F' + floor + ' · riders transfer to local routes at the sky lobby', GOOD);
+      transportFocusTarget = null;
+      routeTarget = null;
+      refresh();
+    }
+    return;
+  }
   if (tool === 'shaft') {
     const bottom = CONFIG.building.lobbyFloor ?? 0;
     const slot = renderer.slotAt(state, px);
@@ -4959,6 +5012,15 @@ els.build.addEventListener('click', (e) => {
     toast('click the top floor for the new stairwell', INFO);
     refresh();
   }
+  if (b.dataset.do === 'express') {
+    if (!state.lobby) return toast('build a lobby first', WARN);
+    tool = 'express';
+    transportFocusTarget = null;
+    routeTarget = null;
+    setMode();
+    toast('click the sky-lobby floor for the nonstop express shuttle', INFO);
+    refresh();
+  }
   if (b.dataset.do === 'escalator') {
     if (!state.lobby) return toast('build a lobby first', WARN);
     tool = 'escalator';
@@ -5132,18 +5194,10 @@ window.__lift = {
 addEventListener('resize', () => renderer.resize());
 renderer.resize();
 
-// Opening position: one shaft, a few offices. Nobody should stare at an empty lot.
-applyAction(state, { type: 'build_lobby', slot: CONFIG.building.lobbySlot }, CONFIG);
-applyAction(state, {
-  type: 'build_shaft',
-  bottom: 0,
-  top: state.floors - 1,
-  // The opening shaft is the leftmost clear column beside the entrance.
-  slot: Math.min(CONFIG.building.slotsPerFloor - 1, CONFIG.building.lobbySlot + 1),
-}, CONFIG);
-for (let f = 1; f < state.floors; f++) {
-  applyAction(state, { type: 'build_unit', kind: 'office', floor: f }, CONFIG);
-}
+// Opening position: nothing built. The FIRST SESSION PATH panel (see
+// firstSessionPath()/renderFirstSessionPath()) already walks the player
+// through lobby -> shaft -> offices -> add a car step by step — restart()
+// already relies on that starting from empty, so first load should match.
 tenantUtilizationBaseline = tenantLoadSummary(state, CONFIG).ratio;
 tenantUtilizationHistory = [{ day: state.day, ratio: tenantUtilizationBaseline }];
 

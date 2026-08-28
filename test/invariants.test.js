@@ -94,16 +94,26 @@ export const tests = {
 
   /**
    * The whole design claim in one assertion. If understanding the bottleneck
-   * stops paying, the elevator has become decoration and the game is broken —
+   * stops paying, the sim has become decoration and the game is broken —
    * regardless of whether anything throws.
+   *
+   * "balanced" vs "naive" used to carry this alone: elevator throughput was
+   * the fastest-acting killer, so managing cars was most of what separated
+   * them. Vacancy-paced construction and desirability-driven churn are now
+   * real, comparably fast pressures too (see policies.js H3's own comment),
+   * so a policy that manages cars but ignores services dies on the same
+   * timescale as one that manages neither — both stall on the wall neither
+   * of them addresses. "managed" (H4: cars + services) is the pairing that
+   * still demonstrates the claim: understanding every bottleneck in play
+   * beats ignoring all of them.
    */
   'knowing the bottleneck beats ignoring it, across seeds'() {
-    let naiveTotal = 0, balancedTotal = 0;
+    let naiveTotal = 0, managedTotal = 0;
     for (let seed = 1; seed <= 5; seed++) {
-      naiveTotal += play('naive', 60, seed).log.length;
-      balancedTotal += play('balanced', 60, seed).log.length;
+      naiveTotal += play('naive', 150, seed).log.length;
+      managedTotal += play('managed', 150, seed).log.length;
     }
-    assert(balancedTotal > naiveTotal * 1.5,
-      `balanced survived ${balancedTotal} days vs naive ${naiveTotal} — managing the elevator no longer pays`);
+    assert(managedTotal > naiveTotal * 2,
+      `managed survived ${managedTotal} days vs naive ${naiveTotal} — managing the tower no longer pays`);
   },
 };
