@@ -1,4 +1,7 @@
-import { nid, freeSlot, slotsUsed, unlocked, pushEvent, assignTenantJitter } from './state.js';
+import {
+  nid, freeSlot, slotsUsed, unlocked, pushEvent, assignTenantJitter,
+  basementDepth, floorCost, isBuildableFloor, lowestFloor,
+} from './state.js';
 import { clampRentLevel, rentForLevel } from './pricing.js';
 import { unitEvaluation, leasingForecast } from './evaluation.js';
 
@@ -129,11 +132,31 @@ const ACTIONS = {
     return { ok: true };
   },
 
+  /**
+   * Dig one storey down. Symmetric with build_floor: it moves the OTHER end
+   * of the floor range, and everything that reads the range (rooms,
+   * facilities, shafts, upkeep) picks the new floor up for free. Gated on
+   * depth and money only — the same freedom `build_floor` has, deliberately:
+   * making it wait for a lobby would put the whole underground behind
+   * spec/tower-view.md §4's lobby-first change and out of reach of every
+   * headless policy until then.
+   */
+  dig_basement(state, _a, config) {
+    const maxDepth = Math.max(0, Math.floor(Number(config.underground?.maxDepth) || 0));
+    if (basementDepth(state) >= maxDepth) return { ok: false, reason: 'at max depth' };
+    const cost = Number(config.underground?.digCost);
+    if (!Number.isFinite(cost)) return { ok: false, reason: 'digging has no cost' };
+    if (!charge(state, cost)) return { ok: false, reason: 'not enough money' };
+    state.lowestFloor = lowestFloor(state) - 1;
+    pushEvent(state, 'basement_dug', { floor: state.lowestFloor, depth: basementDepth(state) });
+    return { ok: true, floor: state.lowestFloor };
+  },
+
   build_unit(state, a, config) {
     const kind = a.kind;
     if (!config.units[kind]) return { ok: false, reason: `no such unit ${kind}` };
     if (!unlocked(state, config, kind)) return { ok: false, reason: `${kind} is locked` };
-    if (a.floor < 1 || a.floor >= state.floors) return { ok: false, reason: 'no such floor' };
+    if (!isBuildableFloor(state, a.floor, config)) return { ok: false, reason: 'no such floor' };
     const slot = a.slot ?? freeSlot(state, config, a.floor);
     if (slot < 0 || slotsUsed(state, a.floor).has(slot)) return { ok: false, reason: 'floor is full' };
     // Tenant demand is capped at the tower's current move-in capacity, so
@@ -148,7 +171,9 @@ const ACTIONS = {
     if (vacantRentable >= vacancyLimit) {
       return { ok: false, reason: 'too many vacant rooms already — let existing space fill before building more' };
     }
-    if (!charge(state, config.costs[kind])) return { ok: false, reason: 'not enough money' };
+    if (!charge(state, floorCost(config, a.floor, config.costs[kind]))) {
+      return { ok: false, reason: 'not enough money' };
+    }
 
     const rentLevel = state.rentLevels?.[kind] ?? 0;
     const u = {
@@ -172,12 +197,12 @@ const ACTIONS = {
     const kind = a.kind;
     if (!config.services?.[kind]) return { ok: false, reason: `no such facility ${kind}` };
     if (!unlocked(state, config, kind)) return { ok: false, reason: `${kind} is locked` };
-    if (a.floor < 1 || a.floor >= state.floors) return { ok: false, reason: 'no such floor' };
+    if (!isBuildableFloor(state, a.floor, config)) return { ok: false, reason: 'no such floor' };
     const slot = a.slot ?? freeSlot(state, config, a.floor);
     if (slot < 0 || slotsUsed(state, a.floor).has(slot)) return { ok: false, reason: 'floor is full' };
     const cost = config.costs[kind];
     if (!Number.isFinite(cost)) return { ok: false, reason: `${kind} has no build cost` };
-    if (!charge(state, cost)) return { ok: false, reason: 'not enough money' };
+    if (!charge(state, floorCost(config, a.floor, cost))) return { ok: false, reason: 'not enough money' };
 
     const facility = { id: nid(state), kind, floor: a.floor, slot };
     state.facilities.push(facility);
@@ -275,7 +300,9 @@ const ACTIONS = {
 
   build_shaft(state, a, config) {
     const kind = a.kind === 'express' ? 'express' : 'local';
-    const bottom = Math.max(0, a.bottom ?? 0);
+    // Clamped to the bottom of the world, not to 0: a shaft reaches down into
+    // the basements on exactly the terms it reaches up, span cost included.
+    const bottom = Math.max(lowestFloor(state), a.bottom ?? 0);
     const top = Math.min(a.top ?? state.floors - 1, state.floors - 1);
     if (top <= bottom) return { ok: false, reason: 'shaft must span 2+ floors' };
     // Express only makes sense as a nonstop hop between two floors; a "skip
@@ -358,35 +385,35 @@ const ACTIONS = {
     return { ok: true, id: sh.id };
   },
 
+  /**
+   * Extend a shaft up, down, or both in one call. Down is not a second kind
+   * of action: it is the same span extended at the other end, charged at the
+   * identical `shaftPerFloor` rate, because an unserved basement is exactly
+   * as dead as an unserved 40th floor. Omitting `bottom` leaves the bottom
+   * where it is, so every existing `{ id, top }` caller is unaffected.
+   */
   extend_shaft(state, a, config) {
     const sh = state.shafts.find((s) => s.id === a.id);
     if (!sh) return { ok: false, reason: 'no such shaft' };
-    const top = Math.min(a.top, state.floors - 1);
-    if (top <= sh.top) return { ok: false, reason: 'not an extension' };
+    const top = a.top == null ? sh.top : Math.min(a.top, state.floors - 1);
+    const bottom = a.bottom == null ? sh.bottom : Math.max(a.bottom, lowestFloor(state));
+    if (top <= sh.top && bottom >= sh.bottom) return { ok: false, reason: 'not an extension' };
+    if (top < sh.top || bottom > sh.bottom) return { ok: false, reason: 'shafts are never shortened' };
     const extendMax = sh.kind === 'express'
       ? (config.elevator.express?.maxSpan ?? config.elevator.maxSpan)
       : config.elevator.maxSpan;
-    if (top - sh.bottom + 1 > extendMax) {
+    if (top - bottom + 1 > extendMax) {
       return { ok: false, reason: `${sh.kind ?? 'local'} shafts cap at ${extendMax} floors` };
     }
-    for (let f = sh.top + 1; f <= top; f++) {
-      for (const u of state.units) {
-        if (u.floor === f && u.slot === sh.slot) return { ok: false, reason: 'column blocked' };
-      }
-      for (const facility of state.facilities ?? []) {
-        if (facility.floor === f && facility.slot === sh.slot) return { ok: false, reason: 'column blocked' };
-      }
-      for (const stair of state.stairs ?? []) {
-        if (stair.slot === sh.slot && f >= stair.bottom && f <= stair.top) return { ok: false, reason: 'column blocked' };
-      }
-      for (const escalator of state.escalators ?? []) {
-        if (escalator.slot === sh.slot && f >= escalator.bottom && f <= escalator.top) return { ok: false, reason: 'column blocked' };
-      }
+    for (const [from, to] of [[sh.top + 1, top], [bottom, sh.bottom - 1]]) {
+      if (columnBlocked(state, sh.slot, from, to)) return { ok: false, reason: 'column blocked' };
     }
-    const cost = config.costs.shaftPerFloor * (top - sh.top);
+    const added = (top - sh.top) + (sh.bottom - bottom);
+    const cost = config.costs.shaftPerFloor * added;
     if (!charge(state, cost)) return { ok: false, reason: 'not enough money' };
     sh.top = top;
-    pushEvent(state, 'shaft_extended', { id: sh.id, top });
+    sh.bottom = bottom;
+    pushEvent(state, 'shaft_extended', { id: sh.id, top, bottom });
     return { ok: true };
   },
 
@@ -409,6 +436,33 @@ const ACTIONS = {
     return { ok: true };
   },
 };
+
+/**
+ * Is `slot` occupied by anything on floors `from..to` (inclusive, empty when
+ * from > to)? Shared by both ends of `extend_shaft` so a downward extension
+ * is checked on exactly the terms an upward one always was. Existing shafts
+ * are deliberately NOT checked here — that was true of the upward path
+ * before basements and changing it would move balance, not fix this issue.
+ */
+function columnBlocked(state, slot, from, to) {
+  for (let f = from; f <= to; f++) {
+    for (const u of state.units) if (u.floor === f && u.slot === slot) return true;
+    for (const facility of state.facilities ?? []) {
+      if (facility.floor === f && facility.slot === slot) return true;
+    }
+    if (state.lobby && f === 0) {
+      const lobbySlots = state.lobby.slots ?? [state.lobby.slot];
+      if (lobbySlots.includes(slot)) return true;
+    }
+    for (const stair of state.stairs ?? []) {
+      if (stair.slot === slot && f >= stair.bottom && f <= stair.top) return true;
+    }
+    for (const escalator of state.escalators ?? []) {
+      if (escalator.slot === slot && f >= escalator.bottom && f <= escalator.top) return true;
+    }
+  }
+  return false;
+}
 
 function makeCar(state, atFloor) {
   return {

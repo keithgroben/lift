@@ -229,6 +229,26 @@ for it, and allowed nothing else on level 1). What is left:
    builds the storey. Dropping ours makes the first move unambiguous and
    deletes a button, but it changes `config.costs.floor` and the expansion
    economy, so it needs a sweep before it is real.
-2. **What does a basement rent for?** The appeal penalty and the cheaper build
-   cost both need numbers, and the only honest source for those is
-   `harness/tune.js` — not a guess in a spec.
+2. ~~**What does a basement rent for?**~~ **Answered by sweep, issue #6.**
+   `config.underground` now carries the numbers and the curve behind each
+   one (60 days x 5 seeds, held population, digging policy against its
+   identical non-digging twin). The short version:
+
+   - **Appeal penalty: 6 per floor down, capped at 24.** 6 is where the
+     curve steps — at 3 a basement office still clears `relistMinScore` and
+     the basement is just cheap lettable space; at 6 it does not, and the
+     basement becomes plant rather than offices, which is what §3 says it is.
+   - **Build cost: 0.7x above ground.** A weak knob, and worth saying so:
+     0.7/0.9/1.0 move the score ~3%, barely above noise. It only bites at the
+     extremes. The discount is a rule ("cheaper to build"), not a lever.
+   - **Dig cost: $30,000**, under `costs.floor` so digging is cheaper than
+     raising. Flat within noise below $40k; a cliff at $60k.
+   - **The reason to dig is coverage, not cost.** A facility below ground
+     reaches up from the ground line, widened by
+     `underground.serviceCoverageBonus` (2). Without that widening, digging
+     frees an above-ground slot and loses exactly the coverage that slot was
+     buying — a pure loss and no decision, and the sweep shows it: at bonus 0
+     digging is a *trap* (41.6 against 95.6 for not digging).
+   - **Ten floors is Keith's call and stands, but the bot saturates at
+     three.** 0/1/2/3/5/10 -> 95.6 / 109.5 / 128.8 / 137.8 / 137.2 / 137.2.
+     B4..B10 are headroom for a human, not yet a live decision.

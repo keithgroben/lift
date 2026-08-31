@@ -13,6 +13,13 @@ export function createState(config, seed = 1) {
     tod: 0,
     money: config.economy.startMoney,
     floors: config.building.startFloors,
+    /**
+     * The bottom of the world. The tower is a floor RANGE, `lowestFloor ..
+     * floors - 1`, not a count with 0 pinned at the bottom — digging moves
+     * this negative (B1 is -1). 0 until `dig_basement` is used, so a tower
+     * that never digs behaves exactly as it did before basements existed.
+     */
+    lowestFloor: 0,
     nextId: 1,
     units: [],
     facilities: [],
@@ -52,6 +59,60 @@ export function blankDayStats() {
 }
 
 export const nid = (s) => s.nextId++;
+
+/**
+ * The floor range. `state.floors` stays the count of storeys ABOVE ground
+ * (indices 0 .. floors-1) so every existing reading of it is unchanged; the
+ * bottom of the world moved from an implied 0 to `state.lowestFloor`, which
+ * is <= 0. These five helpers are the only places that knowledge lives —
+ * nothing in the sim should ever write `floor < 0` as a special case, and
+ * nothing outside them should assume 0 is the bottom.
+ *
+ * A missing `lowestFloor` reads as 0 on purpose: tests and the lab build
+ * partial states by hand, and an undug tower is exactly the old world.
+ */
+export const lowestFloor = (state) => state?.lowestFloor ?? 0;
+
+/** How far the tower has dug, in floors. B3 -> 3. */
+export const basementDepth = (state) => -lowestFloor(state);
+
+/** Storeys built, below ground and above. This is what upkeep is charged on. */
+export const totalFloors = (state) => (state?.floors ?? 0) - lowestFloor(state);
+
+/** Below the ground line. The one place the sign of a floor index is read. */
+export const isUnderground = (floor) => floor < 0;
+
+/**
+ * Every floor a room or facility may occupy, ascending: basements first,
+ * then the floors above the lobby. The lobby's own floor is excluded because
+ * it is the entrance, not lettable space — the same rule the old
+ * `1 .. floors-1` enumerations encoded, now stated once.
+ */
+export function buildableFloors(state, config) {
+  const lobbyFloor = config?.building?.lobbyFloor ?? 0;
+  const out = [];
+  for (let f = lowestFloor(state); f < (state?.floors ?? 0); f++) {
+    if (f !== lobbyFloor) out.push(f);
+  }
+  return out;
+}
+
+export function isBuildableFloor(state, floor, config) {
+  const lobbyFloor = config?.building?.lobbyFloor ?? 0;
+  return Number.isInteger(floor) && floor !== lobbyFloor
+    && floor >= lowestFloor(state) && floor < (state?.floors ?? 0);
+}
+
+/**
+ * Build cost for something placed on `floor`. Underground slots are cheaper
+ * to sink than to raise — that discount, against the appeal penalty in
+ * `unitEvaluation`, is what makes digging a decision instead of free space.
+ */
+export function floorCost(config, floor, cost) {
+  if (!isUnderground(floor)) return cost;
+  const multiplier = Number(config?.underground?.buildCostMultiplier);
+  return Math.round(cost * (Number.isFinite(multiplier) ? multiplier : 1));
+}
 
 /**
  * Per-tenant departure jitter, drawn at the moment a room becomes occupied.

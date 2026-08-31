@@ -1,11 +1,35 @@
+import { isUnderground } from './state.js';
+
+/**
+ * How far a facility reaches, and how far it is from a room. A basement
+ * facility is measured differently in both, and deliberately so: a garage or
+ * plant room below ground connects to the building at the lobby rather than
+ * at its own storey, so its reach upward starts at the ground line (digging
+ * deeper never costs it coverage above) and it is widened by
+ * `underground.serviceCoverageBonus`.
+ *
+ * That widening is the entire reason to dig. Without it, moving a facility
+ * underground frees one above-ground slot and loses exactly the coverage
+ * that slot was buying — a pure loss, and therefore no decision at all.
+ */
+function coverageReach(config, kind, facility) {
+  const base = config.services?.[kind]?.coverageFloors ?? 0;
+  if (!isUnderground(facility.floor)) return base;
+  return base + (Number(config.underground?.serviceCoverageBonus) || 0);
+}
+
+function coverageDistance(facility, unit) {
+  if (isUnderground(facility.floor) && !isUnderground(unit.floor)) return Math.abs(unit.floor);
+  return Math.abs(facility.floor - unit.floor);
+}
+
 /** Return the closest facility of `kind` when it covers the unit's floor. */
 function nearestFacility(state, unit, config, kind) {
-  const coverageFloors = config.services?.[kind]?.coverageFloors ?? 0;
   let best = null;
   for (const facility of state.facilities ?? []) {
     if (facility.kind !== kind) continue;
-    const floors = Math.abs(facility.floor - unit.floor);
-    if (floors > coverageFloors) continue;
+    const floors = coverageDistance(facility, unit);
+    if (floors > coverageReach(config, kind, facility)) continue;
     if (!best || floors < best.floors || (floors === best.floors && facility.slot < best.facility.slot)) {
       best = { facility, floors };
     }

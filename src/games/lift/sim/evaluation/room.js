@@ -19,6 +19,13 @@ export function unitEvaluation(state, unit, config, floorIndex = null) {
   const escalator = nearestEscalator(state, unit, config);
   const viewBonus = Math.min(config.evaluation.viewBonusCap ?? 0,
     Math.max(0, unit.floor) * (config.evaluation.viewWeight ?? 0));
+  // Nobody wants a basement office. Appeal falls per floor below ground and
+  // then stops falling — deep enough is simply unlettable, and that ceiling
+  // on how bad it gets is what keeps the penalty a tradeoff rather than a
+  // ban. Zero above ground, so an undug tower scores exactly as before.
+  const undergroundPenalty = Math.min(
+    config.underground?.appealPenaltyCap ?? 0,
+    Math.max(0, -unit.floor) * (config.underground?.appealPenaltyPerFloor ?? 0));
   const preferredFloor = tune.preferredFloor ?? unit.floor;
   const preferenceDistance = Math.abs(unit.floor - preferredFloor);
   const preferencePenalty = clamp(preferenceDistance / Math.max(1, config.evaluation.preferenceTolerance ?? 1))
@@ -84,6 +91,7 @@ export function unitEvaluation(state, unit, config, floorIndex = null) {
       accessMode: null,
       lobbyAccessSlots: null,
       viewBonus,
+      undergroundPenalty,
       amenityBonus,
       preferredFloor,
       preferencePenalty: Math.round(preferencePenalty),
@@ -104,7 +112,7 @@ export function unitEvaluation(state, unit, config, floorIndex = null) {
   const accessPenalty = clamp(accessSeconds / config.evaluation.accessToleranceSeconds)
     * config.evaluation.accessWeight;
   const score = Math.max(0, Math.min(100, Math.round(
-    100 - stressPenalty - accessPenalty - noisePenalty - foodPenalty - parkingPenalty - medicalPenalty - securityPenalty - recyclingPenalty - preferencePenalty + rentAdjustment + renovationBonus + viewBonus + amenityBonus + layoutBonus
+    100 - stressPenalty - accessPenalty - noisePenalty - foodPenalty - parkingPenalty - medicalPenalty - securityPenalty - recyclingPenalty - preferencePenalty - undergroundPenalty + rentAdjustment + renovationBonus + viewBonus + amenityBonus + layoutBonus
   )));
   return {
     score,
@@ -117,6 +125,7 @@ export function unitEvaluation(state, unit, config, floorIndex = null) {
     accessSeconds: +accessSeconds.toFixed(1),
     accessPenalty: Math.round(accessPenalty),
     viewBonus,
+    undergroundPenalty,
     amenityBonus,
     preferredFloor,
     preferencePenalty: Math.round(preferencePenalty),

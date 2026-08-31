@@ -47,6 +47,70 @@ export const CONFIG = {
     lobbySlot: 0,
   },
 
+  /**
+   * Underground floors, B1..B10 (sim index -1..-10). Keith's call,
+   * 2026-08-31: ten, exactly as SimTower allowed against its hundred.
+   * See spec/tower-view.md §3. Every number here came off a tune sweep, not
+   * a guess — the curves are in the issue #6 report.
+   */
+  underground: {
+    /**
+     * B1..B10. Keith's call, not the sweep's — but the sweep is worth
+     * recording: held population saturates at THREE. 0/1/2/3/5/10 ->
+     * 95.6 / 109.5 / 128.8 / 137.8 / 137.2 / 137.2. At 0 the digging policy
+     * scores exactly its non-digging twin, which is the inertness proof;
+     * past B3 the current autoplayer finds nothing to put down there, so
+     * B4..B10 are headroom for a human, not a live decision for a bot.
+     */
+    maxDepth: 10,
+    /**
+     * Cost to sink one basement storey. Below 40k the curve is flat within
+     * noise (10k/20k/30k/40k -> 142.4 / 143.6 / 137.2 / 149.2) and at 60k it
+     * falls off a cliff to 108.7, below the best non-digging policy. 30k
+     * sits on the flat part AND stays under `costs.floor` (40k), so digging
+     * is cheaper than raising — which is the rule, not the score.
+     */
+    digCost: 30000,
+    /**
+     * Rooms and facilities below ground cost this fraction of their
+     * above-ground price. Weak knob, and worth saying so: 0.7/0.9/1.0 ->
+     * 137.2 / 133.7 / 133.3, a ~3% spread that is barely above noise. It
+     * only bites at the extremes (0.5 -> 152.5, 1.2 -> 96.6). 0.7 makes the
+     * discount visible without being the reason digging pays.
+     */
+    buildCostMultiplier: 0.7,
+    /**
+     * Appeal points a room loses per floor below ground, capped. 6 is where
+     * the curve STEPS: 0/3/6/9/12/18/30 -> 151.7 / 155.2 / 137.2 / 135.5 /
+     * 137.6 / 130.1 / 129.6. At 3 a basement office still clears
+     * `evaluation.relistMinScore` and the basement is just cheap lettable
+     * space; at 6 it does not, and the basement becomes what the spec says
+     * it is — plant, not offices. That step costs the digging policy 12%,
+     * i.e. it makes the game harder, which is the direction that counts.
+     */
+    appealPenaltyPerFloor: 6,
+    /** Deep enough is simply unlettable; the penalty stops growing here. */
+    appealPenaltyCap: 24,
+    /**
+     * Extra coverage floors a facility gains by being underground, and the
+     * reason the tradeoff exists at all: a basement garage or plant room
+     * connects to the building at the lobby, not at its own storey, so it
+     * serves the tower rather than the three floors around it. Without
+     * this, digging frees an above-ground slot and loses exactly the
+     * coverage that slot was buying — a pure loss, and no decision.
+     *
+     * 2 is deliberately the KNEE, not the maximum. Against the identical
+     * non-digging twin ("skyscraper", 95.6), 0/1/2/3/4/6/8 ->
+     * 41.6 / 106.6 / 137.2 / 152.5 / 160.3 / 166.3 / 166.3 — at 0 digging is
+     * a trap, and from 6 the curve is flat. There is no interior maximum, so
+     * chasing the widest spread would only make digging mandatory. 2 is the
+     * lowest value where digging clearly repays its capital, and four floors
+     * of reach up from the ground line is the furthest a basement garage can
+     * plausibly claim.
+     */
+    serviceCoverageBonus: 2,
+  },
+
   access: {
     /** Horizontal corridor-walking time represented by one slot. */
     walkSecondsPerSlot: 1.2,

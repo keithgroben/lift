@@ -1,4 +1,4 @@
-import { blankDayStats, population, starTier, pushEvent, assignTenantJitter } from './state.js';
+import { basementDepth, blankDayStats, population, starTier, pushEvent, assignTenantJitter, totalFloors } from './state.js';
 import { hotelBookingFeedback, hotelExperienceSummary, leasingForecast, shopTrafficEstimate, tenantMixSnapshot, tenantRetentionPressure, towerDesirabilitySummary, unitEvaluation, vacancyRankingSignalSummary } from './evaluation.js';
 
 /** Rent, upkeep, stress bleed-off, move-outs and move-ins. Runs once per day. */
@@ -17,7 +17,10 @@ export function dayClose(state, config) {
   const vacantBefore = state.units.filter((u) => !u.occupied).length;
   s.serviceUpkeep = (state.facilities ?? []).reduce((total, facility) =>
     total + (config.services?.[facility.kind]?.dailyUpkeep ?? 0), 0);
-  s.upkeep = state.floors * config.economy.upkeepPerFloor
+  // Every storey costs the same to run, dug or raised: the basement discount
+  // is on the build, not on the operating bill. Digging is a capital decision
+  // you keep paying for.
+  s.upkeep = totalFloors(state) * config.economy.upkeepPerFloor
            + vacantBefore * config.occupancy.vacantUpkeep
            + s.serviceUpkeep;
   state.money -= s.upkeep;
@@ -200,6 +203,7 @@ export function dayClose(state, config) {
     day: state.day,
     money: Math.round(state.money),
     floors: state.floors,
+    basements: basementDepth(state),
     pop: population(state),
     star: starTier(state, config).name,
     units: state.units.length,

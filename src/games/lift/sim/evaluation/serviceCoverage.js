@@ -1,5 +1,5 @@
 /** Food/parking/medical/security/recycling coverage, and shop foot-traffic. */
-import { freeSlot } from '../state.js';
+import { buildableFloors, freeSlot, isBuildableFloor, lowestFloor } from '../state.js';
 import { shopsForOffice } from '../demand.js';
 import { deliveryReliability, unitEvaluation } from './room.js';
 import { formatCost } from './transport.js';
@@ -32,7 +32,7 @@ export function servicePlacementCoveragePreview(state, kind, floor, config) {
     return { available: false, kind, floor, reason: 'service placement unavailable' };
   }
   const placementFloor = Number(floor);
-  if (!Number.isInteger(placementFloor) || placementFloor <= (config.building.lobbyFloor ?? 0) || placementFloor >= state.floors) {
+  if (!isBuildableFloor(state, placementFloor, config)) {
     return { available: false, kind, floor: placementFloor, reason: 'choose an upper floor' };
   }
   const slot = freeSlot(state, config, placementFloor);
@@ -112,12 +112,12 @@ export function servicePlacementRecommendation(state, unit, kind, config) {
   }
   const coverageFloors = Math.max(0, Number(config.services[kind].coverageFloors) || 0);
   const targetFloor = Number(unit.floor);
-  if (!Number.isInteger(targetFloor) || targetFloor <= (config.building.lobbyFloor ?? 0) || targetFloor >= state.floors) {
+  if (!isBuildableFloor(state, targetFloor, config)) {
     return { key: 'unavailable', kind, targetFloor, coverageFloors, reason: 'affected room is not on an upper floor' };
   }
 
   const candidates = [];
-  const low = Math.max(config.building.lobbyFloor + 1, targetFloor - coverageFloors);
+  const low = Math.max(lowestFloor(state), targetFloor - coverageFloors);
   const high = Math.min(state.floors - 1, targetFloor + coverageFloors);
   for (let floor = low; floor <= high; floor++) {
     const preview = servicePlacementCoveragePreview(state, kind, floor, config);
@@ -349,7 +349,7 @@ export function shopTrafficTenantMixPreview(state, shop, config, reputation = nu
     return { available: false, reason: 'no shop demand target' };
   }
   const before = shopTrafficEstimate(state, shop, config, reputation);
-  const candidates = Array.from({ length: Math.max(0, state.floors - 1) }, (_, index) => index + 1)
+  const candidates = buildableFloors(state, config)
     .map((floor) => tenantPlacementFloorPreview(state, 'office', floor, config))
     .filter((preview) => preview.available)
     .sort((a, b) => Math.abs(a.floor - shop.floor) - Math.abs(b.floor - shop.floor) ||
