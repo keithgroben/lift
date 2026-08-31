@@ -4302,9 +4302,99 @@ els['placement-preview'].addEventListener('click', (e) => {
     : 'VACANT room selected — renovate or resolve its leasing blockers.');
 });
 
+// ------------------------------------------------------------------ camera
+// The renderer owns the camera; this turns pointer events into camera verbs
+// and nothing more. Every pick below still goes through renderer.floorAt /
+// slotAt / unitAt / facilityAt / shaftAt, which now carry the inverse
+// transform, so panning needs no other change anywhere in this file.
+
+/** Below this, a press is a click; above it, it is a drag and never places. */
+const DRAG_THRESHOLD = 4;
+let pan = null;
+let suppressNextClick = false;
+
+const canvasPoint = (e) => {
+  const r = canvas.getBoundingClientRect();
+  return [e.clientX - r.left, e.clientY - r.top];
+};
+
+const announceZoom = (before) => {
+  const after = renderer.camera.zoom;
+  if (after !== before) toast('zoom ' + after + 'x', INFO);
+};
+
+canvas.addEventListener('mousedown', (e) => {
+  const [px, py] = canvasPoint(e);
+  // The minimap answers in every mode: click or drag the strip to jump.
+  if (e.button === 0 && renderer.minimapJump(state, px, py)) {
+    pan = { kind: 'minimap', moved: true };
+    e.preventDefault();
+    return;
+  }
+  // Middle-drag pans in every mode, including while a build tool is armed.
+  // Left-drag pans on empty space, which means: when nothing is armed, so a
+  // build click still lands where the player clicked.
+  if (e.button !== 1 && !(e.button === 0 && tool === 'observe')) return;
+  pan = { kind: 'pan', x: e.clientX, y: e.clientY, moved: false };
+  if (e.button === 1) e.preventDefault();
+});
+
+addEventListener('mousemove', (e) => {
+  if (!pan) return;
+  if (pan.kind === 'minimap') {
+    const [px, py] = canvasPoint(e);
+    renderer.minimapJump(state, px, py);
+    return;
+  }
+  const dx = e.clientX - pan.x, dy = e.clientY - pan.y;
+  if (!pan.moved && Math.abs(dx) + Math.abs(dy) < DRAG_THRESHOLD) return;
+  pan.moved = true;
+  pan.x = e.clientX;
+  pan.y = e.clientY;
+  renderer.dragBy(state, dx, dy);
+  canvas.style.cursor = 'grabbing';
+});
+
+addEventListener('mouseup', () => {
+  if (!pan) return;
+  // A drag must never be read as a click-to-place, so swallow the click the
+  // browser is about to deliver.
+  suppressNextClick = pan.moved;
+  pan = null;
+  canvas.style.cursor = '';
+});
+
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const [px, py] = canvasPoint(e);
+  const before = renderer.camera.zoom;
+  renderer.zoomBy(state, e.deltaY < 0 ? 1 : -1, px, py);
+  announceZoom(before);
+}, { passive: false });
+
+addEventListener('keydown', (e) => {
+  if (e.target instanceof HTMLInputElement) return;
+  const before = renderer.camera.zoom;
+  if (e.key === '-' || e.key === '_') { renderer.zoomBy(state, -1); announceZoom(before); }
+  if (e.key === '=' || e.key === '+') { renderer.zoomBy(state, 1); announceZoom(before); }
+  // The HUD's explicit "go to": the only other time the camera moves itself.
+  if (e.key === '0') { renderer.frameLobby(state); toast('view framed on the lobby', INFO); }
+});
+
 canvas.addEventListener('mousemove', (e) => {
+  if (pan) return;
   const r = canvas.getBoundingClientRect();
   const px = e.clientX - r.left, py = e.clientY - r.top;
+  // The minimap is furniture on top of the world, not part of it.
+  if (renderer.minimapAt(state, px, py)) {
+    if (hoverFloor === -1 && hoverSlot === -1 && hoverShaftId == null && hoverFacilityId == null) return;
+    hoverFloor = -1;
+    hoverSlot = -1;
+    hoverShaftId = null;
+    hoverFacilityId = null;
+    refresh();
+    return;
+  }
   const floor = renderer.floorAt(state, px, py);
   const shaft = renderer.shaftAt(state, px, py);
   const facility = renderer.facilityAt(state, px, py);
@@ -4342,9 +4432,11 @@ canvas.addEventListener('mouseleave', () => {
 });
 
 canvas.addEventListener('click', (e) => {
+  if (suppressNextClick) { suppressNextClick = false; return; }
   placementNotice = null;
   const r = canvas.getBoundingClientRect();
   const px = e.clientX - r.left, py = e.clientY - r.top;
+  if (renderer.minimapAt(state, px, py)) return;
   if (tool === 'car') {
     const shaftId = renderer.shaftAt(state, px, py);
     if (shaftId == null) return toast(state.shafts.length ? 'click an elevator shaft' : 'build a shaft first', WARN);
