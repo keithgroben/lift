@@ -63,6 +63,30 @@ Release 0 work, in order:
 13. [ ] Human playtest pass: observe a new player completing the first loop without
    verbal coaching.
 
+### Blocking Release 0: the tower view
+
+Keith's ruling, 2026-08-31: **the loop cannot be finished while the UI is the
+way it is**, so item 13 cannot be run honestly yet. Full spec in
+[`spec/tower-view.md`](spec/tower-view.md); in short:
+
+- [ ] Camera — fixed 48×32 world scale, click-and-drag panning, integer zoom
+      steps, all picking through the inverse transform. Today `layout()`
+      refits the whole tower every frame, so a slot at 60 floors draws
+      22×14 px and the game gets *less* readable as you win.
+- [ ] Ground line and street under floor 0.
+- [ ] Lobby-first opening: `startFloors: 0`, build palette reordered so the
+      first click of a new game places the entrance, not a floor.
+- [ ] Build palette — arm a tool, ghost-preview it in the world with the
+      reason it cannot land, confirm, stay armed for the next placement.
+- [ ] Underground floors `B1..B10` as a sim floor *range* (not a renderer
+      special case), with parking and services down there and shafts that
+      must be extended to reach them. Ships with a test.
+- [ ] Minimap strip, SimTower-style: the whole tower in miniature, one row
+      per floor, a box showing the current view, click or drag to jump.
+- [ ] **Then** the recorded playthrough, and the loop balance pass it feeds.
+- [ ] **Only then** the developer sidebar comes out and its numbers move
+      in-world. Deliberately gated on the playthrough, not on a date.
+
 ## Release 1 — closed beta: manage a small tower
 
 Purpose: the first management loop is understandable, recoverable, and worth

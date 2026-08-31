@@ -6,6 +6,11 @@ what the game is. **Do not start production art until Phase D** — but this
 list also tells the *programmers* what the renderer must eventually support,
 which is why it exists now.
 
+Two companions, added 2026-08-31: `spec/tower-view.md` is the UI shell this
+art lands on (camera, ground line, underground, build palette), and
+`spec/asset-request.md` is the paste-ready cut of Tier 0 + Tier 1 for an
+image-gen assistant. If a size disagrees between files, this one wins.
+
 ## Art direction constants
 
 - **Style:** mixel (mixed-resolution pixel art) — crisp pixel sprites over
@@ -28,6 +33,24 @@ which is why it exists now.
   transparent background, plus a sidecar JSON (`{frameW, frameH, animations:
   {name: {row, frames, fps}}}`). File names kebab-case:
   `office.png`, `office.json`, `person-worker.png`, …
+
+## Tier 0 — the shell (added 2026-08-31, produce first)
+
+The ground line, the underground, and the build palette. None of it exists in
+the renderer today; all of it is required by `spec/tower-view.md`.
+
+| Sprite | Size | States / frames | Notes |
+|---|---|---|---|
+| ground-street | 48×16 tile | 1f | sidewalk + curb under floor 0; the horizon line of the game |
+| ground-entrance | 48×16 | day · night | apron under the lobby — steps, doormat, lit sign at night |
+| earth-fill | 48×32 tile | 1f | packed dirt behind basement floors; must stay quiet, it is backdrop |
+| earth-edge | 48×32 | 1f | the dug edge where earth meets a basement slot |
+| basement-empty | 48×32 | 1f | bare basement slot; colder and dimmer than `empty slot` |
+| basement-parking | 48×32 | empty · 1 car · 2 cars | the main reason to dig |
+| basement-storage | 48×32 | 1f | crates and shelving |
+| basement-utility | 48×32 | idle (2f) | boilers, pipes, slow blinking indicator |
+| foundation-slab | 48×6 tile | 1f | heavier slab separating floor 0 from B1 |
+| palette-icons | 32×32 each, 17 across | 1f each | build-menu tools: lobby · floor · office · condo · shop · hotel · shaft · car · express · stairs · escalator · cafeteria · parking · clinic · security · recycling · demolish |
 
 ## Tier 1 — minimum viable reskin (replaces the colored rectangles)
 
@@ -91,7 +114,9 @@ rooms → people → transport.**
 ## What this implies for the renderer (programmer notes)
 
 - Pan/zoom camera with integer zoom steps lands **before** any sprite work
-  (see vision doc, Phase D order).
+  (see vision doc Phase D, and `spec/tower-view.md` for the full shell spec).
+  Until it does, `layout()` refits the tower every frame and a slot at 60
+  floors draws 22×14 px — half the native grid these sprites are drawn on.
 - A sprite-sheet loader + animation clock in `render/` (renderer-only;
   `config.feel` owns fps constants).
 - The current queue-dot and crowd-bar *signals* survive the reskin: pressure
