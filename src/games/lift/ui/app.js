@@ -174,7 +174,7 @@ function frame(now) {
   const renderElapsed = now - lastRenderAt;
   if (lastRenderAt === 0 || renderElapsed >= RENDER_INTERVAL_MS) {
     lastRenderAt = now;
-    if (updateWaitingNowIndicator()) requestLiveRefresh();
+    updateWaitingNowIndicator();
     updateCarQueuePreview();
     flushLiveRefresh(now);
     const renderDtMs = Math.min(120, Math.max(0, renderElapsed));
@@ -343,6 +343,7 @@ function setDeveloperMode(open) {
   els['developer-panel'].hidden = !developerMode;
   els['developer-toggle'].setAttribute('aria-expanded', String(developerMode));
   els['developer-toggle'].textContent = developerMode ? 'hide developer details' : 'show developer details';
+  if (developerMode) requestLiveRefresh();
 }
 els['developer-toggle'].addEventListener('click', () => setDeveloperMode(!developerMode));
 els['restart-game'].addEventListener('click', () => {
@@ -557,6 +558,9 @@ function recordCarQueueDay(day) {
 }
 
 function updateCarQueuePreview() {
+  // Queue previews feed only the car tool and opt-in diagnostics. Avoid scanning
+  // every person and local route 30 times a second during ordinary play.
+  if (!developerMode && tool !== 'car') return;
   const snapshot = carQueueSignature();
   const localSnapshot = localRouteSnapshot();
   const queueChanged = snapshot.signature !== lastCarQueueSignature;
@@ -575,7 +579,7 @@ function updateCarQueuePreview() {
   lastLocalRouteSignature = localSnapshot.signature;
   lastCarForecastContextKey = forecastContext.label;
   if (tool !== 'car') {
-    if (localChanged || sampleDue) requestLiveRefresh();
+    if (developerMode && (localChanged || sampleDue)) requestLiveRefresh();
     return;
   }
   let targetChanged = false;
@@ -592,7 +596,7 @@ function updateCarQueuePreview() {
     }
   }
   if (!targetChanged && !queueChanged && !contextChanged && !sampleDue && !localChanged) return;
-  renderTransport();
+  if (developerMode) renderTransport();
   renderInvestmentPreview();
 }
 
@@ -3705,12 +3709,12 @@ function refresh() {
     const next = clampRentLevel(level + Number(b.dataset.rentStep), CONFIG);
     b.disabled = next === level;
   }
-  renderTransport();
+  if (developerMode) renderTransport();
   renderShaftInspector();
   renderFacilityInspector();
   renderInspector();
   renderInvestmentPreview();
-  renderExpansionSafety();
+  if (developerMode) renderExpansionSafety();
 
   const costs = {
     floor: money(CONFIG.costs.floor),

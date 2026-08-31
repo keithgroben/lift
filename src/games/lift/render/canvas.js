@@ -311,7 +311,7 @@ export function makeRenderer(canvas, config) {
 
   /** Smoothed car positions, so a 30Hz sim reads as continuous motion. */
   const smooth = new Map();
-  let W = 0, H = 0;
+  let W = 0, H = 0, dpr = 1;
 
   // Fixed relative positions (fraction of width, pixels from the top) so
   // stars don't re-roll every frame or every reload.
@@ -321,9 +321,11 @@ export function makeRenderer(canvas, config) {
   ];
 
   function resize() {
-    const dpr = window.devicePixelRatio || 1;
     const r = canvas.getBoundingClientRect();
     W = r.width; H = r.height;
+    const maxDpr = config.feel.maxDpr ?? 1.25;
+    const pixelBudget = config.feel.maxCanvasPixels ?? 2000000;
+    dpr = Math.min(window.devicePixelRatio || 1, maxDpr, Math.sqrt(pixelBudget / Math.max(1, W * H)));
     canvas.width = Math.round(W * dpr);
     canvas.height = Math.round(H * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -343,7 +345,6 @@ export function makeRenderer(canvas, config) {
   }
 
   function draw(state, juice, dtMs, placementGuide = null, hoverFloor = -1, routeTarget = null, serviceFocus = null, hoverFacilityId = null, selectedShaftId = null, hoverShaftId = null, shaftQueueHistory = null) {
-    const dpr = window.devicePixelRatio || 1;
     const L = layout(state);
     const [sx, sy] = juice.offset();
     // Built once per frame and shared across every room's evaluation below —

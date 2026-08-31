@@ -446,6 +446,8 @@ export const CONFIG = {
   /** Read by the renderer only. Never read by src/sim. */
   feel: {
     palette: ['#0e1116', '#1b2430', '#3ddc97', '#ffb703', '#ef476f', '#8ecae6'],
+    maxDpr: 1.25,
+    maxCanvasPixels: 2000000,
     tweenMs: 180,
     shakeOnVacate: 6,
     floaterMs: 900,
