@@ -58,6 +58,33 @@ export const tests = {
     assert(placementHandler().includes('pickBuildFloor(px, py)'), 'the tower click does not use the ground-aware pick');
   },
 
+  /**
+   * The bug this locks down, because it cost a real one: `floorAt` answers
+   * `null` when the point is not on the tower, and `null >= 0` is TRUE in
+   * JavaScript. A relational test against 0 therefore reads a click in empty
+   * sky as floor 0, AND refuses B1, which is a legitimate floor of -1. The
+   * rule is that a pick is checked for null, never compared numerically —
+   * guarding the rule rather than the one line that got it wrong, because the
+   * same mistake has four call sites to reappear in.
+   */
+  'a floor pick is tested for null, never compared against zero'() {
+    const pick = app.slice(app.indexOf('function pickBuildFloor('));
+    const body = pick.slice(0, pick.indexOf('\n}'));
+    assert(/floor\s*!=\s*null|floor\s*==\s*null/.test(body),
+      'pickBuildFloor does not test its pick for null');
+    assert(!/floor\s*[<>]=?\s*0/.test(body),
+      'pickBuildFloor compares a possibly-null pick against 0, which reads empty sky as the ground floor');
+
+    // And the same rule everywhere the pick is consumed, not just where it is made.
+    for (const site of ['function armedAction(', 'function ghostGeometry(']) {
+      const at = app.indexOf(site);
+      if (at < 0) continue;
+      const region = app.slice(at, at + 1200);
+      assert(!/floor\s*[<>]=?\s*0/.test(region),
+        site.replace('function ', '').replace('(', '') + ' compares a floor against 0, which excludes the basements');
+    }
+  },
+
   /** spec/tower-view.md §5: a palette, ordered by the actual first move. */
   'the build palette is a grouped tool shelf ordered by the first move'() {
     assert(paletteOrder.length === 19, `palette has ${paletteOrder.length} tools, expected 19`);
