@@ -35,6 +35,9 @@ at 1x unless a step says otherwise.
    there. Hover a blocked column and read the reason the ghost gives.
 10. Press `Esc` and confirm the tool is put away and the tower reads as
     `WATCHING`.
+10a. Find the appeal view without being told the key, turn it on and off, and
+    say what it shows. Then point at a room carrying a marker, say which edge
+    it sits on, and say which of the two causes that means.
 11. Open Developer Details only after the player flow is complete. Confirm that
     the detailed transport and expansion diagnostics are still available.
 
@@ -49,6 +52,8 @@ at 1x unless a step says otherwise.
   choice before construction.
 - The player does not need to scroll continuously to find the next action.
 - The player can name at least one cause of a red or amber signal.
+- The player can tell a departure wick apart from a stress line, and names a
+  different fix for each.
 
 ## Record the result
 

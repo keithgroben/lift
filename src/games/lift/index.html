@@ -53,8 +53,11 @@
   .hud-value { color: #dbe4ee; font-size: 14px; font-weight: 700; white-space: nowrap; }
   .hud-readout-time .hud-value { letter-spacing: .06em; }
   .hud-rush { color: var(--warn); font-size: 9px; font-weight: 700; letter-spacing: .12em; margin-left: 8px; }
+  #topbar .view-controls { display: flex; align-items: center; gap: 4px; margin-left: auto; flex: 0 0 auto; }
+  #topbar .view-controls button { padding: 5px 9px; font-size: 9px; }
+  #topbar .view-controls button[aria-pressed="true"] { color: var(--warn); border-color: var(--warn); background: #2a2313; }
   #topbar .time-controls {
-    display: flex; align-items: center; gap: 4px; margin: 0 0 0 auto; flex: 0 0 auto;
+    display: flex; align-items: center; gap: 4px; margin: 0; flex: 0 0 auto;
   }
   #topbar .time-controls button { padding: 5px 9px; font-size: 9px; }
   /* The context row: one line each, and silent when there is nothing to say.
@@ -314,6 +317,9 @@
   .swatch-car { background: linear-gradient(90deg, var(--info), var(--warn)); }
   .swatch-doors { background: var(--good); }
   .swatch-facility { background: linear-gradient(90deg, #b388ff, #f4a261, #e76f51); }
+  .swatch-wick { background: linear-gradient(0deg, var(--bad) 0 40%, var(--warn) 40% 70%, #0a0d12 70% 100%); }
+  .swatch-stress { background: linear-gradient(90deg, var(--warn), var(--bad)); height: 3px; align-self: center; }
+  .swatch-appeal { background: linear-gradient(90deg, var(--good), var(--bad)); }
   .swatch-lobby { background: #5aa9e6; }
   .swatch-stairs { background: #8ecae6; }
   .swatch-escalator { background: #f4a261; }
@@ -472,6 +478,14 @@
     <div class="hud-row">
       <h1 class="hud-brand">LIFT</h1>
       <div id="top-bar-mount"></div>
+      <!-- The appeal view (issue #12) needs somewhere a player can find it
+           without already knowing the key. `A` still works; both go through the
+           one toggle in app.js, so the pressed state cannot lie about what the
+           tower is drawing. -->
+      <div class="view-controls" aria-label="tower views">
+        <button id="appeal-toggle" type="button" aria-pressed="false"
+          title="tint every room by its appeal, to see which part of the tower is rotting (A)">appeal view</button>
+      </div>
       <div id="time-controls" class="time-controls" aria-label="time controls">
         <button type="button" data-speed="0">pause</button>
         <button type="button" data-speed="1">1x</button>
@@ -589,7 +603,9 @@
       <summary>HOW TO READ THE TOWER</summary>
       <div class="player-help">The lot is empty and the <b>lobby</b> tool is armed: your first click builds the entrance, and the ground it stands on is free. Then add rooms — each one brings its own storey — and run a shaft up to them. A tool stays armed until <b>Esc</b>.</div>
       <div class="player-key"><b>W</b> waiting · <b>T</b> tenants/capacity · <b>delivery</b> trips completed · <b>reputation</b> tenant trust · <b>desirability</b> room appeal</div>
-      <div class="player-color-key"><b>room colors:</b> blue office · green condo · amber shop · violet hotel · gray empty · red fade = low appeal · yellow/red line = tenant stress</div>
+      <div class="player-color-key"><b>room colors:</b> blue office · green condo · amber shop · violet hotel · gray empty · redder = lower appeal
+        <br><b>two warnings, and they are different problems:</b> a bar filling the room&rsquo;s <b>LEFT edge</b> = this tenant is walking out over <b>room appeal</b>, one notch per day left · a line along the room&rsquo;s <b>BOTTOM edge</b> = <b>tenant stress</b> from slow lifts. Both run amber to red, so read the <b>edge</b>, not the colour: one is answered with services, rent or noise, the other with cars and shafts.
+        <br>Press <b>A</b>, or <b>appeal view</b> in the top bar, to tint every room by appeal at once.</div>
       <div class="guide">
         <strong>START HERE</strong>
         <ol>
@@ -625,6 +641,9 @@
       <div class="legend-row"><i class="swatch swatch-stairs"></i><span>stairs: slow local route, no car wait</span></div>
       <div class="legend-row"><i class="swatch swatch-escalator"></i><span>escalator: faster local route, no car wait</span></div>
       <div class="legend-row"><i class="swatch swatch-facility"></i><span>facility: food · parking · medical · security · recycling</span></div>
+      <div class="legend-row"><i class="swatch swatch-wick"></i><span>departure wick, room&rsquo;s <b>left</b> edge: how far this tenant is along their countdown out over <b>room appeal</b>; one notch per day, silent until the countdown starts</span></div>
+      <div class="legend-row"><i class="swatch swatch-stress"></i><span>stress line, room&rsquo;s <b>bottom</b> edge: tenant patience with <b>slow lifts</b> — the other cause, and the other fix</span></div>
+      <div class="legend-row"><i class="swatch swatch-appeal"></i><span>appeal view (<b>A</b>, or the bar toggle): every room tinted good to poor by appeal, on demand</span></div>
       <div id="placement-guide-legend" hidden>
         <div class="legend-row"><i class="guide-swatch guide-target"></i><span>TARGET: the warned floor to improve</span></div>
         <div class="legend-row"><i class="guide-swatch guide-valid"></i><span>VALID: an open floor where the fix can be placed</span></div>
@@ -639,7 +658,7 @@
       Units: select one, then click a floor.<br>
       Cars: select + car, then click a shaft.<br>
       Click an empty room to inspect and re-rent it.<br>
-      <b>space</b> pause · <b>1/2/3</b> speed · <b>D</b> developer details · <b>E</b> export tape · <b>R</b> restart
+      <b>space</b> pause · <b>1/2/3</b> speed · <b>A</b> appeal view · <b>D</b> developer details · <b>E</b> export tape · <b>R</b> restart
       </p>
       <div class="player-help-links"><a href="../../../docs/DEVELOPER_MODE.md" target="_blank" rel="noreferrer">Developer mode guide</a></div>
     </section>

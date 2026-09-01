@@ -596,7 +596,7 @@ function onDayClose(closed, occupiedBefore) {
 
 // ---------------------------------------------------------------------- HUD
 const els = {};
-for (const id of ['build', 'build-ghost', 'build-ghost-reason', 'expansion-safety', 'log', 'knobs', 'mode', 'cancel-tool', 'goal-copy', 'transport', 'rent-control', 'rent-kind', 'rent-value', 'facility-inspector', 'shaft-inspector', 'unit-inspector', 'unit-title', 'unit-appeal-why', 'unit-status', 'unit-detail', 'unit-utilization-context', 'conversion-controls', 'renovate-unit', 'rerent-unit', 'demolish-unit', 'cancel-confirmation', 'recovery-warning', 'rerent-reason', 'placement-guide-legend', 'placement-preview', 'beta-path', 'developer-toggle', 'developer-panel', 'time-controls', 'quick-action', 'quick-action-button', 'quick-action-detail', 'restart-game'])
+for (const id of ['build', 'build-ghost', 'build-ghost-reason', 'expansion-safety', 'log', 'knobs', 'mode', 'cancel-tool', 'goal-copy', 'transport', 'rent-control', 'rent-kind', 'rent-value', 'facility-inspector', 'shaft-inspector', 'unit-inspector', 'unit-title', 'unit-appeal-why', 'unit-status', 'unit-detail', 'unit-utilization-context', 'conversion-controls', 'renovate-unit', 'rerent-unit', 'demolish-unit', 'cancel-confirmation', 'recovery-warning', 'rerent-reason', 'placement-guide-legend', 'placement-preview', 'beta-path', 'developer-toggle', 'developer-panel', 'time-controls', 'appeal-toggle', 'quick-action', 'quick-action-button', 'quick-action-detail', 'restart-game'])
   els[id] = document.getElementById(id);
 
 let developerMode = false;
@@ -608,6 +608,23 @@ function setDeveloperMode(open) {
   if (developerMode) requestLiveRefresh();
 }
 els['developer-toggle'].addEventListener('click', () => setDeveloperMode(!developerMode));
+
+/**
+ * The appeal view (issue #12), and the ONE place the renderer's overlay is
+ * turned on or off. `A` and the bar's toggle both come through here, so the
+ * button's pressed state cannot drift out of step with what the tower is
+ * actually drawing — a second source of truth for "is the overlay on" is
+ * exactly the kind of thing today has been spent deleting.
+ */
+function toggleAppealOverlay() {
+  const on = renderer.toggleAppealOverlay();
+  // `aria-pressed` alone, and the CSS styles off it: a separate `.active` class
+  // would be a second thing to keep in step with the first.
+  els['appeal-toggle'].setAttribute('aria-pressed', String(on));
+  toast(on ? 'appeal view — every room tinted by room appeal' : 'appeal view off', INFO);
+  return on;
+}
+els['appeal-toggle'].addEventListener('click', () => toggleAppealOverlay());
 els['restart-game'].addEventListener('click', () => {
   if (!restartArmed) {
     restartArmed = true;
@@ -5585,12 +5602,10 @@ addEventListener('keydown', (e) => {
   if (e.key.toLowerCase() === 'e') exportTape();
   if (e.key.toLowerCase() === 'd') setDeveloperMode(!developerMode);
   // The appeal view (issue #12). The renderer computes and draws it; without
-  // this line it is unreachable, which is precisely the defect issue #14 is
-  // about — art and code that exist and nothing ever asks for.
-  if (e.key.toLowerCase() === 'a') {
-    const on = renderer.toggleAppealOverlay();
-    toast(on ? 'appeal view — every room tinted by room appeal' : 'appeal view off', INFO);
-  }
+  // a way to ask for it, it is unreachable, which is precisely the defect
+  // issue #14 is about — art and code that exist and nothing ever asks for.
+  // The key and the bar's toggle share one path so they cannot drift.
+  if (e.key.toLowerCase() === 'a') toggleAppealOverlay();
 });
 
 function restart() {
