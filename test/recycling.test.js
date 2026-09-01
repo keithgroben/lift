@@ -8,6 +8,7 @@ const assert = (c, m) => { if (!c) throw new Error(m); };
 export const tests = {
   'recycling coverage handles local waste demand'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     config.building.startFloors = 6;
     config.stars.tiers[2].pop = 0;
@@ -46,6 +47,7 @@ export const tests = {
 
   'recycling stays independent from security coverage'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     const state = boot(config, 102);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok,

@@ -8,6 +8,7 @@ const assert = (c, m) => { if (!c) throw new Error(m); };
 
 function unlockedShopConfig() {
   const config = structuredClone(CONFIG);
+  config.building.startFloors = 4;
   config.economy.startMoney = 10000000;
   config.building.startFloors = 6;
   config.stars.tiers[0].unlocks.push('shop');

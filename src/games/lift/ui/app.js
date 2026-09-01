@@ -2,6 +2,7 @@ import { CONFIG } from '../config.js';
 import { boot, step, applyAction, population, starTier, unlocked } from '../sim/index.js';
 import { averageEvaluation, boundedEvaluationTrend, conversionPreview, evaluationDrift, firstWavePressure, floorDiagnosisAgeCue, floorDiagnosisChange, floorDiagnosisNextAction, floorDiagnosisRepeatedFailure, floorHandoffPreview, floorOperationsSummary, hotelBookingFeedback, hotelExperienceHistory, hotelExperienceSummary, hotelGuestExperience, hotelServiceSummary, indicatorColorKey, leaseStatus, leasingForecast, marketDemandBonus, rememberFloorDiagnosisResult, rememberRoomHealthHistory, rememberShopTrafficFollowup, reputationDemandFactor, reputationHistory, reputationRecommendation, roomEvaluationResponse, roomHealthHistoryAction, roomHealthHistoryAge, roomHealthHistoryAgeLabel, roomHealthHistoryChange, roomHealthHistoryPriority, roomHealthHistoryStatus, roomHealthHistoryUrgency, routePlacementStatus, shaftBuildControlStatus, shaftCapacityProjection, shaftCandidateCoverageLabel, shaftPlacementProjection, shaftQueueReliefProjection, shaftQueueReliefRecommendation, shaftRouteCoverageLabel, shopTrafficEstimate, shopTrafficFollowupCountAccessibleLabel, shopTrafficFollowupCountLabel, shopTrafficFollowupFilterAccessibleLabel, shopTrafficFollowupFilterButtonLabel, shopTrafficFollowupFilterLabel, shopTrafficFollowupOutcome, shopTrafficFollowupResult, shopTrafficFollowupScoreAccessibleLabel, shopTrafficFollowupScoreDetail, shopTrafficFollowupScopeAccessibleLabel, shopTrafficFollowupStatus, shopTrafficFollowupSummary, shopTrafficFollowupSummaryHeading, shopTrafficFollowupWindow, shopTrafficHistory, shopTrafficLastCloseAggregate, shopTrafficLastCloseDetail, shopTrafficLastCloseRevenueDetail, shopTrafficPeriodsAccessibleLabel, shopTrafficPeriodsHeading, shopTrafficPeriodsHeadingAccessibleLabel, shopTrafficPeriodsLegendLabel, shopTrafficResponseFilterId, shopTrafficServedDelta, shopTrafficServedTodayDetail, sustainedLowEvaluation, tenantDemandForecast, tenantFloorMix, tenantLeasingHistory, tenantLoadStatus, tenantLoadSummary, tenantMixDemand, tenantMixDiagnosis, tenantMixHistory, tenantMixResponse, tenantPlacementAlternativeReason, tenantPlacementComparisonChoice, tenantPlacementDecision, tenantPlacementDecisionReason, tenantPlacementFloorComparison, tenantPlacementInvestmentPreview, tenantPlacementInvestmentReason, tenantPlacementMixPreview, tenantPlacementPreview, tenantPlacementRankingReason, tenantPlacementReplacementPreviews, tenantPlacementSmallestInvestment, tenantUtilizationDelta, tenantUtilizationHistoryLabel, tenantUtilizationHintFocusLabel, tenantUtilizationManagementHint, tenantUtilizationRecoveryResult, tenantUtilizationRecoverySummary, tenantUtilizationRoomContext, tenantUtilizationTrend, transportCoverageText, unitEvaluation, vacancyRecoveryComparison } from '../sim/evaluation.js';
 import { clampRentLevel, rentForLevel } from '../sim/pricing.js';
+import { makeRng } from '../sim/rng.js';
 import { foodDemand, medicalDemand, parkingDemand, recyclingDemand, securityDemand } from '../sim/services.js';
 import { localRouteOccupancy } from '../sim/demand.js';
 import { appendServiceRoomStatusHistory, localRouteTargetStatus, makeRenderer, placementGuideFloorStatus, serviceFocusCoverage, serviceFocusCoveredRoomDetails, serviceFocusCoveredRoomLabel, serviceFocusUncoveredRoomLabel, serviceFloorHeadcountCause, serviceRoomHealthSignal, serviceRoomStatus, serviceRoomStatusTrend, serviceRoomTrendAction, waitingPressure } from '../render/canvas.js';
@@ -52,7 +53,13 @@ let state = boot(CONFIG, 1);
 // Start safely paused so opening the game never launches a simulation workload
 // before the player is ready. The player can press 1x, 4x, or 12x to begin.
 let speed = 0;
-let tool = 'observe';
+/**
+ * A new session opens on bare ground — `building.startFloors` is 0 — with the
+ * entrance tool already armed, so the first click of a new game places the
+ * lobby (spec/tower-view.md §4). `observe` is the disarmed, WATCHING state.
+ */
+const OPENING_TOOL = 'lobby';
+let tool = OPENING_TOOL;
 let rentKind = 'office';
 let selectedUnitId = null;
 let conversionTargetKind = null;
@@ -131,6 +138,215 @@ function act(type, extra = {}) {
   }
   refresh();
   return r;
+}
+
+// -------------------------------------------------------- placement preview
+/**
+ * "Would this land, and if not, why?" — answered by the real rules. The action
+ * runs against a throwaway copy of the state and the copy is dropped, so the
+ * ghost IS the click, discarded before it counts. There is deliberately no
+ * second implementation of the placement rules here to drift out of sync.
+ */
+function cloneForDryRun(source) {
+  // structuredClone cannot carry the rng's closures, and a dry run must never
+  // advance the real seeded stream anyway — replay depends on that stream.
+  const { rng, ...rest } = source;
+  const copy = structuredClone(rest);
+  copy.rng = makeRng(rng.seed);
+  return copy;
+}
+
+/** Funds large enough that only the non-money rules can still refuse. */
+const DRY_RUN_FUNDS = 1e15;
+
+/**
+ * @param {object|object[]} actions one action, or a chain applied in order
+ * @returns {{ok: boolean, reason?: string, slot?: number, cost: number|null, short: number}}
+ */
+function dryRun(actions) {
+  const chain = Array.isArray(actions) ? actions : [actions];
+  try {
+    const probe = cloneForDryRun(state);
+    let result = { ok: true };
+    for (const action of chain) {
+      result = applyAction(probe, action, CONFIG);
+      if (!result.ok) break;
+    }
+    // Ask the same question again with the price taken out of it. If it passes
+    // then, money is the only thing wrong — and the copy's own ledger reports
+    // what the price actually is, so nothing here has to recompute a cost.
+    const funded = cloneForDryRun(state);
+    funded.money = DRY_RUN_FUNDS;
+    let affordable = { ok: true };
+    for (const action of chain) {
+      affordable = applyAction(funded, action, CONFIG);
+      if (!affordable.ok) break;
+    }
+    const cost = affordable.ok ? funded.today.spent - state.today.spent : null;
+    const short = !result.ok && affordable.ok && cost != null ? Math.max(0, cost - state.money) : 0;
+    return { ...result, cost, short };
+  } catch (error) {
+    return { ok: false, reason: 'this placement could not be previewed', cost: null, short: 0 };
+  }
+}
+
+/** Why the ghost is red, in the player's terms. */
+const placementReason = (verdict) =>
+  verdict.short > 0 ? money(verdict.short) + ' short' : (verdict.reason || 'cannot be placed here');
+
+/**
+ * The floor a build click lands on. `renderer.floorAt` only reports storeys
+ * that already exist, and a new session now has none, so the ground row —
+ * where the lobby goes — would be unclickable. Ground is always a legal
+ * target; everything above it still has to be built first.
+ */
+function pickBuildFloor(px, py) {
+  const floor = renderer.floorAt(state, px, py);
+  if (floor >= 0) return floor;
+  const ground = CONFIG.building.lobbyFloor ?? 0;
+  const L = renderer.layout(state);
+  const y = L.floorY(ground);
+  return py >= y && py <= y + L.fh ? ground : -1;
+}
+
+const spotAt = (px, py) => ({
+  floor: pickBuildFloor(px, py),
+  slot: renderer.slotAt(state, px),
+  unitId: renderer.unitAt(state, px, py),
+  shaftId: renderer.shaftAt(state, px, py),
+});
+
+/**
+ * What the armed tool would apply at a spot in the tower. ONE mapping, read by
+ * both the ghost and the click, so a green ghost cannot mean something other
+ * than the click that follows it. `blocked` carries the few gates that are the
+ * interface's own (a lobby belongs on the ground) rather than the sim's.
+ */
+function armedAction(toolKey, spot) {
+  const ground = CONFIG.building.lobbyFloor ?? 0;
+  const { floor, slot, unitId, shaftId } = spot;
+  if (toolKey === 'floor') {
+    return { actions: [{ type: 'build_floor' }], row: state.floors };
+  }
+  if (toolKey === 'lobby' || toolKey === 'lobby_wing') {
+    if (floor !== ground) return { blocked: 'the lobby belongs on the ground floor' };
+    if (slot < 0) return { blocked: 'choose a ground-floor slot' };
+    if (toolKey === 'lobby_wing' || state.lobby) return { actions: [{ type: 'expand_lobby', slot }] };
+    // The entrance IS the ground storey: on bare ground the slab comes with
+    // it, the way SimTower sells a lobby rather than an empty level.
+    const slab = state.floors <= ground ? [{ type: 'build_floor' }] : [];
+    return { actions: [...slab, { type: 'build_lobby', slot }] };
+  }
+  if (toolKey === 'demolish') {
+    if (unitId == null) return { blocked: 'click a room to demolish' };
+    return { actions: [{ type: 'demolish_unit', id: unitId }], unitId };
+  }
+  if (toolKey === 'car') {
+    if (shaftId == null) return { blocked: state.shafts.length ? 'click an elevator shaft' : 'build a shaft first' };
+    return { actions: [{ type: 'add_car', id: shaftId }], shaftId };
+  }
+  if (toolKey === 'shaft' || toolKey === 'express') {
+    if (slot < 0) return { blocked: 'choose a building column' };
+    return {
+      actions: [{ type: 'build_shaft', bottom: ground, top: floor, slot, kind: toolKey === 'express' ? 'express' : 'local' }],
+      column: { slot, bottom: ground, top: floor },
+    };
+  }
+  if (toolKey === 'stairs' || toolKey === 'escalator') {
+    return {
+      actions: [{ type: toolKey === 'stairs' ? 'build_stairs' : 'build_escalator', bottom: ground, top: floor }],
+      column: { slot, bottom: ground, top: floor },
+    };
+  }
+  if (floor < 0 || slot < 0) return null;
+  if (CONFIG.services?.[toolKey]) return { actions: [{ type: 'build_facility', kind: toolKey, floor, slot }] };
+  if (CONFIG.units[toolKey]) return { actions: [{ type: 'build_unit', kind: toolKey, floor, slot }] };
+  return null;
+}
+
+/** The armed tool's verdict at a spot; ghost and click read the same answer. */
+function placementVerdict(toolKey, spot) {
+  const armed = armedAction(toolKey, spot);
+  if (!armed) return null;
+  if (armed.blocked) return { armed, verdict: { ok: false, reason: armed.blocked, cost: null, short: 0 } };
+  return { armed, verdict: dryRun(armed.actions) };
+}
+
+let ghostSpot = null;
+let lastGhostKey = null;
+
+function ghostGeometry(armed, verdict, spot) {
+  const L = renderer.layout(state);
+  const cell = (floor, slot) => ({ x: L.x0 + slot * L.cw, y: L.floorY(floor), w: L.cw, h: L.fh });
+  const column = (slot, bottom, top) => {
+    const a = L.floorY(bottom), b = L.floorY(top);
+    return { x: L.x0 + slot * L.cw, y: Math.min(a, b), w: L.cw, h: Math.abs(a - b) + L.fh };
+  };
+  if (Number.isInteger(armed.row)) return { x: L.x0, y: L.floorY(armed.row), w: L.cw * L.cols, h: L.fh };
+  if (armed.shaftId != null) {
+    const sh = state.shafts.find((candidate) => candidate.id === armed.shaftId);
+    return sh ? column(sh.slot, sh.bottom, sh.top) : null;
+  }
+  if (armed.unitId != null) {
+    const unit = state.units.find((candidate) => candidate.id === armed.unitId);
+    return unit ? cell(unit.floor, unit.slot) : null;
+  }
+  if (armed.column) {
+    // Stairs and escalators pick their own clear column; on a legal run the
+    // dry run already reported which one, so the ghost stands where the real
+    // thing will, not where the cursor happens to be.
+    const slot = Number.isInteger(verdict.slot) ? verdict.slot : armed.column.slot;
+    return slot < 0 ? null : column(slot, armed.column.bottom, armed.column.top);
+  }
+  return spot.floor < 0 || spot.slot < 0 ? null : cell(spot.floor, spot.slot);
+}
+
+/**
+ * Draw the ghost under the cursor: green where the armed tool may land, red
+ * with the reason where it may not. Recomputed only when the target or the
+ * tower actually changed — a dry run copies the state, and the live refresh
+ * runs five times a second.
+ */
+function updateGhost() {
+  const ghost = els['build-ghost'];
+  if (!ghost) return;
+  if (!ghostSpot || tool === 'observe') {
+    lastGhostKey = null;
+    ghost.hidden = true;
+    return;
+  }
+  const key = [tool, ghostSpot.floor, ghostSpot.slot, ghostSpot.unitId, ghostSpot.shaftId,
+    state.money, state.floors, state.units.length, state.facilities.length,
+    state.shafts.length, state.stairs.length, state.escalators.length, Boolean(state.lobby)].join('|');
+  if (key === lastGhostKey) return;
+  lastGhostKey = key;
+  const preview = placementVerdict(tool, ghostSpot);
+  const rect = preview && ghostGeometry(preview.armed, preview.verdict, ghostSpot);
+  if (!rect) { ghost.hidden = true; return; }
+  const { verdict } = preview;
+  ghost.hidden = false;
+  ghost.classList.toggle('blocked', !verdict.ok);
+  ghost.style.left = rect.x + 'px';
+  ghost.style.top = rect.y + 'px';
+  ghost.style.width = rect.w + 'px';
+  ghost.style.height = rect.h + 'px';
+  els['build-ghost-reason'].textContent = verdict.ok
+    ? tool.toUpperCase().replace('_', ' ') + (Number.isFinite(verdict.cost) ? ' · ' + money(verdict.cost) : '')
+    : placementReason(verdict);
+}
+
+/** Back to WATCHING. `Esc`, right-click, and the cancel control all land here. */
+function disarmTool(announce = false) {
+  if (tool === 'observe') return;
+  tool = 'observe';
+  placementWarning = null;
+  investmentTarget = null;
+  transportFocusTarget = null;
+  recommendedShaftId = null;
+  routeTarget = null;
+  refresh();
+  setMode();
+  if (announce) toast('tool put away', INFO);
 }
 
 // ---------------------------------------------------------------- game loop
@@ -334,7 +550,7 @@ function onDayClose(closed, occupiedBefore) {
 
 // ---------------------------------------------------------------------- HUD
 const els = {};
-for (const id of ['clock', 'build', 'expansion-safety', 'log', 'knobs', 'mode', 'cancel-tool', 'goal-copy', 'transport', 'rent-control', 'rent-kind', 'rent-value', 'facility-inspector', 'shaft-inspector', 'unit-inspector', 'unit-title', 'unit-status', 'unit-detail', 'unit-utilization-context', 'conversion-controls', 'renovate-unit', 'rerent-unit', 'demolish-unit', 'cancel-confirmation', 'recovery-warning', 'rerent-reason', 'placement-guide-legend', 'placement-preview', 'beta-path', 'developer-toggle', 'developer-panel', 'time-controls', 'quick-action', 'quick-action-button', 'quick-action-detail', 'restart-game'])
+for (const id of ['clock', 'build', 'build-ghost', 'build-ghost-reason', 'expansion-safety', 'log', 'knobs', 'mode', 'cancel-tool', 'goal-copy', 'transport', 'rent-control', 'rent-kind', 'rent-value', 'facility-inspector', 'shaft-inspector', 'unit-inspector', 'unit-title', 'unit-status', 'unit-detail', 'unit-utilization-context', 'conversion-controls', 'renovate-unit', 'rerent-unit', 'demolish-unit', 'cancel-confirmation', 'recovery-warning', 'rerent-reason', 'placement-guide-legend', 'placement-preview', 'beta-path', 'developer-toggle', 'developer-panel', 'time-controls', 'quick-action', 'quick-action-button', 'quick-action-detail', 'restart-game'])
   els[id] = document.getElementById(id);
 
 let developerMode = false;
@@ -364,16 +580,7 @@ els['restart-game'].addEventListener('click', () => {
   els['restart-game'].classList.remove('armed');
   restart();
 });
-els['cancel-tool'].addEventListener('click', () => {
-  tool = 'observe';
-  placementWarning = null;
-  investmentTarget = null;
-  transportFocusTarget = null;
-  recommendedShaftId = null;
-  routeTarget = null;
-  refresh();
-  setMode();
-});
+els['cancel-tool'].addEventListener('click', () => disarmTool());
 
 function updateTimeControls() {
   for (const button of els['time-controls'].querySelectorAll('button[data-speed]')) {
@@ -617,7 +824,13 @@ function carToolModeText() {
 function modeText() {
   if (placementNotice) return placementNotice;
   if (tool === 'observe') return 'WATCHING — let the next rush run, or choose a build action above.';
-  if (tool === 'lobby') return 'LOBBY selected — click the ground floor to place it.';
+  if (tool === 'demolish') return 'DEMOLISH selected — click a vacant room to clear its slot. Esc puts the tool away.';
+  if (tool === 'floor') {
+    return state.floors <= (CONFIG.building.lobbyFloor ?? 0)
+      ? 'FLOOR selected — the lobby buys the ground storey; click to stack the first one above it.'
+      : 'FLOOR selected — click to stack storey F' + state.floors + ' on top.';
+  }
+  if (tool === 'lobby') return 'LOBBY selected — click the ground floor to place it. It buys the ground storey it stands on.';
   if (tool === 'lobby_wing') return 'LOBBY WING selected — click an open ground-floor slot to expand it.';
   if (tool === 'shaft') {
     const target = hoverFloor > (CONFIG.building.lobbyFloor ?? 0)
@@ -3602,6 +3815,19 @@ function renderInspector() {
   els['unit-inspector'].classList.add('open');
 }
 
+/**
+ * Unaffordable and locked are visible STATES on a palette tile, never missing
+ * ones: the tile keeps its place, and says what is standing in the way.
+ */
+function setTileState(button, { locked = false, cost = null, blocked = false } = {}) {
+  const short = !locked && Number.isFinite(cost) ? Math.max(0, cost - state.money) : 0;
+  button.classList.toggle('locked', locked);
+  button.classList.toggle('unaffordable', short > 0);
+  button.classList.toggle('blocked', !locked && short <= 0 && Boolean(blocked));
+  const label = button.querySelector('.btn-cost');
+  if (label && short > 0) label.textContent = money(cost) + ' · ' + money(short) + ' short';
+}
+
 function refresh() {
   const d = state.log[state.log.length - 1];
   updateTimeControls();
@@ -3732,6 +3958,23 @@ function refresh() {
     stairs: money(CONFIG.costs.stairs) + ' + floor',
     escalator: money(CONFIG.costs.escalator) + ' + floor',
     lobbyExpansion: money(CONFIG.costs.lobbyExpansion),
+    demolish: money(CONFIG.costs.demolition),
+  };
+  // Numeric twins of the labels above, so a tile can say how far short it is.
+  const groundFloor = CONFIG.building.lobbyFloor ?? 0;
+  const lobbyTileCost = state.lobby
+    ? CONFIG.costs.lobbyExpansion
+    : CONFIG.costs.lobby + (state.floors <= groundFloor ? CONFIG.costs.floor : 0);
+  const tileCosts = {
+    floor: CONFIG.costs.floor,
+    lobby: lobbyTileCost,
+    shaft: CONFIG.costs.shaft,
+    express: CONFIG.costs.expressShaft,
+    car: CONFIG.costs.car,
+    extend: CONFIG.costs.shaftPerFloor,
+    stairs: CONFIG.costs.stairs,
+    escalator: CONFIG.costs.escalator,
+    demolish: CONFIG.costs.demolition,
   };
   const recommendedControl = transportResponse.key !== 'monitor' && transportResponse.control
     ? transportResponse.control
@@ -3744,14 +3987,16 @@ function refresh() {
     b.classList.toggle('placement-recommended', b.dataset.do === placementInvestment?.kind);
     if (b.dataset.do === 'lobby') {
       const built = Boolean(state.lobby);
-      const buildCost = built ? CONFIG.costs.lobbyExpansion : CONFIG.costs.lobby;
+      const buildCost = lobbyTileCost;
+      const withSlab = !built && state.floors <= groundFloor;
       b.disabled = state.money < buildCost;
       b.title = built
         ? state.money < buildCost ? 'not enough money' : 'add another lobby entrance'
-        : state.money < buildCost ? 'not enough money' : 'place the ground-floor entrance';
+        : state.money < buildCost ? 'not enough money'
+          : withSlab ? 'place the entrance — it buys the ground storey it stands on' : 'place the ground-floor entrance';
       const label = b.querySelector('.btn-label');
-      if (label) label.textContent = built ? '+ lobby wing' : '+ lobby';
-      if (cost) cost.textContent = money(buildCost);
+      if (label) label.textContent = built ? 'lobby wing' : 'lobby';
+      if (cost) cost.textContent = money(buildCost) + (withSlab ? ' + slab' : '');
     }
     if (b.dataset.do === 'stairs') {
       b.disabled = !state.lobby || state.money < CONFIG.costs.stairs;
@@ -3761,7 +4006,18 @@ function refresh() {
       b.disabled = !state.lobby || state.money < CONFIG.costs.escalator;
       b.title = !state.lobby ? 'build a lobby first' : state.money < CONFIG.costs.escalator ? 'not enough money' : 'place an escalator from the lobby';
     }
-    if (b.dataset.do === 'floor') b.title = state.money < CONFIG.costs.floor ? 'not enough money' : 'add one floor';
+    if (b.dataset.do === 'floor') {
+      const atMax = state.floors >= CONFIG.building.maxFloors;
+      b.disabled = atMax || state.money < CONFIG.costs.floor;
+      b.title = atMax ? 'at max height' : state.money < CONFIG.costs.floor ? 'not enough money' : 'stack one storey on top';
+    }
+    if (b.dataset.do === 'demolish') {
+      const clearable = state.units.some((unit) => !unit.occupied);
+      b.disabled = !clearable || state.money < CONFIG.costs.demolition;
+      b.title = state.money < CONFIG.costs.demolition ? 'not enough money'
+        : !clearable ? 'nothing to clear — an occupied room cannot be demolished'
+          : 'clear a vacant room and free its slot';
+    }
     if (b.dataset.do === 'shaft') {
       const shaftControl = shaftBuildControlStatus(state, CONFIG);
       b.disabled = shaftControl.disabled || state.money < CONFIG.costs.shaft;
@@ -3787,6 +4043,7 @@ function refresh() {
     if (b.dataset.do === 'extend') b.title = !state.shafts.length ? 'build a shaft first' : 'extend the most recently built shaft';
     if (b.dataset.do === recommendedControl) b.title = 'Recommended: ' + b.title;
     if (b.dataset.do === placementInvestment?.kind) b.title = 'Suggested for F' + placementWarning.floor + ': ' + b.title;
+    setTileState(b, { cost: tileCosts[b.dataset.do] ?? null, blocked: b.disabled });
   }
 
   for (const b of els.build.querySelectorAll('button[data-facility]')) {
@@ -3803,6 +4060,7 @@ function refresh() {
     if (cost) cost.textContent = locked ? 'unlock at ' + (tier?.pop || '?') + ' pop' : facilityCostLabel;
     b.title = locked ? kind + ' unlocks at ' + (tier?.pop || '?') + ' population' : 'upfront ' + money(facilityCost) + (dailyUpkeep ? ' · daily upkeep ' + money(dailyUpkeep) : '');
     if (kind === placementInvestment?.kind) b.title = 'Suggested for F' + placementWarning.floor + ': ' + b.title;
+    setTileState(b, { locked, cost: facilityCost });
   }
 
   for (const b of els.build.querySelectorAll('button[data-kind]')) {
@@ -3815,10 +4073,12 @@ function refresh() {
     const cost = b.querySelector('.btn-cost');
     if (cost) cost.textContent = locked ? 'unlock at ' + (tier?.pop || '?') + ' pop' : money(CONFIG.costs[kind]);
     b.title = locked ? kind + ' unlocks at ' + (tier?.pop || '?') + ' population' : money(CONFIG.costs[kind]);
+    setTileState(b, { locked, cost: CONFIG.costs[kind] });
   }
   els['cancel-tool'].hidden = tool === 'observe';
   updateQuickAction(recommendation, transportResponse);
   setMode(undefined, placementWarning ? WARN : GOOD);
+  updateGhost();
 }
 
 let lastClockAt = -Infinity;
@@ -4345,6 +4605,27 @@ canvas.addEventListener('click', (e) => {
   placementNotice = null;
   const r = canvas.getBoundingClientRect();
   const px = e.clientX - r.left, py = e.clientY - r.top;
+  if (tool === 'demolish') {
+    const id = renderer.unitAt(state, px, py);
+    if (id == null) return toast('click a room to demolish', WARN);
+    const unit = state.units.find((candidate) => candidate.id === id);
+    const cleared = act('demolish_unit', { id });
+    if (cleared.ok) {
+      selectedUnitId = null;
+      refresh();
+      setMode('DEMOLISHED ' + cleared.kind.toUpperCase() + ' on F' + cleared.floor +
+        ' · DEMOLISH stays armed — Esc puts it away.');
+    }
+    return;
+  }
+  if (tool === 'floor') {
+    const added = act('build_floor');
+    if (added.ok) {
+      refresh();
+      setMode('FLOOR ADDED · the tower now stands ' + state.floors + ' storeys · FLOOR stays armed.');
+    }
+    return;
+  }
   if (tool === 'car') {
     const shaftId = renderer.shaftAt(state, px, py);
     if (shaftId == null) return toast(state.shafts.length ? 'click an elevator shaft' : 'build a shaft first', WARN);
@@ -4357,12 +4638,11 @@ canvas.addEventListener('click', (e) => {
       transportFocusTarget = null;
       routeTarget = null;
       shopDiagnosisContext = null;
-      tool = 'observe';
       const shaftNumber = state.shafts.indexOf(shaft) + 1;
       const dispatchCapacity = shaft.cars.length * CONFIG.elevator.capacity;
       refresh();
       setMode('CAR ADDED · S' + shaftNumber + ' now ' + shaft.cars.length + '/' + CONFIG.elevator.maxCarsPerShaft +
-        ' cars · dispatch capacity ' + dispatchCapacity + ' riders · watching tower; let the next rush run.');
+        ' cars · dispatch capacity ' + dispatchCapacity + ' riders · CAR stays armed for the next shaft; Esc when you are done, then watching tower; let the next rush run.');
     }
     return;
   }
@@ -4423,23 +4703,35 @@ canvas.addEventListener('click', (e) => {
     setMode('ABANDONED room selected — inspect it on the right.');
     return;
   }
-  const floor = renderer.floorAt(state, px, py);
+  const floor = pickBuildFloor(px, py);
   if (floor < 0) return toast('click a floor', WARN);
   if (tool === 'observe') return toast('choose a build action above, then click the tower', INFO);
+  // The ghost is a dry run of exactly this click, so a red ghost refuses the
+  // click with the same words rather than letting it fail somewhere quieter.
+  const clickSlot = renderer.slotAt(state, px);
+  const preview = placementVerdict(tool, { floor, slot: clickSlot, unitId: null, shaftId: null });
+  if (preview && !preview.verdict.ok) return toast(placementReason(preview.verdict), WARN);
   const investmentIssue = investmentPlacementIssue(tool, floor);
   if (investmentIssue) return toast(investmentIssue, WARN);
   if (tool === 'lobby') {
     if (floor !== CONFIG.building.lobbyFloor) return toast('the lobby belongs on the ground floor', WARN);
     const slot = renderer.slotAt(state, px);
-    const built = act('build_lobby', { slot });
-    if (built.ok) {
-      tool = 'office';
-      shopDiagnosisContext = null;
-      transportFocusTarget = null;
-      routeTarget = null;
-      refresh();
-      setMode('LOBBY placed — shafts now include its entrance walk.');
+    // Same chain the ghost previewed: on bare ground the entrance buys the
+    // storey it stands on, so the first click of a new game leaves a building
+    // rather than a lobby floating over nothing.
+    const plan = armedAction('lobby', { floor, slot, unitId: null, shaftId: null });
+    if (!plan?.actions) return toast(plan?.blocked ?? 'the lobby cannot go there', WARN);
+    for (const action of plan.actions) {
+      if (!act(action.type, action).ok) return;
     }
+    // The lobby is a one-per-tower purchase, so the tile stays armed as what
+    // it becomes next: the wing tool, for widening the entrance.
+    tool = 'lobby_wing';
+    shopDiagnosisContext = null;
+    transportFocusTarget = null;
+    routeTarget = null;
+    refresh();
+    setMode('LOBBY placed — shafts now include its entrance walk. LOBBY stays armed as the wing tool; Esc puts it away.');
     return;
   }
   if (tool === 'lobby_wing') {
@@ -4447,11 +4739,10 @@ canvas.addEventListener('click', (e) => {
     const slot = renderer.slotAt(state, px);
     const expanded = act('expand_lobby', { slot });
     if (expanded.ok) {
-      tool = 'office';
       shopDiagnosisContext = null;
       routeTarget = null;
       refresh();
-      setMode('LOBBY expanded — its nearest entrance now reduces ground-floor walking.');
+      setMode('LOBBY expanded — its nearest entrance now reduces ground-floor walking. LOBBY WING stays armed.');
     }
     return;
   }
@@ -4468,12 +4759,11 @@ canvas.addEventListener('click', (e) => {
           targetRoute: placedRoute ? { kind: 'stairs', id: placedRoute.id, bottom: placedRoute.bottom, top: placedRoute.top } : null,
         };
       }
-      tool = 'office';
       shopDiagnosisContext = null;
       transportFocusTarget = null;
       routeTarget = null;
       refresh();
-      setMode('STAIRS placed — they provide a slow local route without a car.');
+      setMode('STAIRS placed — they provide a slow local route without a car. STAIRS stays armed.');
     }
     return;
   }
@@ -4490,11 +4780,10 @@ canvas.addEventListener('click', (e) => {
           targetRoute: placedRoute ? { kind: 'escalator', id: placedRoute.id, bottom: placedRoute.bottom, top: placedRoute.top } : null,
         };
       }
-      tool = 'office';
       shopDiagnosisContext = null;
       routeTarget = null;
       refresh();
-      setMode('ESCALATOR placed — it is faster than stairs without using a car.');
+      setMode('ESCALATOR placed — it is faster than stairs without using a car. ESCALATOR stays armed.');
     }
     return;
   }
@@ -4576,7 +4865,7 @@ canvas.addEventListener('click', (e) => {
       : kind === 'parking' ? 'this floor and floors up to two levels away'
         : kind === 'medical' ? 'this floor and floors up to three levels away'
           : kind === 'security' ? 'this floor and floors up to four levels away' : 'this floor and floors up to two levels away';
-    const built = act('build_facility', { kind, floor });
+    const built = act('build_facility', { kind, floor, slot: clickSlot });
     if (built.ok) {
       const coverageAfter = serviceCoverageSummary(state, kind, CONFIG);
       const serviceCoverage = coverageBefore.available && coverageAfter.available
@@ -4613,7 +4902,6 @@ canvas.addEventListener('click', (e) => {
       investmentTarget = null;
       placementWarning = null;
       shopDiagnosisContext = null;
-      tool = 'office';
       serviceResultBudget = {
         kind,
         floor,
@@ -4700,7 +4988,7 @@ canvas.addEventListener('click', (e) => {
         forecastExpectedRevenue: chosenShopPreview.after.expectedRevenue,
       }
       : null;
-    const built = act('build_unit', { kind: tool, floor });
+    const built = act('build_unit', { kind: tool, floor, slot: clickSlot });
     if (built.ok) {
       if (demandFollowup?.shopId != null) {
         shopDemandFollowupHistory = rememberShopTrafficFollowup(
@@ -4722,11 +5010,32 @@ canvas.addEventListener('click', (e) => {
     }
     return;
   }
-  const built = act('build_unit', { kind: tool, floor });
+  const built = act('build_unit', { kind: tool, floor, slot: clickSlot });
   if (built.ok) {
     reconcileInvestmentOutcome(built.id);
     shopDiagnosisContext = null;
   }
+});
+
+// The ghost tracks the cursor on its own listener, so the hover/pick handler
+// above stays one concern and only this one pays for a dry run — and only when
+// the targeted cell actually changes.
+canvas.addEventListener('mousemove', (e) => {
+  const r = canvas.getBoundingClientRect();
+  ghostSpot = spotAt(e.clientX - r.left, e.clientY - r.top);
+  updateGhost();
+});
+
+canvas.addEventListener('mouseleave', () => {
+  ghostSpot = null;
+  updateGhost();
+});
+
+// Right-click disarms, the same as Esc. Without the default menu suppressed,
+// the browser's own context menu would land on top of the tower.
+canvas.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  disarmTool(true);
 });
 
 function rerentSelectedUnit(fromUtilizationHint = false) {
@@ -4967,7 +5276,18 @@ els.build.addEventListener('click', (e) => {
   }
   comparisonFloors = [];
   pinnedComparisonFloor = null;
-  if (b.dataset.do === 'floor') act('build_floor');
+  if (b.dataset.do === 'floor') {
+    tool = 'floor';
+    setMode();
+    toast('click the tower to stack the next storey', INFO);
+    refresh();
+  }
+  if (b.dataset.do === 'demolish') {
+    tool = 'demolish';
+    setMode();
+    toast('click a vacant room to clear it', INFO);
+    refresh();
+  }
   if (b.dataset.do === 'lobby') {
     if (state.lobby) {
       tool = 'lobby_wing';
@@ -5048,6 +5368,7 @@ els['rent-control'].addEventListener('click', (e) => {
 });
 
 addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { disarmTool(true); return; }
   if (e.key === ' ') { e.preventDefault(); speed = speed ? 0 : 1; updateTimeControls(); toast(speed ? 'running' : 'paused', INFO); }
   if (e.key === '1') { speed = 1; updateTimeControls(); toast('1x', INFO); }
   if (e.key === '2') { speed = 4; updateTimeControls(); toast('4x', INFO); }
@@ -5062,7 +5383,9 @@ function restart() {
   els['restart-game'].textContent = 'new session';
   els['restart-game'].classList.remove('armed');
   state = boot(CONFIG, (state.seed % 9999) + 1);
-  tool = 'observe';
+  tool = OPENING_TOOL;
+  ghostSpot = null;
+  lastGhostKey = null;
   tenantUtilizationBaseline = tenantLoadSummary(state, CONFIG).ratio;
   tenantUtilizationChange = null;
   tenantUtilizationHistory = [{ day: state.day, ratio: tenantUtilizationBaseline }];

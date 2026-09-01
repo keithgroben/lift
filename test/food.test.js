@@ -8,6 +8,7 @@ const assert = (c, m) => { if (!c) throw new Error(m); };
 export const tests = {
   'cafeteria coverage is floor-local and visible as demand'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     const state = boot(config, 61);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok,
@@ -41,6 +42,7 @@ export const tests = {
 
   'cafeteria occupies a build slot'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     const state = boot(config, 62);
     assert(applyAction(state, { type: 'build_facility', kind: 'food', floor: 1, slot: 1 }, config).ok,

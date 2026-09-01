@@ -265,12 +265,66 @@
   .build-safety b { letter-spacing: .06em; }
   .build-safety span { color: #aebdca; }
   #build { display: block; }
-  .build-primary { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-  .build-more { margin-top: 8px; }
-  .build-more summary { color: #8fa4b8; cursor: pointer; font-size: 9px; padding: 5px 0; }
-  .build-more-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 4px; }
   .build-help { color: #7f97ad; font-size: 9px; line-height: 1.45; margin: -3px 0 7px; }
   .build-help b { color: #dbe4ee; }
+
+  /* The build palette. Tiles are grouped by what a thing IS — structure,
+     transport, rooms, services — so choosing is scanning a shelf, not
+     reading a list (spec/tower-view.md §5). */
+  .palette-group + .palette-group { margin-top: 9px; }
+  .palette-group-label { color: #52657a; font-size: 8px; font-weight: 700; letter-spacing: .16em; margin: 0 0 4px; }
+  .palette-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+  button.tile { display: block; padding: 5px 3px 6px; text-align: center; }
+  button.tile .btn-label, button.tile .btn-cost { text-align: center; }
+  button.tile .btn-label { font-size: 9px; letter-spacing: .02em; margin-top: 3px; }
+  button.tile .btn-cost { font-size: 8px; line-height: 1.3; margin-top: 2px; }
+  /* Placeholder art. Real icons are 32x32 cells of `palette-icons.png`
+     (spec/asset-request.md #10, in the order lobby · floor · office · condo ·
+     shop · hotel · shaft · car · express · stairs · escalator · cafeteria ·
+     parking · clinic · security · recycling · demolish). Dropping the sheet in
+     means giving .tile-icon a background-image, offsetting by data-icon, and
+     setting `color: transparent` — nothing else here has to move. */
+  .tile-icon {
+    display: block; width: 32px; height: 32px; margin: 0 auto;
+    border: 1px solid #33455a; border-radius: 4px; background: #16202b;
+    color: #8fa4b8; font-size: 11px; font-weight: 700; letter-spacing: .04em;
+    line-height: 30px; text-align: center;
+  }
+  [data-group="structure"] .tile-icon { border-color: #3a4c63; color: #a9bdd1; }
+  [data-group="transport"] .tile-icon { border-color: #2f5a6b; color: var(--info); }
+  [data-group="rentable"] .tile-icon { border-color: #2b5c48; color: var(--good); }
+  [data-group="services"] .tile-icon { border-color: #5c4a1d; color: var(--warn); }
+  [data-group="site"] .tile-icon { border-color: #6c2c3c; color: var(--bad); }
+  button.tile.sel .tile-icon { border-color: var(--good); color: var(--good); background: #10271f; }
+  /* Unaffordable and locked are STATES, not absences: the tile stays where the
+     player learned it was, and says what is missing. */
+  button.tile:disabled { opacity: 1; }
+  button.tile.unaffordable { border-color: rgba(255,183,3,.4); }
+  button.tile.unaffordable .btn-label { color: #8fa4b8; }
+  button.tile.unaffordable .btn-cost { color: var(--warn); }
+  button.tile.unaffordable .tile-icon { opacity: .55; }
+  button.tile.locked { border-color: #26313f; }
+  button.tile.locked .btn-label { color: #52657a; }
+  button.tile.locked .btn-cost { color: #6b8199; }
+  button.tile.locked .tile-icon { border-color: #26313f; color: #3d5063; opacity: .7; }
+  button.tile.blocked { border-color: rgba(239,71,111,.35); }
+  button.tile.blocked .btn-cost { color: #b8697f; }
+
+  /* Live placement ghost. Positioned from the renderer's own layout, so it
+     lands exactly where the click will. */
+  #build-ghost {
+    position: absolute; pointer-events: none; z-index: 2;
+    border: 2px solid var(--good); background: rgba(61,220,151,.16); border-radius: 3px;
+  }
+  #build-ghost[hidden] { display: none; }
+  #build-ghost.blocked { border-color: var(--bad); background: rgba(239,71,111,.16); }
+  #build-ghost-reason {
+    position: absolute; left: 50%; top: 100%; transform: translateX(-50%);
+    margin-top: 4px; padding: 2px 5px; border-radius: 3px; white-space: nowrap;
+    background: rgba(14,17,22,.92); border: 1px solid #2f4055;
+    color: var(--good); font-size: 9px; letter-spacing: .02em;
+  }
+  #build-ghost.blocked #build-ghost-reason { color: var(--bad); border-color: rgba(239,71,111,.45); }
   button {
     font-family: var(--mono); font-size: 11px; padding: 8px 6px; cursor: pointer;
     background: #223041; color: #cfe0ee; border: 1px solid #2f4055; border-radius: 5px;
@@ -317,6 +371,7 @@
 <body>
   <div id="stage">
     <canvas id="tower"></canvas>
+    <div id="build-ghost" hidden aria-hidden="true"><span id="build-ghost-reason"></span></div>
     <div id="clock"></div>
     <div id="log"></div>
   </div>
@@ -352,32 +407,51 @@
     </div>
 
     <h2>BUILD</h2>
-    <div class="build-help"><b>Rooms:</b> choose one, then click a floor. <b>Shaft:</b> hover a column, then click its top floor. <b>Car:</b> choose it, then click the highlighted shaft.</div>
+    <div class="build-help">Pick a tool, then click the tower. The ghost shows where it lands — green places, red says why. The tool <b>stays armed</b>, so eight offices is eight clicks. <b>Esc</b> or right-click puts it away.</div>
     <div id="build">
-      <div class="build-primary">
-        <button data-do="floor"><span class="btn-label">+ floor</span><small class="btn-cost">$400</small></button>
-        <button data-do="lobby"><span class="btn-label">+ lobby</span><small class="btn-cost">$500</small></button>
-        <button data-kind="office"><span class="btn-label">office</span><small class="btn-cost">$1,200</small></button>
-        <button data-do="shaft"><span class="btn-label">+ shaft</span><small class="btn-cost">$900 + span</small></button>
-        <button data-do="car"><span class="btn-label">+ car</span><small class="btn-cost">$1,400</small></button>
-      </div>
-      <details class="build-more">
-        <summary>more routes, services, and room types</summary>
-        <div class="build-more-grid">
-          <button data-do="stairs"><span class="btn-label">+ stairs</span><small class="btn-cost">$700 + floor</small></button>
-          <button data-do="escalator"><span class="btn-label">+ escalator</span><small class="btn-cost">$1,800 + floor</small></button>
-          <button data-do="express"><span class="btn-label">+ express</span><small class="btn-cost">$200,000 + span</small></button>
-          <button data-do="extend"><span class="btn-label">extend shaft</span><small class="btn-cost">$120 / floor</small></button>
-          <button data-facility="food"><span class="btn-label">cafeteria</span><small class="btn-cost">$1,800</small></button>
-          <button data-facility="parking"><span class="btn-label">parking</span><small class="btn-cost">$2,200</small></button>
-          <button data-facility="medical"><span class="btn-label">clinic</span><small class="btn-cost">60 pop · $2,600</small></button>
-          <button data-facility="security"><span class="btn-label">security</span><small class="btn-cost">$2,000</small></button>
-          <button data-facility="recycling"><span class="btn-label">recycling</span><small class="btn-cost">$1,600</small></button>
-          <button data-kind="condo"><span class="btn-label">condo</span><small class="btn-cost">60 pop · $2,000</small></button>
-          <button data-kind="shop"><span class="btn-label">shop</span><small class="btn-cost">160 pop · $1,500</small></button>
-          <button data-kind="hotel"><span class="btn-label">hotel</span><small class="btn-cost">160 pop · $3,200</small></button>
+      <div class="palette-group" data-group="structure">
+        <h3 class="palette-group-label">STRUCTURE</h3>
+        <div class="palette-grid">
+          <button class="tile" data-do="lobby"><span class="tile-icon" data-icon="lobby" aria-hidden="true">LB</span><span class="btn-label">lobby</span><small class="btn-cost"></small></button>
+          <button class="tile" data-do="floor"><span class="tile-icon" data-icon="floor" aria-hidden="true">FL</span><span class="btn-label">floor</span><small class="btn-cost"></small></button>
+          <button class="tile" data-do="stairs"><span class="tile-icon" data-icon="stairs" aria-hidden="true">ST</span><span class="btn-label">stairs</span><small class="btn-cost"></small></button>
+          <button class="tile" data-do="escalator"><span class="tile-icon" data-icon="escalator" aria-hidden="true">ES</span><span class="btn-label">escalator</span><small class="btn-cost"></small></button>
         </div>
-      </details>
+      </div>
+      <div class="palette-group" data-group="transport">
+        <h3 class="palette-group-label">TRANSPORT</h3>
+        <div class="palette-grid">
+          <button class="tile" data-do="shaft"><span class="tile-icon" data-icon="shaft" aria-hidden="true">SH</span><span class="btn-label">shaft</span><small class="btn-cost"></small></button>
+          <button class="tile" data-do="car"><span class="tile-icon" data-icon="car" aria-hidden="true">CR</span><span class="btn-label">car</span><small class="btn-cost"></small></button>
+          <button class="tile" data-do="express"><span class="tile-icon" data-icon="express" aria-hidden="true">EX</span><span class="btn-label">express</span><small class="btn-cost"></small></button>
+          <button class="tile" data-do="extend"><span class="tile-icon" data-icon="shaft" aria-hidden="true">XT</span><span class="btn-label">extend</span><small class="btn-cost"></small></button>
+        </div>
+      </div>
+      <div class="palette-group" data-group="rentable">
+        <h3 class="palette-group-label">ROOMS</h3>
+        <div class="palette-grid">
+          <button class="tile" data-kind="office"><span class="tile-icon" data-icon="office" aria-hidden="true">OF</span><span class="btn-label">office</span><small class="btn-cost"></small></button>
+          <button class="tile" data-kind="condo"><span class="tile-icon" data-icon="condo" aria-hidden="true">CO</span><span class="btn-label">condo</span><small class="btn-cost"></small></button>
+          <button class="tile" data-kind="shop"><span class="tile-icon" data-icon="shop" aria-hidden="true">SP</span><span class="btn-label">shop</span><small class="btn-cost"></small></button>
+          <button class="tile" data-kind="hotel"><span class="tile-icon" data-icon="hotel" aria-hidden="true">HT</span><span class="btn-label">hotel</span><small class="btn-cost"></small></button>
+        </div>
+      </div>
+      <div class="palette-group" data-group="services">
+        <h3 class="palette-group-label">SERVICES</h3>
+        <div class="palette-grid">
+          <button class="tile" data-facility="food"><span class="tile-icon" data-icon="cafeteria" aria-hidden="true">CF</span><span class="btn-label">cafeteria</span><small class="btn-cost"></small></button>
+          <button class="tile" data-facility="parking"><span class="tile-icon" data-icon="parking" aria-hidden="true">PK</span><span class="btn-label">parking</span><small class="btn-cost"></small></button>
+          <button class="tile" data-facility="medical"><span class="tile-icon" data-icon="clinic" aria-hidden="true">CL</span><span class="btn-label">clinic</span><small class="btn-cost"></small></button>
+          <button class="tile" data-facility="security"><span class="tile-icon" data-icon="security" aria-hidden="true">SE</span><span class="btn-label">security</span><small class="btn-cost"></small></button>
+          <button class="tile" data-facility="recycling"><span class="tile-icon" data-icon="recycling" aria-hidden="true">RC</span><span class="btn-label">recycling</span><small class="btn-cost"></small></button>
+        </div>
+      </div>
+      <div class="palette-group" data-group="site">
+        <h3 class="palette-group-label">SITE</h3>
+        <div class="palette-grid">
+          <button class="tile" data-do="demolish"><span class="tile-icon" data-icon="demolish" aria-hidden="true">DM</span><span class="btn-label">demolish</span><small class="btn-cost"></small></button>
+        </div>
+      </div>
     </div>
 
     <div id="stat-bar-mount"></div>

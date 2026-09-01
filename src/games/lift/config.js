@@ -27,7 +27,12 @@ export const CONFIG = {
   },
 
   building: {
-    startFloors: 4,
+    /**
+     * Zero: a new session opens on bare ground — street, sky, no floors — and
+     * the lobby is the first purchase (spec/tower-view.md §4). Every test that
+     * needs a standing tower sets its own value.
+     */
+    startFloors: 0,
     maxFloors: 60,
     /**
      * Unit slots per floor, excluding the columns consumed by shafts.

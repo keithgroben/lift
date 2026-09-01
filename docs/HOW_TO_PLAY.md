@@ -2,15 +2,19 @@
 
 ## The short version
 
-1. Watch the building for a few seconds. People will use the elevator during
+1. A new game opens on bare ground with the `lobby` tool already armed. Click
+   the ground floor: that first click places the entrance and the storey it
+   stands on.
+2. Stack storeys with `floor`, run a `shaft` up them, then fill them with
+   rooms. A tool stays armed, so eight offices is eight clicks.
+3. Watch the building for a few seconds. People will use the elevator during
    rushes.
-2. When waiting rises, select `+ car`, then click the highlighted elevator
-   shaft.
-3. After the car is added, the game returns to `WATCHING`. Let the next rush
-   run. Delivery and reputation should recover.
-4. Add rooms or floors only when the building can afford them and transport
+4. When waiting rises, select `car`, then click the highlighted elevator
+   shaft. Press `Esc` when you are done adding cars, and let the next rush
+   run — delivery and reputation should recover.
+5. Add rooms or floors only when the building can afford them and transport
    can serve them.
-5. If a room becomes unhealthy or abandoned, select it and follow the
+6. If a room becomes unhealthy or abandoned, select it and follow the
    recovery action shown in the room panel.
 
 The repeating loop is:
@@ -24,35 +28,50 @@ speeds.
 
 ## What to do on the first screen
 
-The tower starts with a lobby, a left-side elevator shaft, and a few offices
-so the first problem is visible quickly. The player HUD should tell you the
-current objective and next action. When a transport response is needed, the
+The tower starts as an empty lot: street, sky, and nothing built. The `lobby`
+tool is already armed, so the first click of a new game places the entrance —
+the same first move the guided path asks for. The player HUD should tell you
+the current objective and next action. When a transport response is needed, the
 top `NEXT ACTION` button opens the matching build flow for you; you still
 confirm the placement in the tower. Use the detailed developer view only when
 you want to inspect the simulation closely.
 
-The opening mode is `WATCHING`, so clicking the tower cannot accidentally build
-anything. Choose a build button first when you want to place a room or route.
 Use `new session` beside the objective when you want to restart the first loop;
 click the follow-up `confirm new session` control before the tower resets.
-If you choose a build action and change your mind, use `cancel action`; it
-returns to `WATCHING` without changing the tower.
+If you change your mind about an armed tool, press `Esc`, right-click the
+tower, or use `cancel action`. Any of the three returns to `WATCHING` without
+changing the tower, and while `WATCHING` a click on the tower inspects rather
+than builds.
 
 For the structured first-session check, see
 [`HUMAN_PLAYTEST_RELEASE_0.md`](HUMAN_PLAYTEST_RELEASE_0.md).
 
 ## Building
 
-- `+ floor` adds another floor.
-- `office`, `condo`, `shop`, and `hotel` select a room type, then you click an
-  open upper-floor slot.
-- `+ shaft` selects a new elevator route. Hover a clear building column to
-  choose it, then click the top floor for the shaft span. The game will warn
-  you before building if that column is blocked or the span is invalid.
-- `+ car` adds capacity to an existing shaft. It is a two-step action: select
-  the car tool, then select the shaft.
+Building is a tool, not a list. Pick a tile from the palette and it arms; the
+tower then shows a ghost under the cursor — green where the thing may land,
+red with the reason where it may not (`$1,400 short`, `slot taken`, `build a
+lobby first`). Clicking places it, and the tool **stays armed** for the next
+one. `Esc` or a right-click puts it away.
+
+Every tile shows its price. A tile you cannot afford stays where it is and
+says how far short you are; a tile you have not unlocked yet says the
+population that unlocks it. Nothing disappears from the palette.
+
+- `lobby` places the ground-floor entrance, and on bare ground it buys the
+  storey it stands on. Once placed it stays armed as the wing tool, for
+  widening the entrance.
+- `floor` stacks one more storey on top of the tower.
+- `office`, `condo`, `shop`, and `hotel` place a room in the slot you click.
+- `shaft` runs a new elevator route from the lobby. Hover a clear building
+  column, then click the top floor for the shaft span; the ghost turns red
+  and names the problem if that column is blocked or the span is invalid.
+- `car` adds capacity to an existing shaft: arm it, then click the shaft.
+- `stairs`, `escalator`, and `express` are the other routes out of the lobby.
 - Services such as cafeterias and parking are placed on a floor and cover a
   nearby range.
+- `demolish` clears a vacant room and frees its slot. It is a tool in the
+  palette like any other; an occupied room refuses, and says so.
 
 Every construction choice spends money and can add operating costs. Empty
 rooms still have upkeep, so a larger tower is not automatically a better one.

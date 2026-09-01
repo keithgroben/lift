@@ -8,6 +8,7 @@ const assert = (c, m) => { if (!c) throw new Error(m); };
 export const tests = {
   'parking coverage has its own floor range and evaluation signal'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     config.building.startFloors = 5;
     const state = boot(config, 71);
@@ -42,6 +43,7 @@ export const tests = {
 
   'parking remains separate from food coverage'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     const state = boot(config, 72);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok,

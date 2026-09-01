@@ -7,6 +7,7 @@ const assert = (c, m) => { if (!c) throw new Error(m); };
 export const tests = {
   'star milestones pay once when population crosses each tier'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     config.building.startFloors = 28;
     const state = boot(config, 601);

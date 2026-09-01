@@ -11,6 +11,7 @@ const assert = (c, m) => { if (!c) throw new Error(m); };
 export const tests = {
   'escalators occupy a continuous column and are faster than stairs'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     const state = boot(config, 401);
     assert(applyAction(state, { type: 'build_lobby', slot: 0 }, config).ok, 'could not build lobby');
@@ -35,6 +36,7 @@ export const tests = {
 
   'local route choice shares demand as the faster route fills'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     const routes = {
       stairs: [{ id: 1, bottom: 0, top: 3, slot: 1 }],
       escalators: [{ id: 2, bottom: 0, top: 3, slot: 2 }],
@@ -54,6 +56,7 @@ export const tests = {
 
   'escalators deliver a trip without an elevator and improve room access'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     const state = boot(config, 402);
     assert(applyAction(state, { type: 'build_lobby', slot: 0 }, config).ok, 'could not build lobby');
