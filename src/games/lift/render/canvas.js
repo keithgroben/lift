@@ -1,7 +1,7 @@
 import { lerp, mix } from './juice.js';
 import { makeSpriteBook } from './sprites.js';
 import { cloudScale, daylight, flyerScale, makeSky, skyColors, skyPhase } from './sky.js';
-import { buildOccupiedFloorIndex, shaftQueueTrend, tenantDemandQuality, tenantLoadStatus, unitEvaluation, waitingPressureSummary } from '../sim/evaluation.js';
+import { buildOccupiedFloorIndex, roomDesirabilityScore, shaftQueueTrend, tenantDemandQuality, tenantLoadStatus, unitEvaluation, waitingPressureSummary } from '../sim/evaluation.js';
 import { localRouteOccupancy } from '../sim/demand.js';
 import { freeSlot, isUnderground, lowestFloor, slotsUsed } from '../sim/state.js';
 
@@ -63,6 +63,127 @@ export function unassignedQueueOriginFloors(state) {
 export function tenantBadgeText(unit, config) {
   const load = tenantLoadStatus(unit, config);
   return 'T ' + tenantCount(unit) + '/' + load.capacity;
+}
+
+/**
+ * Which of the three people sheets a waiting rider is drawn from.
+ *
+ * The sim tracks HEADCOUNTS, not individuals — there is no person object with
+ * a job — so the figure is decorative puppetry driven by the one thing the
+ * trip already knows: what it is for. A commuter is a worker, an errand is a
+ * resident, a check-in is a guest. Anything the sim adds later falls back to
+ * a worker rather than to nothing, because a missing figure reads as a bug and
+ * a slightly wrong hat does not.
+ *
+ * Per `spec/sprite-manifest.md` Tier 2: if an animation seems to need new sim
+ * state, it is cut, not a sim change. Nothing here asks for any.
+ */
+export const PERSON_SHEETS = {
+  commute_in: 'person-worker',
+  commute_out: 'person-worker',
+  lunch_out: 'person-worker',
+  lunch_back: 'person-worker',
+  errand_out: 'person-resident',
+  errand_in: 'person-resident',
+  hotel_check_in: 'person-guest',
+  hotel_check_out: 'person-guest',
+};
+
+export function personSheet(tripKind) {
+  return PERSON_SHEETS[tripKind] ?? 'person-worker';
+}
+
+/**
+ * Posture for a waiting figure. Heat is how close this rider is to giving up
+ * (`waitT / demand.abandonAfter`), which is exactly the number the queue dots
+ * were already coloured by — so the crowd carries the SAME signal the dots
+ * did, in a second channel. `beat` alternates the two frames of a pose so a
+ * platform of people is not a row of statues; the delivered sheets have one
+ * frame per pose, so the shuffle has to come from picking between poses.
+ */
+export function waitingPose(heat, beat) {
+  const h = Number.isFinite(Number(heat)) ? Math.max(0, Math.min(1, Number(heat))) : 0;
+  const b = beat ? 1 : 0;
+  if (h >= 0.66) return b ? 'wait-annoyed' : 'wait';
+  if (h >= 0.33) return b ? 'fidget' : 'wait';
+  return b ? 'fidget' : 'stand';
+}
+
+/**
+ * The departure wick (issue #10): how far this tenant is along their own
+ * countdown to walking out over room appeal, as 0..1.
+ *
+ * The bug it answers: Keith ran delivery at 100% and reputation at 100 and
+ * lost every tenant anyway, with nothing on screen beforehand. The game only
+ * ever gave post-mortems, because appeal was shown as a SCORE — "21/100" is
+ * trivia a player has to interpret — while `desirabilityPressure` was already
+ * a DEADLINE and a deadline is a warning.
+ *
+ * **Zero is silent, deliberately.** The tower already carries W badges, T
+ * badges and a stress line; a fourth always-on marker drowns all of them, so
+ * only a room that is actually losing its tenant gets a wick. `economy.js`
+ * writes `desirabilityPressure` once a day and decays it by
+ * `desirabilityRetentionRecovery` when appeal recovers, so a fixed room's
+ * wick shrinks and then goes out on its own.
+ *
+ * Read straight off the unit: no `unitEvaluation()` call, so a wick on every
+ * room costs nothing per frame. Renderer-only — nothing here writes state.
+ */
+export function departureWickRatio(unit, config) {
+  if (!unit || !unit.occupied) return 0;
+  const pressure = Number(unit.desirabilityPressure);
+  if (!Number.isFinite(pressure) || pressure <= 0) return 0;
+  const vacateAt = Math.max(1, Number(config?.occupancy?.desirabilityRetentionVacateAt) || 1);
+  return Math.min(1, pressure / vacateAt);
+}
+
+/**
+ * Where the wick sits inside a room, or `null` when the floor is too short to
+ * carry it — issue #10 asks for it to disappear rather than smear.
+ *
+ * It owns the room's LEFT edge, top to bottom, and nothing else in the room
+ * uses that edge: the tenant badge is top-right, the transport stress line is
+ * along the bottom, and the room's fill is already colour-coded twice (by type
+ * and by quality), which is exactly why the old "red fade = low appeal" never
+ * reached anyone. Fill height is the signal; colour only reinforces it.
+ *
+ * The bottom stops clear of the stress line so the two causes never overlap —
+ * slow lifts and a bare building are different problems with different fixes.
+ */
+export function departureWickBox(x, y, L) {
+  const zoom = Math.max(1, Number(L?.zoom) || 1);
+  const fh = Number(L?.fh);
+  if (!Number.isFinite(fh)) return null;
+  const top = y + 3;
+  const bottom = y + fh - 9;      // above the stress line, which lives at fh-7
+  const h = bottom - top;
+  if (fh < 20 || h < 8) return null;
+  return { x: x + Math.max(1, Math.round(zoom)), y: top, w: Math.max(4, Math.round(4 * zoom)), h };
+}
+
+/**
+ * The appeal overlay's reading of one room (issue #12) — SimTower's evaluation
+ * view. The wick is deliberately local: it says "this tenant is leaving". The
+ * overlay answers the other question, "which HALF of my tower is rotting", so
+ * it is a comparison across the whole building and therefore a gradient rather
+ * than three flat buckets.
+ *
+ * `key` uses exactly the thresholds `unitEvaluation()` already bands on, so
+ * the overlay can never disagree with the score the sidebar prints beside it.
+ * `ratio` is the GOOD -> BAD mix: 0 at appeal 100, 1 at appeal 0.
+ *
+ * On demand only. It is never on by default — an always-on tint competes with
+ * the normal read of the building, which is the whole reason it is a key.
+ */
+export function appealOverlayBand(score, config) {
+  // `Number(null)` and `Number('')` are both 0, which would tint an unscored
+  // room bright red. A missing score is a missing score, not a bad one.
+  if (score === null || score === undefined || score === '') return null;
+  const s = Number(score);
+  if (!Number.isFinite(s)) return null;
+  const clamped = Math.max(0, Math.min(100, s));
+  const min = Math.max(1, Math.min(99, Number(config?.evaluation?.relistMinScore) || 35));
+  return { score: clamped, key: clamped >= 80 ? 'good' : clamped >= min ? 'warn' : 'bad', ratio: 1 - clamped / 100 };
 }
 
 /** Floors that can fulfill a preserved investment target. */
@@ -437,7 +558,15 @@ export function minimapContains(metrics, screenX, screenY) {
  * of its trips while every number on the HUD looks calm. Everything else here is
  * secondary to making that queue legible.
  */
-export function makeRenderer(canvas, config) {
+/**
+ * @param options `{ sprites }` — forwarded to `makeSpriteBook`, so a test can
+ *   supply loaders that read the real sheets off disk instead of the network.
+ *   Without it the book takes its browser defaults and, in Node, reports every
+ *   sheet missing — which is the fallback path, not the art path. Six visual
+ *   complaints have come back as "the art exists, nothing draws it"; this is
+ *   what lets `npm test` see the difference (issue #14).
+ */
+export function makeRenderer(canvas, config, options = {}) {
   const ctx = canvas.getContext('2d');
   const [BG, PANEL, GOOD, WARN, BAD, INFO] = config.feel.palette;
   const KIND = { office: INFO, condo: GOOD, shop: WARN, hotel: '#c77dff' };
@@ -449,13 +578,13 @@ export function makeRenderer(canvas, config) {
   // The art. Every draw below asks the book first and falls back to the shape
   // it always drew, so a sheet that has not arrived (or has arrived broken)
   // costs a rectangle, never a frame. See src/games/lift/assets/README.md.
-  const sprites = makeSpriteBook(config);
+  const sprites = makeSpriteBook(config, options.sprites ?? {});
   // The sky owns its own clock and its own randomness. Decoration only: a
   // tower plays identically with it switched off.
   const sky = makeSky(config);
   sprites.preload([
-    'ground-street', 'ground-entrance', 'earth-fill', 'earth-edge', 'foundation-slab',
-    'basement-empty', 'basement-parking', 'basement-storage', 'basement-utility',
+    'ground-street', 'earth-fill', 'earth-edge', 'foundation-slab',
+    'basement-empty', 'basement-parking', 'basement-utility',
     'office', 'condo', 'shop', 'hotel', 'slot-empty', 'slot-construction', 'room-empty',
     'lobby', 'lobby-wing', 'floor-slab', 'roof-cap',
     'shaft-column', 'elevator-car', 'elevator-car-express', 'stairs-segment', 'escalator-segment',
@@ -532,6 +661,27 @@ export function makeRenderer(canvas, config) {
   const camera = makeCamera(0, 0, 1);
   let framedSeed = null;
   let knownPlacements = null;
+
+  /**
+   * How many crowd figures are left in this frame's budget.
+   *
+   * A full redraw is well under a millisecond against a 33ms frame, and the
+   * crowd is the one thing here that could eat that: a grown tower can have a
+   * queue on every visible floor at once. Past the budget the row falls back
+   * to the dots it drew before, so the worst case is bounded by a number in
+   * `config.feel` rather than by how badly the player is doing.
+   */
+  let crowdBudget = 0;
+
+  /** Cells with a build landing on them, and when it started. Render-time
+   *  only; nothing in here can change what was built or when. */
+  const landing = new Map();
+
+  // Issue #12: the appeal overlay is a question the player asks, so it starts
+  // off and stays off until something calls setAppealOverlay(). The key that
+  // toggles it is bound in ui/, the same way pan, zoom and goTo already are —
+  // the renderer owns the tint, never the input.
+  let appealOverlay = false;
 
   const viewport = () => ({ w: W, h: H });
 
@@ -626,6 +776,10 @@ export function makeRenderer(canvas, config) {
       return;
     }
     const fresh = marks.filter((placed) => !knownPlacements.has(placed.id));
+    // Anything that just landed plays its scaffold-and-dust once. Recorded on
+    // the RENDER clock, so it is decoration: pause the game and the dust
+    // settles with it, and a tower plays identically with the sheet absent.
+    for (const placed of fresh) landing.set(placed.id, { ...placed, at: sprites.elapsedMs });
     for (const placed of marks) knownPlacements.add(placed.id);
     const offscreen = fresh.find((placed) => !spanVisible(L, placed.bottom, placed.top, placed.slot));
     if (offscreen) centerOnCell(state, offscreen.floor, offscreen.slot);
@@ -633,6 +787,7 @@ export function makeRenderer(canvas, config) {
 
   function draw(state, juice, dtMs, placementGuide = null, hoverFloor = -1, routeTarget = null, serviceFocus = null, hoverFacilityId = null, selectedShaftId = null, hoverShaftId = null, shaftQueueHistory = null) {
     clampCamera(state);
+    crowdBudget = Math.max(0, Number(config.feel?.sprites?.maxCrowdFigures) || 0);
     sprites.advance(dtMs);
     skyDrift += Math.min(120, Math.max(0, dtMs || 0)) / 1000;
     sky.update(dtMs, state.tod, W, H);
@@ -690,6 +845,15 @@ export function makeRenderer(canvas, config) {
         }
       }
 
+      // Where a dug storey ends, the earth it was cut out of begins. One tile
+      // either side of the span turns a basement from a box floating in soil
+      // into a hole somebody excavated.
+      if (isUnderground(f)) drawEarthEdges(L, low, high, y);
+
+      // The line between storeys. Without it a stack of rooms reads as one
+      // tall column of colour; the slab is what makes them floors.
+      drawFloorSlab(L, low, high, y);
+
       ctx.fillStyle = isUnderground(f) ? 'rgba(198,166,124,0.45)' : 'rgba(142,202,230,0.35)';
       ctx.font = '10px ui-monospace, monospace';
       ctx.textAlign = 'right';
@@ -716,10 +880,19 @@ export function makeRenderer(canvas, config) {
     for (const stair of state.stairs ?? []) drawStairs(stair, L, state);
     for (const escalator of state.escalators ?? []) drawEscalator(escalator, L, state);
     for (const u of state.units) drawUnit(u, L, state, floorIndex);
-    for (const facility of state.facilities ?? []) drawFacility(facility, L, serviceFocus?.facilityId === facility.id, hoverFacilityId === facility.id);
+    for (const facility of state.facilities ?? []) drawFacility(facility, L, state, serviceFocus?.facilityId === facility.id, hoverFacilityId === facility.id);
+    // Over whatever just landed, so a placement reads as built rather than
+    // simply appearing.
+    drawConstruction(L);
+    // After the rooms so it recolours them, before the transport signals so
+    // shafts, cars and queues stay readable underneath the question being
+    // asked. Appeal and transport are different causes with different fixes.
+    drawAppealOverlay(state, L, floorIndex, visible);
     for (const sh of state.shafts) drawShaft(sh, L, dtMs, state, shaftQueueHistory, selectedShaftId === sh.id, hoverShaftId === sh.id);
     drawRouteTarget(routeTarget, state, L, hoverFloor);
     drawQueues(state, L, selectedShaftId, visible);
+    // LAST of the world passes, and it has to stay last: see drawDepartureWicks.
+    drawDepartureWicks(state, L, visible);
 
     juice.draw(ctx);
     // The minimap is screen furniture, not part of the world: it is drawn
@@ -1027,9 +1200,9 @@ export function makeRenderer(canvas, config) {
   }
 
   // The street tile is the bottom 16 world px of the ground floor — half a
-  // floor, which is exactly the 48x16 ground-street.png / ground-entrance.png
-  // grid in spec/asset-request.md. These are placeholder rectangles on that
-  // grid: the geometry is the deliverable, the art lands on top of it later.
+  // floor, which is exactly the 48x16 ground-street.png grid in
+  // spec/asset-request.md. The rectangles below are the fallback on that same
+  // grid: the geometry is the deliverable, the art lands on top of it.
   const STREET_H = 16;
   const streetHeight = (L) => STREET_H * L.zoom;
 
@@ -1072,6 +1245,60 @@ export function makeRenderer(canvas, config) {
       if (sprites.drawSprite(ctx, { name: 'foundation-slab', animation: 'tile', x, y, scale: L.zoom })) continue;
       ctx.fillStyle = '#2a2520';
       ctx.fillRect(x, y, L.cw, h);
+    }
+  }
+
+  /** The slab between one storey and the next, tiled across the span the
+   *  building actually occupies. 48x4 art, so it scales with the zoom and
+   *  simply does not draw when the sheet is absent — the 2px gap the storey
+   *  rect already leaves is the fallback it always was. */
+  function drawFloorSlab(L, low, high, y) {
+    const h = Math.max(1, Math.round(4 * L.zoom));
+    const slabY = y + L.fh - h;
+    if (slabY > H || slabY + h < 0) return;
+    for (let slot = low; slot <= high; slot++) {
+      const x = L.x0 + slot * L.cw;
+      if (x + L.cw < 0 || x > W) continue;
+      sprites.drawSprite(ctx, { name: 'floor-slab', animation: 'tile', x, y: slabY, scale: L.zoom });
+    }
+  }
+
+  /**
+   * Scaffold and dust over anything placed in the last half second. Three
+   * frames, played from the placement rather than off the shared clock, so a
+   * build that lands mid-cycle still starts at frame 0.
+   *
+   * The window comes from the sheet's own frame count and its speed in
+   * `config.feel.sprites.fps`, so retiming construction stays a config edit.
+   */
+  function drawConstruction(L) {
+    if (!landing.size) return;
+    const anim = sprites.animation('slot-construction', 'building');
+    if (!anim) { landing.clear(); return; }   // no sheet, nothing to play
+    const windowMs = (anim.frames * 1000) / anim.fps;
+    for (const [id, placed] of landing) {
+      const age = sprites.elapsedMs - placed.at;
+      if (!(age >= 0) || age >= windowMs) { landing.delete(id); continue; }
+      const frame = Math.min(anim.frames - 1, Math.floor((age * anim.fps) / 1000));
+      const x = L.x0 + placed.slot * L.cw;
+      if (x + L.cw < 0 || x > W) continue;
+      for (let f = placed.bottom; f <= placed.top; f++) {
+        const y = L.floorY(f);
+        if (y + L.fh < 0 || y > H) continue;
+        sprites.drawSprite(ctx, { name: 'slot-construction', animation: 'building', x, y, scale: L.zoom, frame });
+      }
+    }
+  }
+
+  /** The cut faces at either end of a dug storey, where the excavation stops
+   *  and the soil starts. Drawn OUTSIDE the built span on purpose: the edge is
+   *  earth, not a room, and putting it inside would eat a buildable slot. */
+  function drawEarthEdges(L, low, high, y) {
+    for (const slot of [low - 1, high + 1]) {
+      if (slot < 0 || slot >= L.cols) continue;
+      const x = L.x0 + slot * L.cw;
+      if (x + L.cw < 0 || x > W) continue;
+      sprites.drawSprite(ctx, { name: 'earth-edge', animation: 'tile', x, y, scale: L.zoom });
     }
   }
 
@@ -1371,6 +1598,128 @@ export function makeRenderer(canvas, config) {
     ctx.fillText(badgeText, badgeX + badgeW / 2, badgeY + badgeH * 0.73);
   }
 
+  /**
+   * Every room's departure wick, in one pass.
+   *
+   * It is a pass of its own rather than part of `drawUnit` because of WHERE it
+   * has to land in the frame: a deep queue draws a crowd across the bottom
+   * half of the floor, which is exactly where the wick's fill grows from. Drawn
+   * with the room, a room one day from empty would be hidden behind the very
+   * congestion that is a different problem with a different fix. The warning
+   * goes over the decoration — legibility beats charm.
+   */
+  function drawDepartureWicks(state, L, visible) {
+    for (const u of state.units) {
+      if (visible && (u.floor < visible.low || u.floor > visible.high)) continue;
+      const x = L.x0 + u.slot * L.cw, y = L.floorY(u.floor);
+      if (x + L.cw < 0 || x > W || y + L.fh < 0 || y > H) continue;
+      drawDepartureWick(u, x, y, L);
+    }
+  }
+
+  /**
+   * The departure wick: a countdown to this tenant walking out over room
+   * appeal, burning UP the room's left edge (issue #10).
+   *
+   * Silent on healthy rooms — a room only grows a wick once the sim has
+   * actually started charging it pressure, so the eye finds the handful of
+   * rooms in trouble instead of scanning a tower of always-on markers.
+   *
+   * Height and position carry the signal. Colour reinforces it and nothing
+   * more, because the room's own pixels are already colour-coded twice — by
+   * type and by quality — which is precisely why the old red appeal fade never
+   * reached anyone: it tinted the same pixels that say "this is an office".
+   */
+  function drawDepartureWick(u, x, y, L) {
+    const ratio = departureWickRatio(u, config);
+    if (ratio <= 0) return;
+    const box = departureWickBox(x, y, L);
+    if (!box) return;
+
+    // The unlit track is half the signal: it is the dedicated edge, and it
+    // says "a countdown is running here" before the fill is tall enough to
+    // read on its own.
+    ctx.fillStyle = 'rgba(10,13,18,0.86)';
+    ctx.fillRect(box.x, box.y, box.w, box.h);
+
+    const burn = mix(WARN, BAD, ratio);
+    const fillH = Math.max(2, Math.round(box.h * ratio));
+    ctx.fillStyle = burn;
+    ctx.fillRect(box.x, box.y + box.h - fillH, box.w, fillH);
+
+    // One notch per day of pressure, so the fill can be COUNTED and not only
+    // felt: three notches lit of four is "one day left", which is the whole
+    // difference between a warning and a score.
+    const steps = Math.max(1, Math.round(Number(config?.occupancy?.desirabilityRetentionVacateAt) || 1));
+    const stepH = box.h / steps;
+    if (stepH >= 4) {
+      ctx.fillStyle = 'rgba(10,13,18,0.9)';
+      for (let i = 1; i < steps; i++) ctx.fillRect(box.x, Math.round(box.y + box.h - i * stepH), box.w, 1);
+    }
+
+    // The last day gets a lit edge rather than a new colour, so a tenant about
+    // to go reads differently from one that merely started slipping. Alpha is
+    // driven by the render clock, which is decoration: the tower plays
+    // identically with it frozen.
+    const critical = ratio >= 1 - 1 / steps;
+    ctx.globalAlpha = critical ? 0.6 + 0.4 * Math.abs(Math.sin(sprites.elapsedMs / 420)) : 0.5;
+    ctx.strokeStyle = critical ? BAD : burn;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(box.x + 0.5, box.y + 0.5, box.w - 1, box.h - 1);
+    ctx.globalAlpha = 1;
+  }
+
+  /**
+   * The appeal overlay (issue #12): every room tinted by its appeal score, on
+   * a key, never always-on. It deliberately paints OVER the normal read of the
+   * building — while it is up, appeal is the only question being asked.
+   *
+   * This is the one pass that pays for `unitEvaluation()` on every room every
+   * frame. That is the cost the fallback rectangles used to carry all the
+   * time; here it is only paid while the player is holding the view open, and
+   * only for the rooms actually on screen.
+   */
+  function drawAppealOverlay(state, L, floorIndex, visible) {
+    if (!appealOverlay) return;
+    for (const u of state.units) {
+      if (visible && (u.floor < visible.low || u.floor > visible.high)) continue;
+      const x = L.x0 + u.slot * L.cw, y = L.floorY(u.floor);
+      if (x + L.cw < 0 || x > W || y + L.fh < 0 || y > H) continue;
+      const band = appealOverlayBand(roomDesirabilityScore(unitEvaluation(state, u, config, floorIndex), config), config);
+      if (!band) continue;
+      // Nearly opaque on purpose. At 0.66 the room art read through the tint
+      // and two rooms twenty points apart looked the same, which is the exact
+      // failure the overlay exists to fix — while it is up, appeal is the only
+      // thing being asked, and the furniture can wait.
+      ctx.fillStyle = mix(GOOD, BAD, band.ratio);
+      ctx.globalAlpha = 0.88;
+      ctx.fillRect(x + 1, y + 1, L.cw - 2, L.fh - 4);
+      ctx.globalAlpha = 1;
+      if (L.fh >= 22 && L.cw >= 26) {
+        // The number, so the tint can be READ and not only compared. Dark on
+        // the tint: every colour on the GOOD->BAD ramp is light enough to
+        // carry near-black, and none of them is light enough to carry white.
+        ctx.fillStyle = 'rgba(10,13,18,0.9)';
+        ctx.textAlign = 'center';
+        ctx.font = '700 ' + Math.round(10 * Math.min(1.4, L.zoom)) + 'px ui-monospace, monospace';
+        ctx.fillText(String(band.score), x + L.cw / 2, y + L.fh * 0.62);
+      }
+    }
+    // Screen furniture, so the mode is never a thing you are in without
+    // knowing it. Drawn in the world pass because it is anchored to the tower
+    // it is describing, not to the viewport.
+    ctx.fillStyle = 'rgba(10,13,18,0.86)';
+    roundRect(ctx, 10, H - 30, 132, 20, 3);
+    ctx.fill();
+    ctx.strokeStyle = INFO;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = INFO;
+    ctx.textAlign = 'left';
+    ctx.font = '700 9px ui-monospace, monospace';
+    ctx.fillText('APPEAL VIEW · 0—100', 18, H - 16);
+  }
+
   function drawShaft(sh, L, dtMs, state, shaftQueueHistory = null, focused = false, hovered = false) {
     const x = L.x0 + sh.slot * L.cw;
     const top = L.floorY(sh.top), bot = L.floorY(sh.bottom) + L.fh;
@@ -1484,6 +1833,23 @@ export function makeRenderer(canvas, config) {
 
   /** The queue: a line of dots on the landing, reddening and jittering as the
    *  wait grows. This is the readout the whole design depends on. */
+  /**
+   * One waiting rider, standing on the queue line. Returns false when there is
+   * no sheet for them, which puts the dot back — the crowd is a reskin of the
+   * dot row, never a replacement for the signal it carries.
+   */
+  function drawWaitingPerson(p, heat, centerX, feetY, L) {
+    const name = personSheet(p.kind);
+    const sheet = sprites.sheetFor(name);
+    if (!sheet) return false;
+    const w = sheet.frameW * L.zoom, h = sheet.frameH * L.zoom;
+    const beat = Math.floor((sprites.elapsedMs + idPhase(p.id)) / 520) % 2;
+    return sprites.drawSprite(ctx, {
+      name, animation: waitingPose(heat, beat),
+      x: centerX - w / 2, y: feetY - h, scale: L.zoom,
+    });
+  }
+
   function drawQueues(state, L, selectedShaftId = null, visible = null) {
     const byFloor = new Map();
     for (const p of state.people) {
@@ -1544,14 +1910,24 @@ export function makeRenderer(canvas, config) {
         ctx.globalAlpha = 1;
       }
 
-      const shown = Math.min(queue.length, 26);
+      // People, standing ON the crowd bar rather than over it — the bar's
+      // LENGTH is the depth signal and a 276-deep queue must never read like a
+      // 22-deep one again, so the figures are not allowed to hide it.
+      //
+      // A figure is wider than a dot, so the row is spaced for whichever is
+      // being drawn. Everything beyond the row still rolls into "+N waiting".
+      const crowd = crowdBudget > 0 && sprites.has('person-worker', 'stand');
+      const step = crowd ? Math.max(6, 9 * L.zoom) : 5.5;
+      const shown = Math.min(queue.length, 26, Math.max(1, Math.floor((L.cw * L.cols - 12) / step)));
       for (let i = 0; i < shown; i++) {
         const p = queue[i];
         const heat = Math.min(1, p.waitT / config.demand.abandonAfter);
+        const cx = L.x0 + 6 + i * step;
+        if (crowd && crowdBudget > 0 && drawWaitingPerson(p, heat, cx, y + 5, L)) { crowdBudget--; continue; }
         ctx.fillStyle = mix(GOOD, BAD, heat);
         const bob = Math.sin((p.waitT + i) * 3) * (heat * 1.8);
         ctx.beginPath();
-        ctx.arc(L.x0 + 6 + i * 5.5, y + bob, 2.4 + heat * 1.4, 0, Math.PI * 2);
+        ctx.arc(cx, y + bob, 2.4 + heat * 1.4, 0, Math.PI * 2);
         ctx.fill();
       }
 
@@ -1561,7 +1937,7 @@ export function makeRenderer(canvas, config) {
         ctx.fillStyle = queue.length > 4 ? '#12161c' : BAD;
         ctx.textAlign = 'left';
         ctx.font = '700 13px ui-monospace, monospace';
-        ctx.fillText('+' + (queue.length - shown) + ' waiting', L.x0 + 12 + shown * 5.5, y + 5);
+        ctx.fillText('+' + (queue.length - shown) + ' waiting', L.x0 + 12 + shown * step, y + 5);
       }
     }
   }
@@ -1609,9 +1985,47 @@ export function makeRenderer(canvas, config) {
     return null;
   }
 
-  function drawFacility(facility, L, focused = false, hovered = false) {
+  /**
+   * The underground art for a facility, or null to keep the coloured box.
+   *
+   * Only the two kinds the delivered sheets honestly depict. Parking is the
+   * whole reason to dig, and its three frames are empty / one car / two cars.
+   * Recycling is the building's plant — `config.services` calls it "a local
+   * utility" in as many words — and `basement-utility` is a plant room with a
+   * working indicator. A clinic or a security desk drawn as boilers would be a
+   * lie, so those keep the labelled box until they have art of their own.
+   */
+  function facilitySprite(facility, state) {
+    if (!isUnderground(facility.floor)) return null;
+    if (facility.kind === 'parking') {
+      // The bay fills through the working day and empties overnight. Driven by
+      // tod alone: the sim counts no cars, so this cannot be wrong about them.
+      const day = dayness(state);
+      return { name: 'basement-parking', animation: day > 0.55 ? 'two-cars' : day > 0.15 ? 'one-car' : 'empty' };
+    }
+    if (facility.kind === 'recycling') return { name: 'basement-utility', animation: 'idle' };
+    return null;
+  }
+
+  function drawFacility(facility, L, state, focused = false, hovered = false) {
     const x = L.x0 + facility.slot * L.cw, y = L.floorY(facility.floor);
     if (x + L.cw < 0 || x > W || y + L.fh < 0 || y > H) return;
+
+    const art = facilitySprite(facility, state);
+    if (art && sprites.drawSprite(ctx, { ...art, x, y, scale: L.zoom, phaseMs: idPhase(facility.id) })) {
+      if (focused || hovered) {
+        ctx.strokeStyle = focused ? '#ffcf55' : '#ffffff';
+        ctx.lineWidth = focused ? 3 : 2;
+        roundRect(ctx, x + 1, y + 2, L.cw - 2, L.fh - 6, 4);
+        ctx.stroke();
+      }
+      // The label survives the reskin on a plate of its own. A drawn plant
+      // room and a coloured box have to read as the same thing to the player
+      // deciding what coverage they still need.
+      facilityLabel(facility, x, y, L, true);
+      return;
+    }
+
     ctx.fillStyle = facility.kind === 'parking' ? '#f4a261'
       : facility.kind === 'security' ? '#e76f51'
         : facility.kind === 'recycling' ? '#2a9d8f' : '#b388ff';
@@ -1625,14 +2039,29 @@ export function makeRenderer(canvas, config) {
       roundRect(ctx, x + 1, y + 2, L.cw - 2, L.fh - 6, 4);
       ctx.stroke();
     }
-    ctx.fillStyle = '#241b35';
-    ctx.textAlign = 'center';
-    ctx.font = '700 8px ui-monospace, monospace';
+    facilityLabel(facility, x, y, L, false);
+  }
+
+  /** What a facility is, in four letters. Over art it gets a dark plate so it
+   *  stays readable; over the coloured box it is the box's own dark text. */
+  function facilityLabel(facility, x, y, L, overArt) {
     const label = facility.kind === 'food' ? 'FOOD'
       : facility.kind === 'parking' ? 'PARK'
       : facility.kind === 'medical' ? 'MED'
         : facility.kind === 'security' ? 'SEC'
           : facility.kind === 'recycling' ? 'REC' : facility.kind.toUpperCase();
+    ctx.textAlign = 'center';
+    ctx.font = '700 8px ui-monospace, monospace';
+    if (overArt) {
+      const w = label.length * 6 + 10, h = 11;
+      ctx.fillStyle = 'rgba(10,13,18,0.82)';
+      roundRect(ctx, x + (L.cw - w) / 2, y + L.fh - h - 5, w, h, 2);
+      ctx.fill();
+      ctx.fillStyle = '#e6d5b8';
+      ctx.fillText(label, x + L.cw / 2, y + L.fh - 7);
+      return;
+    }
+    ctx.fillStyle = '#241b35';
     ctx.fillText(label, x + L.cw / 2, y + L.fh * 0.58);
   }
 
@@ -1655,10 +2084,11 @@ export function makeRenderer(canvas, config) {
       if (x + L.cw < 0 || x > W) continue;
 
       // The lobby sheet carries its own ground and steps for the full 48x32
-      // tile, so nothing else is drawn over it. Painting the separate
-      // ground-entrance apron on top as well put two sets of steps in the same
-      // 16 pixels, which is what made the entrance and the pavement look like
-      // they were at different heights.
+      // tile, so nothing else is drawn over it. Painting a separate apron on
+      // top as well put two sets of steps in the same 16 pixels, which is what
+      // made the entrance and the pavement look like they were at different
+      // heights — and is why the apron sheet was withdrawn rather than wired
+      // (spec/asset-request.md, "Withdrawn from Tier 0").
       const sheet = slot === doorSlot ? 'lobby' : 'lobby-wing';
       if (sprites.drawSprite(ctx, { name: sheet, animation: night ? 'night' : 'day', x, y, scale: L.zoom })) continue;
 
@@ -1672,8 +2102,9 @@ export function makeRenderer(canvas, config) {
       ctx.font = '700 8px ui-monospace, monospace';
       if (roomH >= 10) ctx.fillText('LOBBY', x + L.cw / 2, y + roomH * 0.5 + 6);
 
-      // Entrance: a doorway in the street band with a canopy over it. The
-      // placeholder for ground-entrance.png, on the same 48x16 tile.
+      // Entrance: a doorway in the street band with a canopy over it. Only
+      // reached when the lobby sheet itself is missing, since that sheet
+      // carries the real entrance.
       const doorTop = y + L.fh - sh;
       const doorW = Math.max(6, L.cw * 0.44);
       const doorX = x + (L.cw - doorW) / 2;
@@ -1839,9 +2270,17 @@ export function makeRenderer(canvas, config) {
   return {
     draw, resize, layout, unitPos, floorAt, slotAt, unitAt, facilityAt, shaftAt,
     dragBy, setZoom, zoomBy, goTo, frameLobby, minimapAt, minimapJump,
+    // The appeal overlay (issue #12). Same shape as the camera controls: ui/
+    // binds the key, the renderer owns what the key shows.
+    setAppealOverlay(on) { appealOverlay = Boolean(on); return appealOverlay; },
+    toggleAppealOverlay() { appealOverlay = !appealOverlay; return appealOverlay; },
+    get appealOverlay() { return appealOverlay; },
     // The sky, so a check can put something in the air on demand rather than
     // waiting out a rate meant to make surprises rare.
     sky,
+    // The sheet book, for the same reason: a test can wait for the real art to
+    // load and then assert that a frame actually asked for it.
+    art: sprites,
     get size() { return [W, H]; },
     get camera() { return { ...camera }; },
   };
