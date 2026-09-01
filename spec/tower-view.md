@@ -223,12 +223,23 @@ Each step is playable on its own. Nothing here is a big-bang rewrite.
 
 Answered 2026-08-31: underground is **10 floors**; navigation is a
 **minimap**; the lobby **is** a purchase (SimTower charged $1,250 a segment
-for it, and allowed nothing else on level 1). What is left:
+for it, and allowed nothing else on level 1).
 
-1. **Does `+ floor` survive?** SimTower has no floor purchase — placing a room
-   builds the storey. Dropping ours makes the first move unambiguous and
-   deletes a button, but it changes `config.costs.floor` and the expansion
-   economy, so it needs a sweep before it is real.
+Answered 2026-09-01: **`+ floor` is gone** — a room raises its own storey and
+pays for it, SimTower's rule. **The lot is free** — the lobby buys the
+entrance, not the ground, so the opening move is $50,000 rather than $90,000.
+**The sky lobby is dropped**, not deferred: it stays the place where two
+shafts meet, and no sim object is built for it. The **icon strip is being
+redone** before the playthrough. And `underground.serviceCoverageBonus` gets a
+**fresh sweep** on the current baseline before its value is chosen — the old
+curve was measured in a world where policies were handed free storeys.
+
+What is left:
+
+1. **`dig` is now asymmetric with the way up.** A room raises its own storey,
+   but sinking one is still an explicit tool. That may well be right —
+   excavation is a real decision and a basement has no room to carry it — but
+   nobody has been asked, and the two directions now read differently.
 2. ~~**What does a basement rent for?**~~ **Answered by sweep, issue #6.**
    `config.underground` now carries the numbers and the curve behind each
    one (60 days x 5 seeds, held population, digging policy against its

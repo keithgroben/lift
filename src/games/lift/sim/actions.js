@@ -38,6 +38,13 @@ const ACTIONS = {
     }
     if (!charge(state, config.costs.lobby)) return { ok: false, reason: 'not enough money' };
 
+    // The lot comes with the game. Keith's call, 2026-09-01: you buy the
+    // entrance, not the ground under it — so the ground storey appears with
+    // the lobby and is not charged for.
+    if (state.floors <= (config.building.lobbyFloor ?? 0)) {
+      state.floors = (config.building.lobbyFloor ?? 0) + 1;
+      pushEvent(state, 'floor_built', { floor: config.building.lobbyFloor ?? 0 });
+    }
     state.lobby = { id: nid(state), floor: 0, slot, slots: [slot] };
     pushEvent(state, 'lobby_built', { floor: 0, slot });
     return { ok: true, id: state.lobby.id, slot };
@@ -152,11 +159,32 @@ const ACTIONS = {
     return { ok: true, floor: state.lowestFloor };
   },
 
+  /**
+   * Place a room. If it lands on the storey immediately above the roof, the
+   * storey comes with it and is charged for.
+   *
+   * SimTower has no floor purchase at all — you place a room and the structure
+   * appears — and our separate `+ floor` button was the thing teaching players
+   * that a tower is built floors-first. Keith's call, 2026-09-01: the button
+   * goes, the rule stays. `build_floor` survives as an action because policies
+   * and the harness still need to raise a storey deliberately; nothing in the
+   * interface offers it any more.
+   *
+   * One storey above the roof, never two: a room needs something under it.
+   */
   build_unit(state, a, config) {
     const kind = a.kind;
     if (!config.units[kind]) return { ok: false, reason: `no such unit ${kind}` };
     if (!unlocked(state, config, kind)) return { ok: false, reason: `${kind} is locked` };
-    if (!isBuildableFloor(state, a.floor, config)) return { ok: false, reason: 'no such floor' };
+    const raising = a.floor === state.floors && a.floor !== (config.building.lobbyFloor ?? 0);
+    if (raising) {
+      if (state.floors >= config.building.maxFloors) return { ok: false, reason: 'at max height' };
+      if (state.money < config.costs.floor + floorCost(config, a.floor, config.costs[kind])) {
+        return { ok: false, reason: 'not enough money' };
+      }
+    } else if (!isBuildableFloor(state, a.floor, config)) {
+      return { ok: false, reason: a.floor > state.floors ? 'nothing to build that on yet' : 'no such floor' };
+    }
     const slot = a.slot ?? freeSlot(state, config, a.floor);
     if (slot < 0 || slotsUsed(state, a.floor).has(slot)) return { ok: false, reason: 'floor is full' };
     // Tenant demand is capped at the tower's current move-in capacity, so
@@ -173,6 +201,13 @@ const ACTIONS = {
     }
     if (!charge(state, floorCost(config, a.floor, config.costs[kind]))) {
       return { ok: false, reason: 'not enough money' };
+    }
+    // The slab, bought with the room rather than before it. Charged after the
+    // room so a half-funded purchase cannot leave an empty storey behind.
+    if (raising) {
+      if (!charge(state, config.costs.floor)) return { ok: false, reason: 'not enough money' };
+      state.floors++;
+      pushEvent(state, 'floor_built', { floor: state.floors - 1 });
     }
 
     const rentLevel = state.rentLevels?.[kind] ?? 0;

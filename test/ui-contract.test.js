@@ -87,18 +87,20 @@ export const tests = {
 
   /** spec/tower-view.md §5: a palette, ordered by the actual first move. */
   'the build palette is a grouped tool shelf ordered by the first move'() {
-    assert(paletteOrder.length === 19, `palette has ${paletteOrder.length} tools, expected 19`);
+    assert(paletteOrder.length === 18, `palette has ${paletteOrder.length} tools, expected 18`);
     const at = (name) => paletteOrder.indexOf(name);
     assert(paletteOrder[0] === 'lobby', 'the palette does not lead with the lobby');
-    assert(at('lobby') < at('floor') && at('floor') < at('shaft') && at('shaft') < at('car') && at('car') < at('office'),
-      'the palette is not ordered lobby, floor, shaft, car, rooms');
-    // Digging is the other end of the same decision as stacking, so the two
-    // sit together: the player chooses a direction, not a different menu.
-    assert(at('dig') === at('floor') + 1, 'dig is not beside floor in the structure group');
+    assert(at('lobby') < at('shaft') && at('shaft') < at('car') && at('car') < at('office'),
+      'the palette is not ordered lobby, shaft, car, rooms');
+    // SimTower has no floor purchase and neither do we any more (Keith's call,
+    // 2026-09-01): a room carries its own storey, so a tool that sells an
+    // empty one would teach the floors-first habit all over again.
+    assert(!paletteOrder.includes('floor'), 'the palette still sells an empty storey');
+    assert(at('dig') === at('lobby') + 1, 'dig is not beside the lobby in the structure group');
     for (const group of ['structure', 'transport', 'rentable', 'services']) {
       assert(page.includes('data-group="' + group + '"'), 'the palette is missing the ' + group + ' group');
     }
-    for (const tool of ['lobby', 'floor', 'dig', 'stairs', 'shaft', 'car', 'express', 'office', 'condo', 'shop', 'hotel',
+    for (const tool of ['lobby', 'dig', 'stairs', 'shaft', 'car', 'express', 'office', 'condo', 'shop', 'hotel',
       'food', 'parking', 'medical', 'security', 'recycling', 'demolish']) {
       assert(paletteOrder.includes(tool), 'the palette has no ' + tool + ' tile');
     }

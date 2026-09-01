@@ -227,9 +227,6 @@ const spotAt = (px, py) => ({
 function armedAction(toolKey, spot) {
   const ground = CONFIG.building.lobbyFloor ?? 0;
   const { floor, slot, unitId, shaftId } = spot;
-  if (toolKey === 'floor') {
-    return { actions: [{ type: 'build_floor' }], row: state.floors };
-  }
   if (toolKey === 'dig') {
     return { actions: [{ type: 'dig_basement' }], row: lowestFloor(state) - 1 };
   }
@@ -237,10 +234,9 @@ function armedAction(toolKey, spot) {
     if (floor !== ground) return { blocked: 'the lobby belongs on the ground floor' };
     if (slot < 0) return { blocked: 'choose a ground-floor slot' };
     if (toolKey === 'lobby_wing' || state.lobby) return { actions: [{ type: 'expand_lobby', slot }] };
-    // The entrance IS the ground storey: on bare ground the slab comes with
-    // it, the way SimTower sells a lobby rather than an empty level.
-    const slab = state.floors <= ground ? [{ type: 'build_floor' }] : [];
-    return { actions: [...slab, { type: 'build_lobby', slot }] };
+    // The lot is free: `build_lobby` raises the ground storey itself and does
+    // not charge for it. You buy the entrance, not the dirt under it.
+    return { actions: [{ type: 'build_lobby', slot }] };
   }
   if (toolKey === 'demolish') {
     if (unitId == null) return { blocked: 'click a room to demolish' };
@@ -830,11 +826,6 @@ function modeText() {
   if (placementNotice) return placementNotice;
   if (tool === 'observe') return 'WATCHING — let the next rush run, or choose a build action above.';
   if (tool === 'demolish') return 'DEMOLISH selected — click a vacant room to clear its slot. Esc puts the tool away.';
-  if (tool === 'floor') {
-    return state.floors <= (CONFIG.building.lobbyFloor ?? 0)
-      ? 'FLOOR selected — the lobby buys the ground storey; click to stack the first one above it.'
-      : 'FLOOR selected — click to stack storey F' + state.floors + ' on top.';
-  }
   if (tool === 'dig') {
     return 'DIG selected — click to sink B' + (basementDepth(state) + 1) +
       '. Underground slots are cheaper and less appealing, and a shaft has to reach them.';
@@ -3952,7 +3943,6 @@ function refresh() {
   if (developerMode) renderExpansionSafety();
 
   const costs = {
-    floor: money(CONFIG.costs.floor),
     dig: money(CONFIG.underground.digCost),
     shaft: money(CONFIG.costs.shaft) + ' + span',
     express: money(CONFIG.costs.expressShaft) + ' + span',
@@ -3972,11 +3962,8 @@ function refresh() {
   };
   // Numeric twins of the labels above, so a tile can say how far short it is.
   const groundFloor = CONFIG.building.lobbyFloor ?? 0;
-  const lobbyTileCost = state.lobby
-    ? CONFIG.costs.lobbyExpansion
-    : CONFIG.costs.lobby + (state.floors <= groundFloor ? CONFIG.costs.floor : 0);
+  const lobbyTileCost = state.lobby ? CONFIG.costs.lobbyExpansion : CONFIG.costs.lobby;
   const tileCosts = {
-    floor: CONFIG.costs.floor,
     dig: CONFIG.underground.digCost,
     lobby: lobbyTileCost,
     shaft: CONFIG.costs.shaft,
@@ -4022,11 +4009,6 @@ function refresh() {
       b.disabled = atMax || state.money < CONFIG.underground.digCost;
       b.title = atMax ? 'at max depth (B' + CONFIG.underground.maxDepth + ')'
         : state.money < CONFIG.underground.digCost ? 'not enough money' : 'sink one storey below ground';
-    }
-    if (b.dataset.do === 'floor') {
-      const atMax = state.floors >= CONFIG.building.maxFloors;
-      b.disabled = atMax || state.money < CONFIG.costs.floor;
-      b.title = atMax ? 'at max height' : state.money < CONFIG.costs.floor ? 'not enough money' : 'stack one storey on top';
     }
     if (b.dataset.do === 'demolish') {
       const clearable = state.units.some((unit) => !unit.occupied);
@@ -4136,21 +4118,24 @@ function firstSessionPath() {
   const hasLobbyShaft = state.shafts.some((shaft) => shaft.bottom === 0 && shaft.top > shaft.bottom);
   const officeCount = state.units.filter((unit) => unit.kind === 'office').length;
   const hasSecondCar = state.shafts.some((shaft) => shaft.cars.length >= 2);
-  // A session opens on bare ground, so the storeys a shaft needs are now a
-  // purchase on the path rather than something the config handed over. The
-  // lobby buys the ground storey it stands on; the rest are the floor tool's.
+  // A session opens on bare ground. The lot is free — the lobby buys the
+  // entrance and the ground storey comes with it — and there is no floor tool
+  // any more: each office raises the storey it stands on and pays for it.
+  // So the path is lobby, three offices (which build the tower), then a shaft
+  // tall enough to span them.
   const groundFloor = CONFIG.building.lobbyFloor ?? 0;
-  const openingShaftSpan = Math.max(2, CONFIG.building.startFloors);
+  const OPENING_OFFICES = 3;
+  const openingShaftSpan = OPENING_OFFICES + 1;
   const openingShaftCost = CONFIG.costs.shaft + CONFIG.costs.shaftPerFloor * openingShaftSpan;
-  const lobbyStepCost = CONFIG.costs.lobby + (state.floors <= groundFloor ? CONFIG.costs.floor : 0);
-  const hasOpeningStoreys = state.floors >= openingShaftSpan;
-  const storeysStepCost = Math.max(0, openingShaftSpan - Math.max(state.floors, groundFloor + 1)) * CONFIG.costs.floor;
-  const fullPathCost = CONFIG.costs.lobby + CONFIG.costs.floor * openingShaftSpan +
-    openingShaftCost + CONFIG.costs.office * 3 + CONFIG.costs.car;
+  const lobbyStepCost = CONFIG.costs.lobby;
+  // An office above the roof carries its slab, so it costs both.
+  const officeStepUnit = CONFIG.costs.office + CONFIG.costs.floor;
+  const officeStepCost = Math.max(0, OPENING_OFFICES - officeCount) * officeStepUnit;
+  const fullPathCost = lobbyStepCost + officeStepUnit * OPENING_OFFICES +
+    openingShaftCost + CONFIG.costs.car;
   const remainingPathCost = (hasLobby ? 0 : lobbyStepCost) +
-    storeysStepCost +
+    officeStepCost +
     (hasLobbyShaft ? 0 : openingShaftCost) +
-    Math.max(0, 3 - officeCount) * CONFIG.costs.office +
     (hasSecondCar ? 0 : CONFIG.costs.car);
   const budgetBuffer = state.money - remainingPathCost;
   const liveWarningState = firstSessionPressureWarning(state, CONFIG, recommendedCarShaft);
@@ -4170,10 +4155,9 @@ function firstSessionPath() {
   const recoveryReadings = firstSessionRecoveryReadings(state, CONFIG, history);
   const recoveryWatch = hasSecondCar && !recovery ? recoveryReadings.detail : null;
   const steps = [
-    { label: 'build a lobby entrance', detail: money(lobbyStepCost) + ' · buys the ground storey it stands on', cost: hasLobby ? 0 : lobbyStepCost, done: hasLobby },
-    { label: 'stack storeys above the lobby', detail: money(CONFIG.costs.floor) + ' each · a shaft needs ' + openingShaftSpan + ' storeys to span', cost: storeysStepCost, done: hasOpeningStoreys },
+    { label: 'build a lobby entrance', detail: money(lobbyStepCost) + ' · the ground it stands on is free', cost: hasLobby ? 0 : lobbyStepCost, done: hasLobby },
+    { label: 'stack three offices above it', detail: money(officeStepUnit) + ' each · a room brings its own storey', cost: officeStepCost, done: officeCount >= OPENING_OFFICES },
     { label: 'build a shaft from the lobby upward', detail: shaftCostDetail, cost: hasLobbyShaft ? 0 : openingShaftCost, done: hasLobbyShaft },
-    { label: 'fill three rooms with offices', detail: officeCostDetail, cost: Math.max(0, 3 - officeCount) * CONFIG.costs.office, done: officeCount >= 3 },
     { label: 'observe an elevator pressure reading', cost: 0, done: recoveryEvidence.observed },
     { label: recommendedCarShaft ? 'select + car, then click ' + recommendedCarShaft : 'select + car, then click the pressured shaft', detail: carCostDetail, cost: hasSecondCar ? 0 : CONFIG.costs.car, done: hasSecondCar },
     { label: 'see delivery and reputation recover', cost: 0, done: recovery },
@@ -4735,14 +4719,6 @@ canvas.addEventListener('click', (e) => {
       refresh();
       setMode('DEMOLISHED ' + cleared.kind.toUpperCase() + ' on F' + cleared.floor +
         ' · DEMOLISH stays armed — Esc puts it away.');
-    }
-    return;
-  }
-  if (tool === 'floor') {
-    const added = act('build_floor');
-    if (added.ok) {
-      refresh();
-      setMode('FLOOR ADDED · the tower now stands ' + state.floors + ' storeys · FLOOR stays armed.');
     }
     return;
   }
@@ -5404,12 +5380,6 @@ els.build.addEventListener('click', (e) => {
   }
   comparisonFloors = [];
   pinnedComparisonFloor = null;
-  if (b.dataset.do === 'floor') {
-    tool = 'floor';
-    setMode();
-    toast('click the tower to stack the next storey', INFO);
-    refresh();
-  }
   if (b.dataset.do === 'dig') {
     tool = 'dig';
     setMode();
