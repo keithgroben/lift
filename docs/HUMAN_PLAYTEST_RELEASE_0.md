@@ -10,27 +10,37 @@ Click `new session` beside the objective to start a fresh game, then leave it
 at 1x unless a step says otherwise.
 
 1. Without opening Developer Details or reading another document, identify the
-   objective and the “DO THIS NOW” instruction.
-2. Use the visible TIME controls to pause, resume, and speed up the simulation.
-3. Choose `office`, click an upper-floor room slot, and confirm that the mode
-   message explains what was placed.
-4. Let the tower run through a rush. Explain what the `W` waiting badge and
+   objective and the “DO THIS NOW” instruction. The tower starts as an empty
+   lot with the `lobby` tool already armed.
+2. Click the ground floor to place the entrance, and confirm the message
+   explains that it bought the storey it stands on.
+3. Use the visible TIME controls to pause, resume, and speed up the simulation.
+4. Choose `floor` and click the tower until there is a storey above the lobby.
+   Confirm the tool stays armed between clicks.
+5. Choose `office`, click an upper-floor room slot, and confirm that the mode
+   message explains what was placed. Place a second one without returning to
+   the palette.
+6. Let the tower run through a rush. Explain what the `W` waiting badge and
    `T` tenant badge mean.
-5. When W turns amber or red, follow the visible action. Select `+ car`, then
+7. When W turns amber or red, follow the visible action. Select `car`, then
    click the highlighted shaft. Confirm that the car is added and that the
    message explains the new capacity.
-6. Let the next rush run. Say whether delivery, reputation, and waiting make
+8. Let the next rush run. Say whether delivery, reputation, and waiting make
    sense as the result of that intervention.
-7. Select `+ shaft`. Hover a clear column, then click its top floor. Confirm
-   that the preview shows the chosen column and that the new shaft is built
-   there. Try a blocked column only if the warning is easy to understand.
-8. Open Developer Details only after the player flow is complete. Confirm that
-   the detailed transport and expansion diagnostics are still available.
+9. Select `shaft`. Hover a clear column, then click its top floor. Confirm
+   that the ghost shows the chosen column and that the new shaft is built
+   there. Hover a blocked column and read the reason the ghost gives.
+10. Press `Esc` and confirm the tool is put away and the tower reads as
+    `WATCHING`.
+11. Open Developer Details only after the player flow is complete. Confirm that
+    the detailed transport and expansion diagnostics are still available.
 
 ## Pass criteria
 
+- The player places the lobby on the first click without being told to.
 - The player can describe the loop as: build space → people arrive → watch
   waiting → add capacity when needed → observe the result.
+- The player reads a red ghost and can say why the thing will not go there.
 - The player completes the car intervention without verbal coaching.
 - The player understands that a shaft requires a column choice and a top-floor
   choice before construction.

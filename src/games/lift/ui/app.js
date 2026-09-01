@@ -204,11 +204,11 @@ const placementReason = (verdict) =>
  */
 function pickBuildFloor(px, py) {
   const floor = renderer.floorAt(state, px, py);
-  if (floor >= 0) return floor;
+  if (floor != null) return floor;
   const ground = CONFIG.building.lobbyFloor ?? 0;
   const L = renderer.layout(state);
   const y = L.floorY(ground);
-  return py >= y && py <= y + L.fh ? ground : -1;
+  return py >= y && py <= y + L.fh ? ground : null;
 }
 
 const spotAt = (px, py) => ({
@@ -263,7 +263,7 @@ function armedAction(toolKey, spot) {
       column: { slot, bottom: ground, top: floor },
     };
   }
-  if (floor < 0 || slot < 0) return null;
+  if (floor == null || slot < 0) return null;
   if (CONFIG.services?.[toolKey]) return { actions: [{ type: 'build_facility', kind: toolKey, floor, slot }] };
   if (CONFIG.units[toolKey]) return { actions: [{ type: 'build_unit', kind: toolKey, floor, slot }] };
   return null;
@@ -303,7 +303,7 @@ function ghostGeometry(armed, verdict, spot) {
     const slot = Number.isInteger(verdict.slot) ? verdict.slot : armed.column.slot;
     return slot < 0 ? null : column(slot, armed.column.bottom, armed.column.top);
   }
-  return spot.floor < 0 || spot.slot < 0 ? null : cell(spot.floor, spot.slot);
+  return spot.floor == null || spot.slot < 0 ? null : cell(spot.floor, spot.slot);
 }
 
 /**
@@ -321,7 +321,7 @@ function updateGhost() {
     return;
   }
   const key = [tool, ghostSpot.floor, ghostSpot.slot, ghostSpot.unitId, ghostSpot.shaftId,
-    state.money, state.floors, state.units.length, state.facilities.length,
+    state.money, state.floors, lowestFloor(state), state.units.length, state.facilities.length,
     state.shafts.length, state.stairs.length, state.escalators.length, Boolean(state.lobby)].join('|');
   if (key === lastGhostKey) return;
   lastGhostKey = key;
@@ -4136,10 +4136,19 @@ function firstSessionPath() {
   const hasLobbyShaft = state.shafts.some((shaft) => shaft.bottom === 0 && shaft.top > shaft.bottom);
   const officeCount = state.units.filter((unit) => unit.kind === 'office').length;
   const hasSecondCar = state.shafts.some((shaft) => shaft.cars.length >= 2);
+  // A session opens on bare ground, so the storeys a shaft needs are now a
+  // purchase on the path rather than something the config handed over. The
+  // lobby buys the ground storey it stands on; the rest are the floor tool's.
+  const groundFloor = CONFIG.building.lobbyFloor ?? 0;
   const openingShaftSpan = Math.max(2, CONFIG.building.startFloors);
   const openingShaftCost = CONFIG.costs.shaft + CONFIG.costs.shaftPerFloor * openingShaftSpan;
-  const fullPathCost = CONFIG.costs.lobby + openingShaftCost + CONFIG.costs.office * 3 + CONFIG.costs.car;
-  const remainingPathCost = (hasLobby ? 0 : CONFIG.costs.lobby) +
+  const lobbyStepCost = CONFIG.costs.lobby + (state.floors <= groundFloor ? CONFIG.costs.floor : 0);
+  const hasOpeningStoreys = state.floors >= openingShaftSpan;
+  const storeysStepCost = Math.max(0, openingShaftSpan - Math.max(state.floors, groundFloor + 1)) * CONFIG.costs.floor;
+  const fullPathCost = CONFIG.costs.lobby + CONFIG.costs.floor * openingShaftSpan +
+    openingShaftCost + CONFIG.costs.office * 3 + CONFIG.costs.car;
+  const remainingPathCost = (hasLobby ? 0 : lobbyStepCost) +
+    storeysStepCost +
     (hasLobbyShaft ? 0 : openingShaftCost) +
     Math.max(0, 3 - officeCount) * CONFIG.costs.office +
     (hasSecondCar ? 0 : CONFIG.costs.car);
@@ -4161,7 +4170,8 @@ function firstSessionPath() {
   const recoveryReadings = firstSessionRecoveryReadings(state, CONFIG, history);
   const recoveryWatch = hasSecondCar && !recovery ? recoveryReadings.detail : null;
   const steps = [
-    { label: 'build a lobby entrance', detail: money(CONFIG.costs.lobby), cost: hasLobby ? 0 : CONFIG.costs.lobby, done: hasLobby },
+    { label: 'build a lobby entrance', detail: money(lobbyStepCost) + ' · buys the ground storey it stands on', cost: hasLobby ? 0 : lobbyStepCost, done: hasLobby },
+    { label: 'stack storeys above the lobby', detail: money(CONFIG.costs.floor) + ' each · a shaft needs ' + openingShaftSpan + ' storeys to span', cost: storeysStepCost, done: hasOpeningStoreys },
     { label: 'build a shaft from the lobby upward', detail: shaftCostDetail, cost: hasLobbyShaft ? 0 : openingShaftCost, done: hasLobbyShaft },
     { label: 'fill three rooms with offices', detail: officeCostDetail, cost: Math.max(0, 3 - officeCount) * CONFIG.costs.office, done: officeCount >= 3 },
     { label: 'observe an elevator pressure reading', cost: 0, done: recoveryEvidence.observed },
@@ -4823,7 +4833,7 @@ canvas.addEventListener('click', (e) => {
     return;
   }
   const floor = pickBuildFloor(px, py);
-  if (floor < 0) return toast('click a floor', WARN);
+  if (floor == null) return toast('click a floor', WARN);
   if (tool === 'observe') return toast('choose a build action above, then click the tower', INFO);
   // The ghost is a dry run of exactly this click, so a red ghost refuses the
   // click with the same words rather than letting it fail somewhere quieter.
