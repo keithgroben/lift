@@ -295,7 +295,36 @@
   [data-group="rentable"] .tile-icon { border-color: #2b5c48; color: var(--good); }
   [data-group="services"] .tile-icon { border-color: #5c4a1d; color: var(--warn); }
   [data-group="site"] .tile-icon { border-color: #6c2c3c; color: var(--bad); }
-  button.tile.sel .tile-icon { border-color: var(--good); color: var(--good); background: #10271f; }
+  button.tile.sel .tile-icon { border-color: var(--good); background-color: #10271f; }
+  /* The art. Each tile shows one 32x32 cell of assets/sprites/palette-icons.png,
+     offset by its data-icon — the same order tools/sprite-catalog.json cuts the
+     sheet in, so the two cannot drift apart. The monogram underneath stays as
+     the text: it is what shows if the sheet ever fails to load, and it is what
+     a screen reader reads. `image-rendering: pixelated` because the art is
+     pixel art and the browser must not smooth it. */
+  .tile-icon[data-icon] {
+    background-image: url('assets/sprites/palette-icons.png');
+    background-repeat: no-repeat;
+    image-rendering: pixelated;
+  }
+  .tile-icon[data-icon="lobby"] { background-position: -0px 0; color: transparent; }
+  .tile-icon[data-icon="dig"] { background-position: -32px 0; color: transparent; }
+  .tile-icon[data-icon="stairs"] { background-position: -64px 0; color: transparent; }
+  .tile-icon[data-icon="escalator"] { background-position: -96px 0; color: transparent; }
+  .tile-icon[data-icon="shaft"] { background-position: -128px 0; color: transparent; }
+  .tile-icon[data-icon="car"] { background-position: -160px 0; color: transparent; }
+  .tile-icon[data-icon="express"] { background-position: -192px 0; color: transparent; }
+  .tile-icon[data-icon="extend"] { background-position: -224px 0; color: transparent; }
+  .tile-icon[data-icon="office"] { background-position: -256px 0; color: transparent; }
+  .tile-icon[data-icon="condo"] { background-position: -288px 0; color: transparent; }
+  .tile-icon[data-icon="shop"] { background-position: -320px 0; color: transparent; }
+  .tile-icon[data-icon="hotel"] { background-position: -352px 0; color: transparent; }
+  .tile-icon[data-icon="food"] { background-position: -384px 0; color: transparent; }
+  .tile-icon[data-icon="parking"] { background-position: -416px 0; color: transparent; }
+  .tile-icon[data-icon="medical"] { background-position: -448px 0; color: transparent; }
+  .tile-icon[data-icon="security"] { background-position: -480px 0; color: transparent; }
+  .tile-icon[data-icon="recycling"] { background-position: -512px 0; color: transparent; }
+  .tile-icon[data-icon="demolish"] { background-position: -544px 0; color: transparent; }
   /* Unaffordable and locked are STATES, not absences: the tile stays where the
      player learned it was, and says what is missing. */
   button.tile:disabled { opacity: 1; }
@@ -424,7 +453,7 @@
           <button class="tile" data-do="shaft"><span class="tile-icon" data-icon="shaft" aria-hidden="true">SH</span><span class="btn-label">shaft</span><small class="btn-cost"></small></button>
           <button class="tile" data-do="car"><span class="tile-icon" data-icon="car" aria-hidden="true">CR</span><span class="btn-label">car</span><small class="btn-cost"></small></button>
           <button class="tile" data-do="express"><span class="tile-icon" data-icon="express" aria-hidden="true">EX</span><span class="btn-label">express</span><small class="btn-cost"></small></button>
-          <button class="tile" data-do="extend"><span class="tile-icon" data-icon="shaft" aria-hidden="true">XT</span><span class="btn-label">extend</span><small class="btn-cost"></small></button>
+          <button class="tile" data-do="extend"><span class="tile-icon" data-icon="extend" aria-hidden="true">XT</span><span class="btn-label">extend</span><small class="btn-cost"></small></button>
         </div>
       </div>
       <div class="palette-group" data-group="rentable">
@@ -439,9 +468,9 @@
       <div class="palette-group" data-group="services">
         <h3 class="palette-group-label">SERVICES</h3>
         <div class="palette-grid">
-          <button class="tile" data-facility="food"><span class="tile-icon" data-icon="cafeteria" aria-hidden="true">CF</span><span class="btn-label">cafeteria</span><small class="btn-cost"></small></button>
+          <button class="tile" data-facility="food"><span class="tile-icon" data-icon="food" aria-hidden="true">CF</span><span class="btn-label">cafeteria</span><small class="btn-cost"></small></button>
           <button class="tile" data-facility="parking"><span class="tile-icon" data-icon="parking" aria-hidden="true">PK</span><span class="btn-label">parking</span><small class="btn-cost"></small></button>
-          <button class="tile" data-facility="medical"><span class="tile-icon" data-icon="clinic" aria-hidden="true">CL</span><span class="btn-label">clinic</span><small class="btn-cost"></small></button>
+          <button class="tile" data-facility="medical"><span class="tile-icon" data-icon="medical" aria-hidden="true">CL</span><span class="btn-label">clinic</span><small class="btn-cost"></small></button>
           <button class="tile" data-facility="security"><span class="tile-icon" data-icon="security" aria-hidden="true">SE</span><span class="btn-label">security</span><small class="btn-cost"></small></button>
           <button class="tile" data-facility="recycling"><span class="tile-icon" data-icon="recycling" aria-hidden="true">RC</span><span class="btn-label">recycling</span><small class="btn-cost"></small></button>
         </div>

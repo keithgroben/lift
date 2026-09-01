@@ -116,6 +116,43 @@ export const tests = {
     assert(!page.includes('build-more'), 'the palette still hides tools behind a disclosure list');
   },
 
+  /**
+   * The art has to actually be on the buttons. It was made, ingested, and
+   * catalogued, and the tiles went on showing text monograms — Keith:
+   * "the sidebar doesn't have the graphics we made for the buttons." A sheet
+   * that exists and is never drawn is the same defect as a column nothing
+   * reads, and it is invisible from the code alone.
+   */
+  'every palette tile draws its icon from the sheet'() {
+    const catalog = JSON.parse(read('../tools/sprite-catalog.json'));
+    const order = catalog['palette-icons'].states.map((state) => state.name);
+    const frame = catalog['palette-icons'].frameW;
+
+    assert(page.includes("background-image: url('assets/sprites/palette-icons.png')"),
+      'the tiles do not load the icon sheet at all');
+
+    // Match the TILES only. `data-icon=` also appears in the CSS selectors this
+    // test checks, and counting those made the palette look twice its size.
+    const icons = [...page.matchAll(/class="tile-icon" data-icon="([a-z_]+)"/g)].map((m) => m[1]);
+    assert(icons.length === paletteOrder.length, 'a tile is missing its icon slot');
+
+    for (const [i, icon] of icons.entries()) {
+      assert(order.includes(icon),
+        icon + ' is on a tile but not in the icon sheet — the sheet and the palette have drifted');
+      // The offset has to be the cell the sheet actually cut for that name.
+      const expected = `background-position: -${order.indexOf(icon) * frame}px 0`;
+      assert(page.includes(`.tile-icon[data-icon="${icon}"] { ${expected}`),
+        icon + ' does not point at its own cell (' + expected + ')');
+      // And the tile at position i must be the tool at position i: an icon
+      // pointing at a valid cell of the WRONG tool is the failure that looks
+      // fine until someone reads the buttons.
+      assert(icon === paletteOrder[i] || order.indexOf(icon) === i,
+        'tile ' + i + ' (' + paletteOrder[i] + ') shows the ' + icon + ' icon');
+    }
+    // Pixel art must not be smoothed by the browser.
+    assert(/image-rendering: pixelated/.test(page), 'the icon sheet is drawn smoothed');
+  },
+
   'unaffordable and locked tiles are visible states, never missing ones'() {
     assert(page.includes('button.tile.unaffordable') && page.includes('button.tile.locked'),
       'the palette has no styling for unaffordable or locked tools');
