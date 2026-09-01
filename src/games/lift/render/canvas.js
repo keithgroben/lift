@@ -1683,6 +1683,9 @@ export function makeRenderer(canvas, config) {
   return {
     draw, resize, layout, unitPos, floorAt, slotAt, unitAt, facilityAt, shaftAt,
     dragBy, setZoom, zoomBy, goTo, frameLobby, minimapAt, minimapJump,
+    // The sky, so a check can put something in the air on demand rather than
+    // waiting out a rate meant to make surprises rare.
+    sky,
     get size() { return [W, H]; },
     get camera() { return { ...camera }; },
   };

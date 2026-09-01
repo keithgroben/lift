@@ -5689,6 +5689,7 @@ window.__lift = {
   get tool() { return tool; },
   get camera() { return renderer.camera; },
   layout: () => renderer.layout(state),
+  sky: renderer.sky,
   floorAt: (x, y) => renderer.floorAt(state, x, y),
   pickBuildFloor: (x, y) => pickBuildFloor(x, y),
   // The two gates a build click passes through, so a refused placement can be

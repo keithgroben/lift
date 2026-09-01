@@ -132,13 +132,13 @@ through the day.
 
 | # | File name | Size (1x) | Frames / states | What it is |
 |---|---|---|---|---|
-| 29 | `sky-cloud.png` | 96x32 | small · medium · large | Three cloud masses, one per frame, each centred in its 96x32 box and drawn at a different apparent size. Soft and low-contrast — they sit behind everything and must never compete with the tower. |
-| 30 | `sky-bird.png` | 16x16 | fly (4f) | One bird, wings up through wings down. Flies in flocks of 2-7, so it must read at a glance as a silhouette. |
-| 31 | `sky-plane.png` | 48x16 | fly (2f) | A small airliner in level flight, side on, nose to the right. The second frame is a subtle bob, not a different pose. |
-| 32 | `sky-balloon.png` | 32x48 | drift (2f) | An ordinary hot-air balloon: striped envelope, wicker basket. Two frames of gentle sway. |
-| 33 | `sky-blimp.png` | 64x24 | drift (2f) | A small airship with a gondola and a blank banner panel on its flank. |
-| 34 | `sky-explorer.png` | 48x64 | drift (4f) | **A surprise.** A tall adventurer's balloon — patched envelope, rope rigging, a laden basket with an explorer leaning out waving, a dog beside them. The four frames are the burner flaring and the basket swaying. Seen perhaps twice a session, at dawn or dusk. |
-| 35 | `sky-stunt.png` | 48x24 | fly (4f) | **A surprise.** An aerobatic biplane in a bold racing livery — invented, no real-world team or sponsor — banking as it passes, with a smoke trail starting at the tail. Four frames of roll. |
+| 29 | `sky-cloud.png` | 112x32 | small · medium · large | Three cloud masses, one per frame, drawn at a SHARED scale so they keep their relative sizes — fitting each to the frame would make them the same height, which is the one thing that tells them apart. Soft and low-contrast: they sit behind everything and must never compete with the tower. |
+| 30 | `sky-bird.png` | 20x16 | fly | One bird in flight. Flies in flocks of 2-7, so it has to read as a silhouette at a glance. |
+| 31 | `sky-plane.png` | 48x16 | fly | A small airliner in level flight, side on, nose to the right. |
+| 32 | `sky-balloon.png` | 36x48 | drift | An ordinary hot-air balloon: striped envelope, wicker basket. |
+| 33 | `sky-blimp.png` | 56x24 | drift | A small airship with a gondola and a blank banner panel on its flank. |
+| 34 | `sky-explorer.png` | 48x60 | drift | **A surprise.** A tall patched envelope, rope rigging, a laden basket with an explorer leaning out waving and a dog beside them. Dawn and dusk only, perhaps twice a session. |
+| 35 | `sky-stunt.png` | 96x40 | fly | **A surprise.** An aerobatic biplane in an invented racing livery, banking, with its smoke trail. The trail is part of the sheet, which is why the frame is wide. |
 
 ## Tier 1 — rooms and structure (replaces the coloured rectangles)
 
