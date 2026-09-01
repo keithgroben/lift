@@ -9,6 +9,7 @@ import {
 import { CONFIG } from '../src/games/lift/config.js';
 
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
+const NL = String.fromCharCode(10);
 const here = path.dirname(fileURLToPath(import.meta.url));
 const assetDir = path.join(here, '..', 'src', 'games', 'lift', 'assets', 'sprites');
 
@@ -16,6 +17,55 @@ const assetDir = path.join(here, '..', 'src', 'games', 'lift', 'assets', 'sprite
 function readCatalog() {
   const raw = JSON.parse(fs.readFileSync(path.join(here, '..', 'tools', 'sprite-catalog.json'), 'utf8'));
   return Object.fromEntries(Object.entries(raw).filter(([k]) => !k.startsWith('$')));
+}
+
+/**
+ * Every file that could legitimately ask for a sheet: the canvas renderer, the
+ * UI layer, and the pages — `palette-icons` is wired through CSS rather than
+ * through the sprite book, and a call site is a call site.
+ */
+function callSiteSources() {
+  const roots = [
+    path.join(here, '..', 'src', 'games', 'lift', 'render'),
+    path.join(here, '..', 'src', 'games', 'lift', 'ui'),
+  ];
+  const walk = (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir, { withFileTypes: true }).flatMap((d) =>
+    d.isDirectory() ? walk(path.join(dir, d.name)) : [path.join(dir, d.name)]) : []);
+  const files = roots.flatMap(walk).filter((f) => /\.(js|ts|tsx|jsx)$/.test(f));
+  for (const page of [path.join(here, '..', 'src', 'games', 'lift', 'index.html'), path.join(here, '..', 'index.html')]) {
+    if (fs.existsSync(page)) files.push(page);
+  }
+  return files.map((file) => ({ file, text: fs.readFileSync(file, 'utf8') }));
+}
+
+/**
+ * Catalogued sheets that nothing draws.
+ *
+ * A name counts as drawn when it appears inside a STRING in code that runs —
+ * `{ name: 'roof-cap' }`, `url('…/palette-icons.png')`. Deliberately not
+ * counted:
+ *
+ *   - comments, because explaining why a sheet is unused is not using it;
+ *   - `sprites.preload([...])`, because preloading fetches art nobody asks
+ *     for, which is the exact shape of the bug this guard exists to catch.
+ *
+ * Exported nowhere and kept pure so the test below can mutate it against
+ * synthetic sources and prove it still fails.
+ */
+function orphanedSheets(catalog, sources) {
+  const quoted = new Set();
+  const strings = /'([^'\n]*)'|"([^"\n]*)"|`([^`\n]*)`/g;
+  for (const { text } of sources) {
+    const live = text
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')                    // block comments, JS and CSS alike
+      .replace(/(^|[^:'"`\\])\/\/[^\n]*/gm, '$1')           // line comments, but never a :// in a URL
+      .replace(/preload\s*\(\s*\[[\s\S]*?\]\s*\)/g, ' ');   // preloading is not drawing
+    let m;
+    strings.lastIndex = 0;
+    while ((m = strings.exec(live)) !== null) quoted.add(m[1] ?? m[2] ?? m[3] ?? '');
+  }
+  const drawn = (name) => [...quoted].some((str) => str === name || str.endsWith(`${name}.png`));
+  return Object.keys(catalog).filter((name) => !drawn(name));
 }
 
 /** The sidecar `tools/ingest_sprite.py` writes for a catalogue entry. Kept in
@@ -460,6 +510,54 @@ export const tests = {
       `delivered but still marked pending in tools/sprite-catalog.json: ${stale.join(', ')} — ` +
       'drop the flag and run node src/games/lift/assets/sprites/sidecars.gen.mjs');
     assert(Object.keys(catalog).length >= 28, `the catalogue is down to ${Object.keys(catalog).length} entries`);
+  },
+
+  'every catalogued sheet has a call site — nothing is ingested and never drawn'() {
+    // Six times the answer to a visual complaint has been "the art exists,
+    // nothing draws it" — the button icons, the stairs, the empty slots, the
+    // elevator car, the shaft column, the roof cap. Each cost Keith playtime
+    // to find, because the loader is DELIBERATELY built to fall back to a
+    // coloured rectangle: a sheet that is delivered, ingested, catalogued and
+    // never asked for is invisible from the code alone. The game looks fine.
+    //
+    // So the catalogue is not allowed to hold a sheet nothing draws. Wire it,
+    // or take it out of the catalogue and out of spec/asset-request.md with a
+    // reason. Both are honest; limbo is not, and this is what ends it.
+    const orphans = orphanedSheets(readCatalog(), callSiteSources());
+    assert(orphans.length === 0,
+      `catalogued but nothing draws them: ${orphans.join(', ')} — wire each one, or remove it ` +
+      'from tools/sprite-catalog.json and spec/asset-request.md with a reason');
+  },
+
+  'the call-site guard fails on the things it is there to catch'() {
+    // Mutation-test the guard itself. Each case below is a real way a sheet
+    // has sat unused, and each must be REPORTED, not merely tolerated.
+    const sources = callSiteSources();
+    const entry = { frameW: 48, frameH: 32, fit: 'stretch', states: [{ name: 'tile', frames: 1 }] };
+
+    const never = orphanedSheets({ 'never-drawn': entry }, sources);
+    assert(never.includes('never-drawn'), 'a sheet with no mention anywhere passed the guard');
+
+    // Preloading is not drawing. This is exactly how basement-parking,
+    // floor-slab and the people sheets hid: named in the preload list, asked
+    // for by nothing.
+    const preloaded = orphanedSheets({ 'ground-street': entry },
+      [{ file: 'fake.js', text: ["sprites.preload([", "  'ground-street',", "]);"].join(NL) }]);
+    assert(preloaded.includes('ground-street'), 'a name that appears only in the preload list passed the guard');
+
+    // Nor is talking about it. ground-entrance sat unused for a week with two
+    // comments in canvas.js explaining exactly why it was not drawn.
+    const discussed = orphanedSheets({ 'earth-edge': entry },
+      [{ file: 'fake.js', text: ["// the dug edge, see earth-edge.png", "/* 'earth-edge' would go here */"].join(NL) }]);
+    assert(discussed.includes('earth-edge'), 'a name that appears only in comments passed the guard');
+
+    // ...and a real call site clears it, however it is spelled.
+    assert(orphanedSheets({ 'roof-cap': entry },
+      [{ file: 'f.js', text: "sprites.drawSprite(ctx, { name: 'roof-cap', animation: 'plain' });" }]).length === 0,
+      'the guard rejected a genuine drawSprite call');
+    assert(orphanedSheets({ 'palette-icons': entry },
+      [{ file: 'f.html', text: "background-image: url('assets/sprites/palette-icons.png');" }]).length === 0,
+      'the guard rejected art wired through CSS rather than through the sprite book');
   },
 
   'nothing in sim/ or harness/ can reach the renderer'() {

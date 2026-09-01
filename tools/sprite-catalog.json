@@ -11,21 +11,6 @@
     ],
     "fit": "stretch"
   },
-  "ground-entrance": {
-    "frameW": 48,
-    "frameH": 16,
-    "states": [
-      {
-        "name": "day",
-        "frames": 1
-      },
-      {
-        "name": "night",
-        "frames": 1
-      }
-    ],
-    "fit": "stretch"
-  },
   "earth-fill": {
     "frameW": 48,
     "frameH": 32,
@@ -73,17 +58,6 @@
       },
       {
         "name": "two-cars",
-        "frames": 1
-      }
-    ],
-    "fit": "stretch"
-  },
-  "basement-storage": {
-    "frameW": 48,
-    "frameH": 32,
-    "states": [
-      {
-        "name": "tile",
         "frames": 1
       }
     ],

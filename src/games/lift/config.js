@@ -648,6 +648,15 @@ export const CONFIG = {
       },
       /** Integer zoom only; the tower view goes 1x/2x/3x. */
       maxScale: 3,
+      /**
+       * Ceiling on crowd figures in one frame. The whole render is around
+       * 0.5ms against a 33ms budget, and the queue crowd is the only thing
+       * that scales with how badly the tower is doing — a floor of 26 figures
+       * on every visible storey at once. Past this the queue rows fall back to
+       * the dots, so a collapsing tower costs the same frame as a healthy one.
+       * 260 is ten full rows, which is more queue than any readable tower has.
+       */
+      maxCrowdFigures: 260,
       /** Largest render dt a single advance may add. A backgrounded tab hands
        *  back seconds at once, which would teleport a one-shot to its end. */
       maxFrameStepMs: 120,

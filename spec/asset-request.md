@@ -110,15 +110,39 @@ today.
 | # | File name | Size (1x) | Frames / states | What it is |
 |---|---|---|---|---|
 | 1 | `ground-street.png` | 48x16 tile | 1 | Sidewalk and curb, tiles horizontally under floor 0. The horizon line of the whole game. |
-| 2 | `ground-entrance.png` | 48x16 | day · night | The apron directly under the lobby — steps, doormat, a lit sign at night. |
 | 3 | `earth-fill.png` | 48x32 tile | 1 | Packed dirt behind the underground floors. Tiles both directions, must stay quiet — it is a backdrop. |
 | 4 | `earth-edge.png` | 48x32 | 1 | The dug edge where earth meets a basement slot; used at the outer wall. |
 | 5 | `basement-empty.png` | 48x32 | 1 | Bare concrete basement slot — colder and dimmer than `slot-empty`. |
 | 6 | `basement-parking.png` | 48x32 | empty · 1 car · 2 cars | Parking bay. The main reason to dig. |
-| 7 | `basement-storage.png` | 48x32 | 1 | Crates and shelving. |
 | 8 | `basement-utility.png` | 48x32 | idle (2f) | Boilers, pipes, a slow blinking indicator. |
 | 9 | `foundation-slab.png` | 48x6 tile | 1 | The heavier slab that separates ground floor from B1. |
 | 10 | `palette-icons.png` | 32x32 each, 17 across | 1 each | Build-menu tool icons, in this order: lobby · floor · office · condo · shop · hotel · shaft · car · express · stairs · escalator · cafeteria · parking · clinic · security · recycling · demolish. Flat, single-subject, silhouette-readable at 32 px. |
+
+### Withdrawn from Tier 0 (2026-09-01, issue #14)
+
+Two sheets were delivered, ingested and then drawn by nothing. A sheet the
+catalogue lists and no call site asks for is invisible from the code alone,
+because the loader falls back to a coloured rectangle on purpose — so the
+game looks fine and the art is simply never seen. Rather than leave them in
+limbo they are out of the catalogue, and their rows above are gone. The
+numbering keeps its gaps (2 and 7) so "Order to produce in" below still points
+at the same items.
+
+- **`ground-entrance.png`** — superseded, not unwanted. `lobby.png` and
+  `lobby-wing.png` each carry their own ground and steps across the full 48x32
+  tile, so painting a separate 48x16 apron under them put two sets of steps in
+  the same sixteen pixels and made the entrance and the pavement look like they
+  were at different heights. `drawStreet()` skips the lobby's slots for the
+  same reason. Ask for it again only if the lobby art is ever re-cut without
+  its own ground.
+- **`basement-storage.png`** — there is nothing for it to be. Crates and
+  shelving is a storage room, and the sim has exactly five service kinds:
+  food, parking, medical, security and recycling (`config.services`). Drawing
+  a clinic or a security desk as a stockroom misnames it, which is worse than
+  the labelled box those kinds draw today. Restore it the day a storage or
+  back-of-house facility exists. `basement-utility.png` covers recycling —
+  the config calls recycling "a local utility" in as many words — and
+  `basement-parking.png` covers parking.
 
 ## Tier S — the sky (new; `render/sky.js` draws shapes until these land)
 
