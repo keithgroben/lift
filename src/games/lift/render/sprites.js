@@ -258,7 +258,22 @@ function defaultLoadImage(url) {
  *  asset rewriting leaves it alone; this is a directory, not an import. */
 const SPRITE_DIR = '../assets/sprites/';
 
+/**
+ * Where the sheets live, resolved against the PAGE rather than this module.
+ *
+ * Module-relative worked in dev, where this file sits two directories from the
+ * art, and would have broken in a production build, where it is bundled into
+ * one chunk somewhere else entirely. Resolving against `document.baseURI`
+ * gives the same answer in both, because the page and the assets move
+ * together. Node has no document, so the module URL stays as the fallback and
+ * the tests keep working.
+ */
 function defaultBasePath() {
+  try {
+    if (typeof document !== 'undefined' && document.baseURI) {
+      return new URL('assets/sprites/', document.baseURI).href;
+    }
+  } catch { /* fall through to the module-relative path */ }
   try { return new URL(SPRITE_DIR, import.meta.url).href; }
   catch { return SPRITE_DIR; }
 }
