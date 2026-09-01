@@ -486,10 +486,11 @@ export function makeRenderer(canvas, config) {
 
   /** Paint a sheet across a rectangle, one frame per art tile. Used for the
    *  earth and the street, which are backdrops rather than objects. */
-  function tileAcross(name, animation, x0, y0, x1, y1, tileW, tileH) {
+  function tileAcross(name, animation, x0, y0, x1, y1, tileW, tileH, skipX = null) {
     if (!sprites.has(name, animation)) return false;
     for (let y = y0; y < y1; y += tileH) {
       for (let x = x0; x < x1; x += tileW) {
+        if (skipX && skipX.has(Math.round(x))) continue;
         if (!sprites.drawSprite(ctx, { name, animation, x, y, scale: tileW / SLOT_W })) return false;
       }
     }
@@ -663,8 +664,10 @@ export function makeRenderer(canvas, config) {
     drawFoundation(state, L);
 
     // The horizon and the street sit on top of floor 0's slab, so the ground
-    // floor reads as a storey standing ON something instead of floating.
-    drawStreet(L);
+    // floor reads as a storey standing ON something instead of floating. The
+    // lobby's own slots are skipped: its art carries its own ground, and a
+    // pavement drawn under it left the curb line running through the doorway.
+    drawStreet(L, new Set(state.lobby ? (state.lobby.slots ?? [state.lobby.slot]) : []));
 
     drawServiceFocus(serviceFocus, state, L, floorIndex);
     drawPlacementGuide(placementGuide, state, L, hoverFloor);
@@ -955,14 +958,18 @@ export function makeRenderer(canvas, config) {
   }
 
   /** Sidewalk, curb, and the ground line itself. */
-  function drawStreet(L) {
+  function drawStreet(L, skipSlots = null) {
     const groundY = L.y0;
     const sh = streetHeight(L);
     const streetTop = groundY - sh;
     if (streetTop < H && groundY > -sh) {
       const paveW = SLOT_W * L.zoom;
       const firstPave = L.x0 - Math.ceil((L.x0 + 60) / paveW) * paveW;
-      if (tileAcross('ground-street', 'tile', firstPave, streetTop, W + 60, groundY, paveW, sh)) {
+      // A slot the lobby stands in is its own ground; paving it too would run
+      // the curb line straight through the entrance.
+      const skipX = new Set();
+      if (skipSlots) for (const slot of skipSlots) skipX.add(Math.round(L.x0 + slot * L.cw));
+      if (tileAcross('ground-street', 'tile', firstPave, streetTop, W + 60, groundY, paveW, sh, skipX)) {
         drawGroundLine(groundY);
         return;
       }
@@ -1423,17 +1430,23 @@ export function makeRenderer(canvas, config) {
     const roomH = Math.max(5, L.fh - sh - 4);
     const lobbySlots = lobby.slots ?? [lobby.slot];
     const night = isNight(state);
+    // The doors go in the MIDDLE of the frontage, with glass either side, so a
+    // widened lobby reads as one building with an entrance rather than as a
+    // row of separate front doors. Keith, 2026-09-01: "the lobby should
+    // connect in the middle with its own ends."
+    const ordered = [...lobbySlots].sort((a, b) => a - b);
+    const doorSlot = ordered[Math.floor((ordered.length - 1) / 2)];
     for (const slot of lobbySlots) {
       const x = L.x0 + slot * L.cw;
       if (x + L.cw < 0 || x > W) continue;
 
-      // The entrance sits on the first lobby slot; the rest are wings, so a
-      // wide lobby reads as one frontage instead of a row of front doors.
-      const sheet = slot === lobbySlots[0] ? 'lobby' : 'lobby-wing';
-      if (sprites.drawSprite(ctx, { name: sheet, animation: night ? 'night' : 'day', x, y, scale: L.zoom })) {
-        sprites.drawSprite(ctx, { name: 'ground-entrance', animation: night ? 'night' : 'day', x, y: y + L.fh - sh, scale: L.zoom });
-        continue;
-      }
+      // The lobby sheet carries its own ground and steps for the full 48x32
+      // tile, so nothing else is drawn over it. Painting the separate
+      // ground-entrance apron on top as well put two sets of steps in the same
+      // 16 pixels, which is what made the entrance and the pavement look like
+      // they were at different heights.
+      const sheet = slot === doorSlot ? 'lobby' : 'lobby-wing';
+      if (sprites.drawSprite(ctx, { name: sheet, animation: night ? 'night' : 'day', x, y, scale: L.zoom })) continue;
 
       ctx.fillStyle = '#5aa9e6';
       ctx.globalAlpha = 0.9;

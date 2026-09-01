@@ -175,6 +175,14 @@ what the renderer has to draw. What it does not yet cover:
 - **`escalator-segment`'s four frames are nearly identical**, so the loop may
   not read as movement at 1x.
 - **`roof-cap` is very faint** against the sky.
+- **`lobby-wing` does not tile seamlessly.** Each frame carries its own bright
+  vertical edge, so a widened lobby reads as a row of separate panels rather
+  than one frontage. The renderer now puts the doors in the middle with wings
+  either side (Keith, 2026-09-01: "it should connect in the middle with its
+  own ends"), which is as far as composition can carry it. Finishing it needs
+  art: a **left end cap**, a **seamless middle** with no vertical edge of its
+  own, and a **right end cap** — three 48x32 frames, day and night, replacing
+  the single `lobby-wing`. The doors piece (`lobby`) stays as it is.
 - Bonus nobody asked for: **`slot-empty` came back as four UI states** —
   empty, selected, unavailable, highlighted. The highlighted frame is the
   build-palette ghost, and it is already wired.
