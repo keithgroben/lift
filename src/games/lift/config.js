@@ -556,6 +556,22 @@ export const CONFIG = {
      * PNG names a *speed* from this table; it never carries an fps number, so
      * retiming the whole game is an edit here and nowhere else.
      */
+    /**
+     * The sky (`render/sky.js`). Decoration: a tower plays identically with
+     * every number here set to zero.
+     */
+    sky: {
+      /** Drifting cloud layer. More than a dozen reads as weather, not sky. */
+      cloudCount: 9,
+      /**
+       * How many things may be in the air at once. The cap matters more than
+       * the rates: without it a quiet stretch banks up and then empties all
+       * at once, and a sky with six aircraft in it looks like an airshow
+       * rather than a Tuesday.
+       */
+      maxFlyers: 4,
+    },
+
     sprites: {
       /** Frames per second, by name. `default` is the fallback for anything
        *  a sidecar leaves unnamed or names wrongly. */

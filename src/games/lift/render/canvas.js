@@ -1,5 +1,6 @@
 import { lerp, mix } from './juice.js';
 import { makeSpriteBook } from './sprites.js';
+import { daylight, makeSky, skyColors, skyPhase } from './sky.js';
 import { buildOccupiedFloorIndex, shaftQueueTrend, tenantDemandQuality, tenantLoadStatus, unitEvaluation, waitingPressureSummary } from '../sim/evaluation.js';
 import { localRouteOccupancy } from '../sim/demand.js';
 import { freeSlot, isUnderground, lowestFloor, slotsUsed } from '../sim/state.js';
@@ -449,12 +450,16 @@ export function makeRenderer(canvas, config) {
   // it always drew, so a sheet that has not arrived (or has arrived broken)
   // costs a rectangle, never a frame. See src/games/lift/assets/README.md.
   const sprites = makeSpriteBook(config);
+  // The sky owns its own clock and its own randomness. Decoration only: a
+  // tower plays identically with it switched off.
+  const sky = makeSky(config);
   sprites.preload([
     'ground-street', 'ground-entrance', 'earth-fill', 'earth-edge', 'foundation-slab',
     'basement-empty', 'basement-parking', 'basement-storage', 'basement-utility',
     'office', 'condo', 'shop', 'hotel', 'slot-empty', 'slot-construction',
     'lobby', 'lobby-wing', 'floor-slab', 'roof-cap',
     'shaft-column', 'elevator-car', 'elevator-car-express', 'stairs-segment', 'escalator-segment',
+    'sky-cloud', 'sky-bird', 'sky-plane', 'sky-balloon', 'sky-blimp', 'sky-explorer', 'sky-stunt',
   ]);
 
   /** Day-ness, the same curve the sky is painted from: 0 through the night
@@ -497,6 +502,8 @@ export function makeRenderer(canvas, config) {
     return true;
   }
   let W = 0, H = 0, dpr = 1;
+  /** Seconds of render time, for cloud drift and smoke trails. */
+  let skyDrift = 0;
 
   // Fixed relative positions (fraction of width, pixels from the top) so
   // stars don't re-roll every frame or every reload.
@@ -623,6 +630,8 @@ export function makeRenderer(canvas, config) {
   function draw(state, juice, dtMs, placementGuide = null, hoverFloor = -1, routeTarget = null, serviceFocus = null, hoverFacilityId = null, selectedShaftId = null, hoverShaftId = null, shaftQueueHistory = null) {
     clampCamera(state);
     sprites.advance(dtMs);
+    skyDrift += Math.min(120, Math.max(0, dtMs || 0)) / 1000;
+    sky.update(dtMs, state.tod, W, H);
     followCamera(state, layout(state));
     const L = layout(state);
     const visible = visibleFloorRange(camera, viewport(), state.floors, lowestFloor(state));
@@ -857,15 +866,13 @@ export function makeRenderer(canvas, config) {
 
   /** Sky shifts through the day. Cheap, and it makes a rush hour feel like one. */
   function paintSky(state) {
-    const night = [8, 10, 22], day = [66, 100, 138], dawnDusk = [214, 132, 84];
-    // Same day-ness curve the old version used: 0 through the night hours,
-    // 1 at midday, smooth in between. Reused below for the sun/moon arc too.
-    const k = Math.sin(Math.PI * Math.min(1, Math.max(0, (state.tod - 0.05) / 0.9)));
-    // Peaks mid-transition (dawn/dusk) and is 0 at full night or full day.
-    const twilight = Math.sin(Math.PI * k);
-    const c = night.map((n, i) => Math.round(lerp(lerp(n, day[i], k), dawnDusk[i], twilight * 0.35)));
-    const g = ctx.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, 'rgb(' + c.join(',') + ')');
+    // Four skies, not a single fade: dawn runs cool and pink, dusk runs
+    // orange, so the two ends of the day do not read as the same event twice.
+    const k = daylight(state.tod);
+    const [top, low] = skyColors(state.tod);
+    const g = ctx.createLinearGradient(0, -60, 0, H);
+    g.addColorStop(0, 'rgb(' + top.join(',') + ')');
+    g.addColorStop(0.72, 'rgb(' + low.join(',') + ')');
     g.addColorStop(1, BG);
     ctx.fillStyle = g;
     ctx.fillRect(-60, -60, W + 120, H + 120);
@@ -889,6 +896,92 @@ export function makeRenderer(canvas, config) {
     ctx.arc(x, y, isDay ? 9 : 7, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalAlpha = 1;
+
+    drawClouds(k);
+    drawFlyers(k);
+  }
+
+  /** Clouds drift, and answer the camera by their depth so the sky behind a
+   *  60-floor tower has some distance in it. */
+  function drawClouds(k) {
+    const lit = 0.35 + k * 0.5;
+    for (const cloud of sky.clouds) {
+      const x = cloudScreenXFor(cloud);
+      if (x < -cloud.w * 2 || x > W + cloud.w) continue;
+      const y = cloud.y * (0.6 + cloud.depth * 0.6);
+      const scale = 0.6 + cloud.depth * 0.9;
+      ctx.globalAlpha = (0.25 + cloud.depth * 0.45) * (0.4 + k * 0.6);
+      if (!sprites.drawSprite(ctx, { name: 'sky-cloud', animation: cloud.variant, x, y, scale: Math.max(1, Math.round(scale)) })) {
+        // Placeholder: three overlapping lozenges read as a cloud at any size.
+        ctx.fillStyle = 'rgb(' + [Math.round(190 * lit + 40), Math.round(200 * lit + 40), Math.round(215 * lit + 40)].join(',') + ')';
+        const w = cloud.w * scale, h = w * 0.34;
+        roundRect(ctx, x, y, w, h, h / 2);
+        ctx.fill();
+        roundRect(ctx, x + w * 0.18, y - h * 0.45, w * 0.5, h * 1.1, h * 0.55);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function cloudScreenXFor(cloud) {
+    const span = W + cloud.w * 2;
+    const raw = cloud.x + skyDrift * cloud.speed - camera.x * cloud.depth * 0.35;
+    return ((raw % span) + span) % span - cloud.w;
+  }
+
+  /** Birds, planes, balloons — and once in a long while something worth
+   *  pointing at. Sprites when they exist, shapes when they do not. */
+  function drawFlyers(k) {
+    for (const f of sky.flyers) {
+      for (let i = 0; i < f.count; i++) {
+        const o = f.offsets[i] ?? { dx: 0, dy: 0 };
+        const x = f.x - f.dir * o.dx;
+        const y = f.y + o.dy + Math.sin(f.bob + i) * 3;
+        if (x < -120 || x > W + 120) continue;
+        ctx.save();
+        ctx.translate(x, y);
+        if (f.dir < 0) ctx.scale(-1, 1);
+        if (!sprites.drawSprite(ctx, { name: f.kind.sprite, animation: f.kind.animation, x: 0, y: 0, scale: 1, phaseMs: i * 120 })) {
+          drawFlyerShape(f.kind.name, k);
+        }
+        ctx.restore();
+      }
+    }
+  }
+
+  function drawFlyerShape(name, k) {
+    const ink = k > 0.4 ? 'rgba(24,32,44,0.85)' : 'rgba(190,205,225,0.8)';
+    ctx.strokeStyle = ink;
+    ctx.fillStyle = ink;
+    ctx.lineWidth = 1.5;
+    if (name === 'bird') {
+      ctx.beginPath();
+      ctx.moveTo(-5, 0); ctx.quadraticCurveTo(-2, -4, 0, 0); ctx.quadraticCurveTo(2, -4, 5, 0);
+      ctx.stroke();
+      return;
+    }
+    if (name === 'stunt' || name === 'plane') {
+      ctx.beginPath();
+      ctx.moveTo(-10, 0); ctx.lineTo(6, 0); ctx.lineTo(10, -2); ctx.lineTo(6, -3); ctx.lineTo(-6, -3);
+      ctx.closePath(); ctx.fill();
+      ctx.fillRect(-4, -8, 3, 8);
+      if (name === 'stunt') {
+        ctx.strokeStyle = 'rgba(236,138,74,0.5)';
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(-12, -1); ctx.lineTo(-70, -1 + Math.sin(skyDrift * 2) * 4); ctx.stroke();
+      }
+      return;
+    }
+    // balloon, blimp, explorer: an envelope with something slung under it
+    const r = name === 'blimp' ? 7 : 9;
+    ctx.beginPath();
+    if (name === 'blimp') { ctx.ellipse(0, 0, r * 2, r, 0, 0, Math.PI * 2); } else { ctx.arc(0, 0, r, 0, Math.PI * 2); }
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-3, r * 0.9); ctx.lineTo(3, r * 0.9);
+    ctx.lineTo(2, r * 1.6); ctx.lineTo(-2, r * 1.6); ctx.closePath();
+    ctx.fill();
   }
 
   // The street tile is the bottom 16 world px of the ground floor — half a

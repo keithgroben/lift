@@ -436,15 +436,29 @@ export const tests = {
     // sidecar was never generated — passes it silently. That is the shape of
     // the failure the renderer hides best: the fallback rectangle draws, the
     // game looks fine, and nobody notices the art is not being used.
+    // An entry marked `pending` is a REQUEST, not a delivery: the catalogue is
+    // where an asset is specified before it is drawn, so the renderer can be
+    // built against it and the artist has one place to read the sizes from.
+    // The flag is a tripwire in both directions — a pending sheet must not be
+    // on disk, so the day the art lands the flag has to come off.
     const catalog = readCatalog();
     const missing = [];
-    for (const name of Object.keys(catalog)) {
-      if (!fs.existsSync(path.join(assetDir, `${name}.png`))) missing.push(`${name}.png`);
+    const stale = [];
+    for (const [name, entry] of Object.entries(catalog)) {
+      const png = fs.existsSync(path.join(assetDir, `${name}.png`));
+      if (entry.pending) {
+        if (png) stale.push(name);
+        continue;
+      }
+      if (!png) missing.push(`${name}.png`);
       else if (!fs.existsSync(path.join(assetDir, `${name}.json`))) missing.push(`${name}.json`);
     }
     assert(missing.length === 0,
       `catalogued but not on disk: ${missing.join(', ')} — for a missing sidecar run ` +
       'node src/games/lift/assets/sprites/sidecars.gen.mjs');
+    assert(stale.length === 0,
+      `delivered but still marked pending in tools/sprite-catalog.json: ${stale.join(', ')} — ` +
+      'drop the flag and run node src/games/lift/assets/sprites/sidecars.gen.mjs');
     assert(Object.keys(catalog).length >= 28, `the catalogue is down to ${Object.keys(catalog).length} entries`);
   },
 

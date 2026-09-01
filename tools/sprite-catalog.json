@@ -560,5 +560,103 @@
       }
     ],
     "fit": "contain"
+  },
+  "sky-cloud": {
+    "frameW": 96,
+    "frameH": 32,
+    "fit": "contain",
+    "states": [
+      {
+        "name": "small",
+        "frames": 1
+      },
+      {
+        "name": "medium",
+        "frames": 1
+      },
+      {
+        "name": "large",
+        "frames": 1
+      }
+    ],
+    "pending": true
+  },
+  "sky-bird": {
+    "frameW": 16,
+    "frameH": 16,
+    "fit": "contain",
+    "states": [
+      {
+        "name": "fly",
+        "frames": 4,
+        "speed": "walk"
+      }
+    ],
+    "pending": true
+  },
+  "sky-plane": {
+    "frameW": 48,
+    "frameH": 16,
+    "fit": "contain",
+    "states": [
+      {
+        "name": "fly",
+        "frames": 2,
+        "speed": "idle"
+      }
+    ],
+    "pending": true
+  },
+  "sky-balloon": {
+    "frameW": 32,
+    "frameH": 48,
+    "fit": "contain",
+    "states": [
+      {
+        "name": "drift",
+        "frames": 2,
+        "speed": "idle"
+      }
+    ],
+    "pending": true
+  },
+  "sky-blimp": {
+    "frameW": 64,
+    "frameH": 24,
+    "fit": "contain",
+    "states": [
+      {
+        "name": "drift",
+        "frames": 2,
+        "speed": "idle"
+      }
+    ],
+    "pending": true
+  },
+  "sky-explorer": {
+    "frameW": 48,
+    "frameH": 64,
+    "fit": "contain",
+    "states": [
+      {
+        "name": "drift",
+        "frames": 4,
+        "speed": "idle"
+      }
+    ],
+    "pending": true
+  },
+  "sky-stunt": {
+    "frameW": 48,
+    "frameH": 24,
+    "fit": "contain",
+    "states": [
+      {
+        "name": "fly",
+        "frames": 4,
+        "speed": "walk"
+      }
+    ],
+    "pending": true
   }
 }
