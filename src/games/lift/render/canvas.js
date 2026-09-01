@@ -1,4 +1,5 @@
 import { lerp, mix } from './juice.js';
+import { makeSpriteBook } from './sprites.js';
 import { buildOccupiedFloorIndex, shaftQueueTrend, tenantDemandQuality, tenantLoadStatus, unitEvaluation, waitingPressureSummary } from '../sim/evaluation.js';
 import { localRouteOccupancy } from '../sim/demand.js';
 import { freeSlot, slotsUsed } from '../sim/state.js';
@@ -437,6 +438,57 @@ export function makeRenderer(canvas, config) {
 
   /** Smoothed car positions, so a 30Hz sim reads as continuous motion. */
   const smooth = new Map();
+
+  // The art. Every draw below asks the book first and falls back to the shape
+  // it always drew, so a sheet that has not arrived (or has arrived broken)
+  // costs a rectangle, never a frame. See src/games/lift/assets/README.md.
+  const sprites = makeSpriteBook(config);
+  sprites.preload([
+    'ground-street', 'ground-entrance', 'earth-fill', 'earth-edge', 'foundation-slab',
+    'basement-empty', 'basement-parking', 'basement-storage', 'basement-utility',
+    'office', 'condo', 'shop', 'hotel', 'slot-empty', 'slot-construction',
+    'lobby', 'lobby-wing', 'floor-slab', 'roof-cap',
+    'shaft-column', 'elevator-car', 'elevator-car-express', 'stairs-segment', 'escalator-segment',
+  ]);
+
+  /** Day-ness, the same curve the sky is painted from: 0 through the night
+   *  hours, 1 at midday. Sprites carry lit-window night variants rather than
+   *  being dimmed, so every sheet with a night frame asks this. */
+  const dayness = (state) => Math.sin(Math.PI * Math.min(1, Math.max(0, (state.tod - 0.05) / 0.9)));
+  const isNight = (state) => dayness(state) < 0.35;
+
+  /** A stable per-thing number, so a shop keeps the same storefront and two
+   *  neighbours do not animate in lockstep. Ids are stable for a unit's life. */
+  const idPhase = (id) => ((id * 2654435761) % 1000);
+
+  /** Which sheet and which state a room draws as. Returns null for a room the
+   *  art does not cover yet, which simply keeps the old rectangle. */
+  function unitSprite(u, state) {
+    if (!['office', 'condo', 'shop', 'hotel'].includes(u.kind)) return null;
+    const night = isNight(state);
+    if (!u.occupied) return { name: u.kind, animation: 'vacant' };
+    if (u.kind === 'shop') {
+      if (night) return { name: 'shop', animation: 'closed-night' };
+      const fronts = ['open-grocery', 'open-cafe', 'open-awning'];
+      return { name: 'shop', animation: fronts[u.id % fronts.length] };
+    }
+    if (u.kind === 'hotel') return { name: 'hotel', animation: night ? 'booked-night' : 'booked-day' };
+    const tune = config.units[u.kind];
+    if (u.stress / tune.vacateAt > 0.66) return { name: u.kind, animation: 'stressed' };
+    return { name: u.kind, animation: night ? 'occupied-night' : 'occupied-day' };
+  }
+
+  /** Paint a sheet across a rectangle, one frame per art tile. Used for the
+   *  earth and the street, which are backdrops rather than objects. */
+  function tileAcross(name, animation, x0, y0, x1, y1, tileW, tileH) {
+    if (!sprites.has(name, animation)) return false;
+    for (let y = y0; y < y1; y += tileH) {
+      for (let x = x0; x < x1; x += tileW) {
+        if (!sprites.drawSprite(ctx, { name, animation, x, y, scale: tileW / SLOT_W })) return false;
+      }
+    }
+    return true;
+  }
   let W = 0, H = 0, dpr = 1;
 
   // Fixed relative positions (fraction of width, pixels from the top) so
@@ -562,6 +614,7 @@ export function makeRenderer(canvas, config) {
 
   function draw(state, juice, dtMs, placementGuide = null, hoverFloor = -1, routeTarget = null, serviceFocus = null, hoverFacilityId = null, selectedShaftId = null, hoverShaftId = null, shaftQueueHistory = null) {
     clampCamera(state);
+    sprites.advance(dtMs);
     followCamera(state, layout(state));
     const L = layout(state);
     const visible = visibleFloorRange(camera, viewport(), state.floors);
@@ -594,7 +647,7 @@ export function makeRenderer(canvas, config) {
     drawServiceFocus(serviceFocus, state, L, floorIndex);
     drawPlacementGuide(placementGuide, state, L, hoverFloor);
 
-    if (state.lobby) drawLobby(state.lobby, L);
+    if (state.lobby) drawLobby(state.lobby, L, state);
     for (const stair of state.stairs ?? []) drawStairs(stair, L, state);
     for (const escalator of state.escalators ?? []) drawEscalator(escalator, L, state);
     for (const u of state.units) drawUnit(u, L, state, floorIndex);
@@ -826,6 +879,14 @@ export function makeRenderer(canvas, config) {
     const groundY = L.y0;
     if (groundY > H + 60) return;
     const top = Math.max(-60, groundY);
+
+    // Tiled soil if the sheet is here. It is aligned to the world grid, not to
+    // the screen, so the earth holds still while the camera moves over it.
+    const tileW = SLOT_W * L.zoom, tileH = FLOOR_H * L.zoom;
+    const firstX = L.x0 - Math.ceil((L.x0 + 60) / tileW) * tileW;
+    const firstY = groundY + Math.floor((top - groundY) / tileH) * tileH;
+    if (tileAcross('earth-fill', 'tile', firstX, firstY, W + 60, H + 60, tileW, tileH)) return;
+
     const soil = ctx.createLinearGradient(0, groundY, 0, groundY + H + 120);
     soil.addColorStop(0, '#3b2d21');
     soil.addColorStop(1, '#150f0b');
@@ -854,6 +915,12 @@ export function makeRenderer(canvas, config) {
     const sh = streetHeight(L);
     const streetTop = groundY - sh;
     if (streetTop < H && groundY > -sh) {
+      const paveW = SLOT_W * L.zoom;
+      const firstPave = L.x0 - Math.ceil((L.x0 + 60) / paveW) * paveW;
+      if (tileAcross('ground-street', 'tile', firstPave, streetTop, W + 60, groundY, paveW, sh)) {
+        drawGroundLine(groundY);
+        return;
+      }
       ctx.fillStyle = '#48525e';
       ctx.fillRect(-60, streetTop, W + 120, sh);
       // Paving joints on the 48 px art grid, so the placeholder tiles exactly
@@ -877,6 +944,12 @@ export function makeRenderer(canvas, config) {
       ctx.fillStyle = '#20262e';
       ctx.fillRect(-60, groundY - Math.max(1, L.zoom * 2), W + 120, Math.max(1, L.zoom * 2));
     }
+    drawGroundLine(groundY);
+  }
+
+  /** World y = 0, drawn as a line. Whether the street above it is painted or
+   *  tiled, the horizon itself is the same stroke. */
+  function drawGroundLine(groundY) {
     ctx.strokeStyle = PANEL;
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -966,6 +1039,22 @@ export function makeRenderer(canvas, config) {
     const x = L.x0 + u.slot * L.cw, y = L.floorY(u.floor);
     if (x + L.cw < 0 || x > W || y + L.fh < 0 || y > H) return;
     const tune = config.units[u.kind];
+
+    // The art first. Everything below this line is the fallback the renderer
+    // drew before there was any, and it stays because a sheet can always be
+    // missing — an unfinished subject must cost a rectangle, not a blank room.
+    const art = unitSprite(u, state);
+    if (art && sprites.drawSprite(ctx, { ...art, x, y, scale: L.zoom, phaseMs: idPhase(u.id) })) {
+      if (u.occupied) {
+        const stressed = Math.min(1, u.stress / tune.vacateAt);
+        if (stressed > 0.02) {
+          ctx.fillStyle = stressed > 0.66 ? BAD : WARN;
+          ctx.fillRect(x + 2, y + L.fh - 7, (L.cw - 4) * stressed, 2);
+        }
+      }
+      drawTenantBadge(u, x, y, L);
+      return;
+    }
 
     if (!u.occupied) {
       ctx.fillStyle = 'rgba(120,130,145,0.16)';
@@ -1262,14 +1351,24 @@ export function makeRenderer(canvas, config) {
 
   /** The lobby sits in the upper band of the ground floor; the lower band is
    *  the street, where its entrance reads as an actual way in. */
-  function drawLobby(lobby, L) {
+  function drawLobby(lobby, L, state) {
     const y = L.floorY(config.building.lobbyFloor ?? 0);
     const sh = streetHeight(L);
     const roomH = Math.max(5, L.fh - sh - 4);
     const lobbySlots = lobby.slots ?? [lobby.slot];
+    const night = isNight(state);
     for (const slot of lobbySlots) {
       const x = L.x0 + slot * L.cw;
       if (x + L.cw < 0 || x > W) continue;
+
+      // The entrance sits on the first lobby slot; the rest are wings, so a
+      // wide lobby reads as one frontage instead of a row of front doors.
+      const sheet = slot === lobbySlots[0] ? 'lobby' : 'lobby-wing';
+      if (sprites.drawSprite(ctx, { name: sheet, animation: night ? 'night' : 'day', x, y, scale: L.zoom })) {
+        sprites.drawSprite(ctx, { name: 'ground-entrance', animation: night ? 'night' : 'day', x, y: y + L.fh - sh, scale: L.zoom });
+        continue;
+      }
+
       ctx.fillStyle = '#5aa9e6';
       ctx.globalAlpha = 0.9;
       roundRect(ctx, x + 2, y + 3, L.cw - 4, roomH, 3);
