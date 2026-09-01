@@ -430,6 +430,24 @@ export const tests = {
     }
   },
 
+  'every catalogued sheet is actually on disk, with a sidecar'() {
+    // The test above walks the sidecars that exist and checks each against the
+    // catalogue, so a catalogued sheet whose PNG never arrived — or whose
+    // sidecar was never generated — passes it silently. That is the shape of
+    // the failure the renderer hides best: the fallback rectangle draws, the
+    // game looks fine, and nobody notices the art is not being used.
+    const catalog = readCatalog();
+    const missing = [];
+    for (const name of Object.keys(catalog)) {
+      if (!fs.existsSync(path.join(assetDir, `${name}.png`))) missing.push(`${name}.png`);
+      else if (!fs.existsSync(path.join(assetDir, `${name}.json`))) missing.push(`${name}.json`);
+    }
+    assert(missing.length === 0,
+      `catalogued but not on disk: ${missing.join(', ')} — for a missing sidecar run ` +
+      'node src/games/lift/assets/sprites/sidecars.gen.mjs');
+    assert(Object.keys(catalog).length >= 28, `the catalogue is down to ${Object.keys(catalog).length} entries`);
+  },
+
   'nothing in sim/ or harness/ can reach the renderer'() {
     // The one architectural rule: the sim is pure and the renderer disposable.
     // A sprite import under sim/ would drag the DOM into the headless harness.
