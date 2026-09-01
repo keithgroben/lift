@@ -291,6 +291,10 @@ function placementVerdict(toolKey, spot) {
 
 let ghostSpot = null;
 let lastGhostKey = null;
+// The camera half of the ghost's cache, and the verdict it is drawing. Kept
+// apart so a pan or a zoom repositions the box without paying for a dry run.
+let lastGhostViewKey = null;
+let lastGhostPreview = null;
 
 function ghostGeometry(armed, verdict, spot) {
   const L = renderer.layout(state);
@@ -329,15 +333,32 @@ function updateGhost() {
   if (!ghost) return;
   if (!ghostSpot || tool === 'observe') {
     lastGhostKey = null;
+    lastGhostViewKey = null;
+    lastGhostPreview = null;
     ghost.hidden = true;
     return;
   }
+  // Two caches, because the two halves change for different reasons.
+  //
+  // The VERDICT depends on the target and the tower, and costs a dry run
+  // (a structuredClone of the whole state), so it is recomputed only when one
+  // of those actually changes.
+  //
+  // The RECTANGLE depends on the camera as well: it is in screen pixels, and
+  // zooming or panning moves and resizes it without changing the target at
+  // all. Keying both halves off the same string is why a ghost armed at 1x
+  // kept its small box after a zoom until the cursor left the canvas and came
+  // back — the only thing that used to invalidate the cache was a mousemove.
   const key = [tool, ghostSpot.floor, ghostSpot.slot, ghostSpot.unitId, ghostSpot.shaftId,
     state.money, state.floors, lowestFloor(state), state.units.length, state.facilities.length,
     state.shafts.length, state.stairs.length, state.escalators.length, Boolean(state.lobby)].join('|');
-  if (key === lastGhostKey) return;
+  const cam = renderer.camera;
+  const viewKey = [cam.x, cam.y, cam.zoom].join('|');
+  if (key === lastGhostKey && viewKey === lastGhostViewKey) return;
+  if (key !== lastGhostKey) lastGhostPreview = placementVerdict(tool, ghostSpot);
   lastGhostKey = key;
-  const preview = placementVerdict(tool, ghostSpot);
+  lastGhostViewKey = viewKey;
+  const preview = lastGhostPreview;
   const rect = preview && ghostGeometry(preview.armed, preview.verdict, ghostSpot);
   if (!rect) { ghost.hidden = true; return; }
   const { verdict } = preview;
@@ -413,6 +434,10 @@ function frame(now) {
     const renderDtMs = Math.min(120, Math.max(0, renderElapsed));
     juice.update(renderDtMs);
     renderer.draw(state, juice, renderDtMs, placementGuideTarget(), hoverFloor, shaftCanvasTarget(), serviceFocusTarget, hoverFacilityId, selectedShaftId, hoverShaftId, carQueueHistory);
+    // The ghost is a DOM overlay in screen pixels, so it has to follow the
+    // camera every frame the camera moves. Cheap: both cache keys are
+    // unchanged on a still view and this returns immediately.
+    updateGhost();
   }
   requestAnimationFrame(frame);
 }

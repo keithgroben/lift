@@ -115,7 +115,40 @@
   "palette-icons": {
     "frameW": 32,
     "frameH": 32,
+    "fit": "contain",
     "states": [
+      {
+        "name": "lobby",
+        "frames": 1
+      },
+      {
+        "name": "dig",
+        "frames": 1
+      },
+      {
+        "name": "stairs",
+        "frames": 1
+      },
+      {
+        "name": "escalator",
+        "frames": 1
+      },
+      {
+        "name": "shaft",
+        "frames": 1
+      },
+      {
+        "name": "car",
+        "frames": 1
+      },
+      {
+        "name": "express",
+        "frames": 1
+      },
+      {
+        "name": "extend",
+        "frames": 1
+      },
       {
         "name": "office",
         "frames": 1
@@ -133,7 +166,7 @@
         "frames": 1
       },
       {
-        "name": "lobby",
+        "name": "food",
         "frames": 1
       },
       {
@@ -141,51 +174,22 @@
         "frames": 1
       },
       {
-        "name": "storage",
+        "name": "medical",
         "frames": 1
       },
       {
-        "name": "utility",
+        "name": "security",
         "frames": 1
       },
       {
-        "name": "elevator",
-        "frames": 1
-      },
-      {
-        "name": "express",
-        "frames": 1
-      },
-      {
-        "name": "stairs",
-        "frames": 1
-      },
-      {
-        "name": "escalator",
+        "name": "recycling",
         "frames": 1
       },
       {
         "name": "demolish",
         "frames": 1
-      },
-      {
-        "name": "bulldozer",
-        "frames": 1
-      },
-      {
-        "name": "inspect",
-        "frames": 1
-      },
-      {
-        "name": "repair",
-        "frames": 1
-      },
-      {
-        "name": "finances",
-        "frames": 1
       }
-    ],
-    "fit": "contain"
+    ]
   },
   "office": {
     "frameW": 48,
