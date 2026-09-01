@@ -4729,7 +4729,6 @@ canvas.addEventListener('click', (e) => {
   if (tool === 'demolish') {
     const id = renderer.unitAt(state, px, py);
     if (id == null) return toast('click a room to demolish', WARN);
-    const unit = state.units.find((candidate) => candidate.id === id);
     const cleared = act('demolish_unit', { id });
     if (cleared.ok) {
       selectedUnitId = null;
