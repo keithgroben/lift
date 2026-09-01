@@ -51,7 +51,7 @@ function recordingCanvas(w, h) {
   const ctx = new Proxy({}, {
     get(target, key) {
       if (key in target) return target[key];
-      return (...args) => { calls.push({ op: key, args, fillStyle: target.fillStyle }); return stubCtx(); };
+      return (...args) => { calls.push({ op: key, args, fillStyle: target.fillStyle, font: target.font }); return stubCtx(); };
     },
   });
   return {
@@ -161,6 +161,45 @@ export const tests = {
     renderer.goTo(state, -3, 4);
     assert(renderer.floorAt(state, w / 2, h / 2 + FLOOR_H) === null,
       'the earth under the deepest basement read as a floor');
+  },
+
+  'the tenant badge scales with the zoom instead of swallowing the room'() {
+    // Drawn at a fixed 13px, the badge is half the height of a 32px floor at
+    // 1x — it swallows the room it is annotating. It must scale with the zoom.
+    const state = bootedTower(4);
+    assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 1, slot: 3 }, CONFIG).ok, 'could not place a room');
+
+    const sizes = ZOOM_LEVELS.map((zoom) => {
+      const { canvas, calls } = recordingCanvas(1200, 900);
+      const renderer = withWindow(() => {
+        const r = makeRenderer(canvas, CONFIG);
+        r.resize();
+        return r;
+      });
+      // The first draw frames the lobby and picks its own zoom, so set the
+      // zoom AFTER that has happened or the test measures the opening shot.
+      renderer.draw(state, stubJuice, 16);
+      renderer.setZoom(state, zoom);
+      renderer.goTo(state, 1, 3);
+      calls.length = 0;
+      renderer.draw(state, stubJuice, 16);
+
+      const badge = calls.find((c) => c.op === 'fillText' && /^T /.test(String(c.args[0])));
+      assert(badge, 'no tenant badge was drawn at ' + zoom + 'x');
+      const px = String(badge.font ?? '').match(/(\d+)px/);
+      assert(px, 'the badge was drawn with no font size at ' + zoom + 'x');
+      return Number(px[1]);
+    });
+
+    for (let i = 1; i < sizes.length; i++) {
+      assert(sizes[i] > sizes[i - 1],
+        'the badge did not grow from ' + ZOOM_LEVELS[i - 1] + 'x to ' + ZOOM_LEVELS[i] + 'x: ' + sizes.join('/'));
+    }
+    // And it must stay smaller than the floor it sits on, at every zoom.
+    for (let i = 0; i < sizes.length; i++) {
+      assert(sizes[i] < FLOOR_H * ZOOM_LEVELS[i] / 2,
+        'the badge is more than half the height of a floor at ' + ZOOM_LEVELS[i] + 'x');
+    }
   },
 
   'panning moves the picks with the view'() {

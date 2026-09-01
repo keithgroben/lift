@@ -1143,23 +1143,36 @@ export function makeRenderer(canvas, config) {
 
   // The room color communicates quality; this small badge communicates how
   // many tenants occupy the room, which is a different decision signal.
+  /**
+   * The tenant count, over the room. It is drawn in SCREEN pixels on purpose —
+   * a signal the player reads should not shrink to nothing just because they
+   * zoomed out — but at 1x a floor is only 32 px tall, and a fixed 13 px badge
+   * eats half the room it is annotating. So it scales down with the zoom and
+   * gives up below the point where its text would be unreadable anyway: the
+   * room's own colour still carries the health signal, which is the one that
+   * matters at a glance.
+   */
   function drawTenantBadge(u, x, y, L) {
+    const k = L.zoom >= 3 ? 1.35 : L.zoom >= 2 ? 1 : 0.72;
+    if (L.fh < 18) return;
     const load = tenantLoadStatus(u, config);
     const loadColor = indicatorColor(load.colorKey);
     const badgeText = tenantBadgeText(u, config);
-    const badgeW = Math.max(27, badgeText.length * 6 + 10);
-    const badgeX = x + L.cw - badgeW - 5;
-    const badgeY = y + 5;
+    const font = Math.round(8 * k);
+    const badgeH = Math.round(13 * k);
+    const badgeW = Math.max(27 * k, badgeText.length * 6 * k + 10 * k);
+    const badgeX = x + L.cw - badgeW - 5 * k;
+    const badgeY = y + 5 * k;
     ctx.fillStyle = 'rgba(14,17,22,0.72)';
-    roundRect(ctx, badgeX, badgeY, badgeW, 13, 3);
+    roundRect(ctx, badgeX, badgeY, badgeW, badgeH, 3);
     ctx.fill();
     ctx.strokeStyle = loadColor;
     ctx.lineWidth = 1;
     ctx.stroke();
     ctx.fillStyle = loadColor;
     ctx.textAlign = 'center';
-    ctx.font = '700 8px ui-monospace, monospace';
-    ctx.fillText(badgeText, badgeX + badgeW / 2, badgeY + 9.5);
+    ctx.font = '700 ' + font + 'px ui-monospace, monospace';
+    ctx.fillText(badgeText, badgeX + badgeW / 2, badgeY + badgeH * 0.73);
   }
 
   function drawShaft(sh, L, dtMs, state, shaftQueueHistory = null, focused = false, hovered = false) {

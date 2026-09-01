@@ -5654,6 +5654,6 @@ tenantUtilizationBaseline = tenantLoadSummary(state, CONFIG).ratio;
 tenantUtilizationHistory = [{ day: state.day, ratio: tenantUtilizationBaseline }];
 
 refresh();
-toast('paused · click 1x to start · space = pause · D = developer details · E = export · R = restart', INFO);
+toast('paused · click 1x to start · drag to look around · wheel zooms · 0 frames the lobby · space = pause · D = developer details', INFO);
 requestAnimationFrame(frame);
 requestAnimationFrame(drawClock);
