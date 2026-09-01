@@ -657,22 +657,34 @@ export function makeRenderer(canvas, config) {
       // true (see isSupported in sim/state.js).
       const built = slotsUsed(state, f);
       const isGround = f === (config.building.lobbyFloor ?? 0);
-      if (!built.size && !isGround) continue;
+      if (!built.size) continue;
+
+      // A storey runs from its leftmost built slot to its rightmost, and the
+      // gaps INSIDE that span are empty floor you can see into — bare shell
+      // with its columns showing. Beyond the ends there is sky.
+      //
+      // This is the distinction the first attempt missed in both directions:
+      // painting the full grid made one office look like a finished floor,
+      // and painting only the built cells left a stairwell floating with a
+      // hole between it and the building (Keith: "the stairs don't look
+      // connected"). SimTower draws the building, and a building is
+      // continuous between its own ends.
+      let low = Infinity, high = -Infinity;
+      for (const slot of built) { if (slot < low) low = slot; if (slot > high) high = slot; }
 
       ctx.fillStyle = isUnderground(f) ? '#171d1a' : isGround ? '#141c26' : 'rgba(27,36,48,0.55)';
-      for (const slot of built) {
+      for (let slot = low; slot <= high; slot++) {
         const x = L.x0 + slot * L.cw;
         if (x + L.cw < 0 || x > W) continue;
-        // Segments butt against each other, so a run of built slots reads as
-        // one slab and a gap reads as a gap.
         ctx.fillRect(x, y, L.cw, L.fh - 2);
-        // A dug storey is bare concrete until something is built in it. Rooms
-        // draw over this, so an occupied basement slot never shows it.
-        if (isUnderground(f)) sprites.drawSprite(ctx, { name: 'basement-empty', animation: 'tile', x, y, scale: L.zoom });
+        if (isUnderground(f)) {
+          // A dug storey is bare concrete until something is built in it.
+          sprites.drawSprite(ctx, { name: 'basement-empty', animation: 'tile', x, y, scale: L.zoom });
+        } else if (!built.has(slot)) {
+          // Unbuilt space inside the building: the shell, not the sky.
+          sprites.drawSprite(ctx, { name: 'slot-empty', animation: 'empty', x, y, scale: L.zoom });
+        }
       }
-      // The ground floor keeps its full-width band: it is the plot, and the
-      // street runs the length of it whether or not anything stands there yet.
-      if (isGround) ctx.fillRect(L.x0, y, L.cw * L.cols, L.fh - 2);
 
       ctx.fillStyle = isUnderground(f) ? 'rgba(198,166,124,0.45)' : 'rgba(142,202,230,0.35)';
       ctx.font = '10px ui-monospace, monospace';
