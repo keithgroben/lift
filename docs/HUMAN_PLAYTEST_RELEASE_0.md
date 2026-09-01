@@ -15,13 +15,16 @@ at 1x unless a step says otherwise.
 2. Click the ground floor to place the entrance, and confirm the message
    explains that it bought the storey it stands on.
 3. Use the visible TIME controls to pause, resume, and speed up the simulation.
-4. Choose `floor` and click the tower until there is a storey above the lobby.
-   Confirm the tool stays armed between clicks.
-5. Choose `office`, click an upper-floor room slot, and confirm that the mode
-   message explains what was placed. Place a second one without returning to
-   the palette.
-6. Let the tower run through a rush. Explain what the `W` waiting badge and
-   `T` tenant badge mean.
+4. Choose `office` and click the row above the lobby. Confirm the room raised
+   its own storey, and that the tool stays armed between clicks.
+5. Click a second room slot on that storey and confirm the mode message
+   explains what was placed, without returning to the palette.
+6. Let the tower run through a rush. Without opening Developer Details,
+   read `waiting`, `delivered`, and `reputation` off the top bar and explain
+   what each one means.
+6a. Point at a room and read the appeal line under the bar aloud. Say which
+   number is the room's score, which is what the tower is held to, and what
+   the named cause would cost to fix.
 7. When W turns amber or red, follow the visible action. Select `car`, then
    click the highlighted shaft. Confirm that the car is added and that the
    message explains the new capacity.

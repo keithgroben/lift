@@ -39,6 +39,7 @@ import { tenantAccessOutcomeForUnit } from '../sim/evaluation.js';
 import { vacancyRankingSignalSummary } from '../sim/evaluation.js';
 import { serviceCoverageChange, serviceCoverageSummary, servicePlacementBudgetImpact, servicePlacementComparison, servicePlacementCoveragePreview, servicePlacementRecommendation } from '../sim/evaluation.js';
 import { cashRunwaySummary, expansionSafetySummary } from '../sim/evaluation.js';
+import { appealWhyLine as appealWhyLineFor, weekLossPattern as weekLossPatternFor } from './hud/lines.js';
 import { setHud } from './hud/store';
 
 const [, , GOOD, WARN, BAD, INFO] = CONFIG.feel.palette;
@@ -70,6 +71,9 @@ let demolitionTargetId = null;
 // how a hover in the earth reads as a hover on the first basement.
 let hoverFloor = null;
 let hoverSlot = -1;
+// The room under the cursor, for the one line that says why its appeal is what
+// it is (issue #11). Derived from the same pick as the rest of the hover state.
+let hoverUnitId = null;
 let hoverShaftId = null;
 let hoverFacilityId = null;
 let selectedShaftId = null;
@@ -592,7 +596,7 @@ function onDayClose(closed, occupiedBefore) {
 
 // ---------------------------------------------------------------------- HUD
 const els = {};
-for (const id of ['clock', 'build', 'build-ghost', 'build-ghost-reason', 'expansion-safety', 'log', 'knobs', 'mode', 'cancel-tool', 'goal-copy', 'transport', 'rent-control', 'rent-kind', 'rent-value', 'facility-inspector', 'shaft-inspector', 'unit-inspector', 'unit-title', 'unit-status', 'unit-detail', 'unit-utilization-context', 'conversion-controls', 'renovate-unit', 'rerent-unit', 'demolish-unit', 'cancel-confirmation', 'recovery-warning', 'rerent-reason', 'placement-guide-legend', 'placement-preview', 'beta-path', 'developer-toggle', 'developer-panel', 'time-controls', 'quick-action', 'quick-action-button', 'quick-action-detail', 'restart-game'])
+for (const id of ['build', 'build-ghost', 'build-ghost-reason', 'expansion-safety', 'log', 'knobs', 'mode', 'cancel-tool', 'goal-copy', 'transport', 'rent-control', 'rent-kind', 'rent-value', 'facility-inspector', 'shaft-inspector', 'unit-inspector', 'unit-title', 'unit-appeal-why', 'unit-status', 'unit-detail', 'unit-utilization-context', 'conversion-controls', 'renovate-unit', 'rerent-unit', 'demolish-unit', 'cancel-confirmation', 'recovery-warning', 'rerent-reason', 'placement-guide-legend', 'placement-preview', 'beta-path', 'developer-toggle', 'developer-panel', 'time-controls', 'quick-action', 'quick-action-button', 'quick-action-detail', 'restart-game'])
   els[id] = document.getElementById(id);
 
 let developerMode = false;
@@ -675,6 +679,15 @@ function serviceBudgetResultText(result) {
     : ' · realized result after first day close';
   return result.label + ' placed on F' + result.floor + targetText + ' — it covers ' + result.coverage + ' · upfront ' + money(result.upfrontCost) + upkeepText + realizedText + '.';
 }
+
+/**
+ * Issues #11 and #12. Both sentences are built in `hud/lines.js` — pure, no
+ * DOM, so the copy a player acts on is tested by reading the sentence rather
+ * than by reading the source that builds it. These wrappers only bind them to
+ * the live `state` and `CONFIG`.
+ */
+const appealWhyLine = (unit) => appealWhyLineFor(state, unit, CONFIG);
+const weekLossPattern = () => weekLossPatternFor(state, CONFIG);
 
 function updateWaitingNowIndicator() {
   const waitingNow = state.people.filter((person) => person.state === 'waiting').length;
@@ -2413,7 +2426,10 @@ function renderTransport() {
     const retentionRecommendation = tenantRetentionRecommendation(state, u, CONFIG);
     const pressure = Number(Math.max(0, Number(u.desirabilityPressure) || 0).toFixed(1));
     const pressureClass = pressure >= retention.vacateAt ? 'diag-bad' : pressure > 0 ? 'diag-warn' : 'diag-good';
-    const retentionAction = retentionRecommendation?.key !== 'monitor'
+    // Same rule as the room panel: a null recommendation is not "not monitor".
+    // The rows are filtered to occupied rooms today, so this cannot be null —
+    // but the guard belongs on the object, not on the filter above it.
+    const retentionAction = retentionRecommendation && retentionRecommendation.key !== 'monitor'
       ? ' · <span class="diag-warn" title="' + retentionRecommendation.detail + '">next: ' + retentionRecommendation.label + '</span>'
       : '';
     const access = evaluation.accessSlots == null ? 'no access'
@@ -3790,7 +3806,11 @@ function renderInspector() {
   els['unit-utilization-context'].innerHTML += condoTransportCue;
   els['unit-utilization-context'].innerHTML += condoServiceStatusCue;
   els['unit-utilization-context'].innerHTML += roomAppealFollowupCue;
-  if (retentionRecommendation?.key !== 'monitor') {
+  // `tenantRetentionRecommendation` answers null for a room with no tenant to
+  // retain, and `null?.key !== 'monitor'` is TRUE — so the optional chain let a
+  // null through to `.detail` and selecting any VACANT room threw, taking the
+  // whole refresh loop with it. The guard is on the object, not on its key.
+  if (retentionRecommendation && retentionRecommendation.key !== 'monitor') {
     els['unit-utilization-context'].innerHTML += '<br>retention recommendation: ' + retentionRecommendation.detail;
   }
   els['unit-utilization-context'].innerHTML += focusedServiceRoomCue;
@@ -3853,6 +3873,14 @@ function renderInspector() {
         : status.key === 'reputation'
           ? 'Building reputation must reach ' + CONFIG.occupancy.relistMinDeliveryRate + '% before replacement tenants return.'
           : 'Need $' + cost.toLocaleString() + ' to re-rent this room.';
+  // The same one line the HUD bar shows on hover, kept at the top of the
+  // selected room (issue #11) — the room panel is where a player has come to
+  // fix something, so the cause and the action belong above the controls.
+  const why = appealWhyLine(unit);
+  els['unit-appeal-why'].hidden = !why;
+  els['unit-appeal-why'].textContent = why ? why.text : '';
+  els['unit-appeal-why'].style.color = why ? why.color : '';
+  els['unit-appeal-why'].title = why?.title ?? '';
   els['unit-inspector'].classList.add('open');
 }
 
@@ -3898,6 +3926,13 @@ function refresh() {
   const desirability = towerDesirabilitySummary(state, CONFIG);
   const desirabilityTrend = towerDesirabilityTrend(towerDesirabilityHistory(state));
   const desirabilityDelta = towerDesirabilityTrendDeltaLabel(desirabilityTrend);
+  // Hover wins over selection: the cursor is the question being asked right
+  // now, and a stale selected room would answer a different one.
+  const whyUnit = state.units.find((u) => u.id === hoverUnitId)
+    ?? state.units.find((u) => u.id === selectedUnitId)
+    ?? null;
+  const appealWhy = appealWhyLine(whyUnit);
+  const weekPattern = weekLossPattern();
 
   setHud({
     money: { text: '$' + Math.round(state.money).toLocaleString(), color: state.money < 2000 ? BAD : GOOD },
@@ -3963,6 +3998,10 @@ function refresh() {
       color: desirabilityTrend.key === 'improved' ? GOOD : desirabilityTrend.key === 'worsened' ? BAD : WARN,
       title: 'daily tower desirability, oldest to newest; ' + desirabilityDelta + '; history begins after day close',
     },
+    // An empty string is the absent state for both: a line that always shows a
+    // dash is a line the eye learns to skip.
+    appealWhy: appealWhy ?? { text: '', color: '#dbe4ee', title: '' },
+    weekPattern: weekPattern ?? { text: '', color: '#dbe4ee', title: '' },
   });
   els['goal-copy'].textContent = d
     ? 'Keep delivery above ' + CONFIG.occupancy.relistMinDeliveryRate + '% · current ' + d.deliveryRate + '%.'
@@ -4134,8 +4173,10 @@ function drawClock(now) {
   const rush = inWindow(CONFIG.time.morningRush) ? 'MORNING RUSH'
     : inWindow(CONFIG.time.lunch) ? 'LUNCH'
     : inWindow(CONFIG.time.eveningRush) ? 'EVENING RUSH' : '';
-  els.clock.textContent = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + (rush ? '  ' + rush : '');
-  els.clock.style.color = rush ? WARN : 'rgba(142,202,230,0.6)';
+  // The clock is part of the HUD bar now, beside the day (issue #13), rather
+  // than floating over the tower. It keeps its own rAF loop because it ticks
+  // ten times a second and refresh() does not.
+  setHud({ clock: String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0'), rush });
   requestAnimationFrame(drawClock);
 }
 const inWindow = ([a, b]) => state.tod >= a && state.tod <= b;
@@ -4704,6 +4745,7 @@ canvas.addEventListener('mousemove', (e) => {
     if (hoverFloor == null && hoverSlot === -1 && hoverShaftId == null && hoverFacilityId == null) return;
     hoverFloor = null;
     hoverSlot = -1;
+    hoverUnitId = null;
     hoverShaftId = null;
     hoverFacilityId = null;
     refresh();
@@ -4716,6 +4758,9 @@ canvas.addEventListener('mousemove', (e) => {
   if (floor === hoverFloor && slot === hoverSlot && shaft === hoverShaftId && facility === hoverFacilityId) return;
   hoverFloor = floor;
   hoverSlot = slot;
+  // A room is identified by its floor and slot, so this can only change when
+  // the guard above has already let the move through.
+  hoverUnitId = renderer.unitAt(state, px, py);
   hoverShaftId = shaft;
   hoverFacilityId = facility;
   if (tool === 'car' && shaft != null) {
@@ -4739,6 +4784,7 @@ canvas.addEventListener('mouseleave', () => {
   }
   hoverFloor = null;
   hoverSlot = -1;
+  hoverUnitId = null;
   hoverShaftId = null;
   hoverFacilityId = null;
   placementWarning = null;
@@ -5555,6 +5601,7 @@ function restart() {
   tape = [];
   hoverFloor = null;
   hoverSlot = -1;
+  hoverUnitId = null;
   hoverShaftId = null;
   hoverFacilityId = null;
   selectedShaftId = null;

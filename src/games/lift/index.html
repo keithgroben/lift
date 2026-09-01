@@ -14,23 +14,88 @@
   html, body { height: 100%; margin: 0; }
   body {
     background: var(--bg); color: #dbe4ee; font-family: var(--mono);
-    display: grid; grid-template-columns: 1fr 260px; overflow: hidden;
+    display: grid; grid-template-columns: 1fr 260px; grid-template-rows: auto 1fr;
+    overflow: hidden;
   }
-  #stage { position: relative; }
+  #stage { position: relative; min-height: 0; }
   #tower { width: 100%; height: 100%; display: block; }
 
-  #clock {
-    position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
-    font-size: 12px; letter-spacing: .12em; pointer-events: none;
+  /* ------------------------------------------------------------------ HUD
+     The player bar (issue #13). It spans both columns of the page grid and
+     lives in its own row, so it is structurally incapable of scrolling with
+     the sidebar — which is the whole complaint: "no good HUD for any useful
+     info", everything stacked in one column. Only what a decision is made
+     from at a glance is allowed in here. */
+  #topbar {
+    grid-column: 1 / -1;
+    background: linear-gradient(180deg, #1e2836, #16202b);
+    border-bottom: 1px solid #2f4055;
+    z-index: 3;
   }
+  .hud-row { display: flex; align-items: center; gap: 20px; padding: 7px 14px 8px; }
+  .hud-brand {
+    color: var(--info); font-size: 13px; font-weight: 700; letter-spacing: .22em;
+    margin: 0; flex: 0 0 auto;
+  }
+  /* The mount is a flex row itself: without it the two groups stack and the
+     bar grows a second line it was defined not to have. */
+  #top-bar-mount { display: flex; align-items: center; gap: 20px; min-width: 0; }
+  .hud-group { display: flex; align-items: center; gap: 18px; min-width: 0; }
+  /* The three signals are boxed together because they are read together: a
+     queue that grows while delivery falls and reputation follows is one
+     story, not three readings. */
+  .hud-group-signals {
+    background: #121a24; border: 1px solid #2a3746; border-radius: 6px;
+    padding: 4px 14px; gap: 20px;
+  }
+  .hud-readout { display: flex; flex-direction: column; gap: 1px; line-height: 1.15; min-width: 0; }
+  .hud-label { color: #6b8199; font-size: 8px; letter-spacing: .14em; text-transform: uppercase; white-space: nowrap; }
+  .hud-value { color: #dbe4ee; font-size: 14px; font-weight: 700; white-space: nowrap; }
+  .hud-readout-time .hud-value { letter-spacing: .06em; }
+  .hud-rush { color: var(--warn); font-size: 9px; font-weight: 700; letter-spacing: .12em; margin-left: 8px; }
+  #topbar .time-controls {
+    display: flex; align-items: center; gap: 4px; margin: 0 0 0 auto; flex: 0 0 auto;
+  }
+  #topbar .time-controls button { padding: 5px 9px; font-size: 9px; }
+  /* The context row: one line each, and silent when there is nothing to say.
+     A line that always shows a dash is a line the eye learns to skip. */
+  .hud-context {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 18px;
+    align-items: center; border-top: 1px solid #23303f;
+    padding: 4px 14px 5px; font-size: 10px; line-height: 1.4; min-height: 21px;
+  }
+  .hud-context-why, .hud-context-pattern, .hud-context-milestone {
+    min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .hud-context-milestone { color: #5f7488; }
+
   #log {
     position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
     font-size: 12px; pointer-events: none; text-align: center;
   }
 
-  aside { background: var(--panel); padding: 16px; overflow-y: auto; }
-  h1 { font-size: 13px; letter-spacing: .18em; margin: 0 0 14px; color: var(--info); }
-  h1 small { display: block; color: #5f7488; letter-spacing: .04em; font-size: 10px; margin-top: 4px; }
+  aside { background: var(--panel); padding: 16px; overflow-y: auto; min-height: 0; }
+
+  /* The sidebar is the next action and the palette (issue #13). Anything the
+     player reads only while inspecting something is either contextual — it
+     appears with the selection and is gone without it — or behind `D`. These
+     two disclosures are the exception: player-facing reference that has to
+     stay reachable without the developer view, but must not sit open in the
+     column competing with the palette. */
+  details.player-details { margin-top: 12px; }
+  details.player-details > summary {
+    color: #6b8199; cursor: pointer; font-size: 9px; font-weight: 600;
+    letter-spacing: .14em; list-style: none; padding: 4px 0;
+  }
+  details.player-details > summary::-webkit-details-marker { display: none; }
+  details.player-details > summary::before { content: '▸ '; color: #52657a; }
+  details.player-details[open] > summary::before { content: '▾ '; }
+  details.player-details > summary:hover { color: var(--info); }
+
+  /* The contextual inspector: present with a selection, absent without one.
+     Each panel already hides itself; the region collapses too so it cannot
+     leave a gap where a panel used to be. */
+  #inspector-region:not(:has(.open)) { display: none; }
 
   .stat { display: flex; justify-content: space-between; font-size: 12px; padding: 4px 0; }
   .stat span:first-child { color: #6b8199; }
@@ -38,8 +103,6 @@
   .metric-key b { color: #dbe4ee; font-weight: 700; letter-spacing: .04em; }
   .stat b small { font-size: 10px; font-weight: 500; margin-left: 4px; }
   #tenant-utilization-trend .recovery-reading { color: var(--info); outline: 1px solid var(--info); border-radius: 2px; padding: 0 1px; }
-  #milestone { color: #aebdca; background: #16202b; border: 1px solid #2f4055; border-radius: 5px; padding: 7px 8px; margin-top: 8px; font-size: 9px; line-height: 1.45; }
-  #milestone strong { display: block; color: var(--warn); letter-spacing: .1em; font-size: 9px; }
   .rule { height: 1px; background: #2a3746; margin: 12px 0; }
 
   h2 { font-size: 10px; letter-spacing: .16em; color: #6b8199; margin: 0 0 8px; font-weight: 600; }
@@ -97,7 +160,7 @@
   #developer-panel h2 { color: var(--info); }
   .goal { border-left: 2px solid var(--good); padding: 1px 0 1px 9px; margin: 13px 0 14px; }
   .goal strong { color: var(--good); }
-  .goal div:last-child { color: #aebdca; font-size: 10px; line-height: 1.55; margin-top: 3px; }
+  #goal-copy { color: #aebdca; font-size: 10px; line-height: 1.55; margin-top: 3px; }
   .diagnostics { font-size: 10px; color: #aebdca; line-height: 1.45; }
   .diag { display: flex; justify-content: space-between; gap: 8px; }
   .diag b { color: var(--info); font-weight: 600; }
@@ -213,6 +276,10 @@
   #unit-inspector { display: none; background: #16202b; border: 1px solid #2f4055; border-radius: 6px; padding: 9px 10px; margin: 12px 0; }
   #unit-inspector.open { display: block; }
   #unit-title { color: var(--info); font-size: 11px; font-weight: 700; }
+  /* Issue #11's line, at the top of the room it is about. One line, no box:
+     it reads as a caption on the title, not as another panel. */
+  #unit-appeal-why { font-size: 9px; line-height: 1.45; margin-top: 4px; }
+  #unit-appeal-why[hidden] { display: none; }
   #unit-status { color: var(--bad); font-size: 9px; margin-top: 4px; }
   #unit-detail { color: #aebdca; font-size: 9px; margin: 6px 0; }
   #unit-utilization-context { font-size: 9px; line-height: 1.45; margin: 6px 0; }
@@ -398,41 +465,39 @@
 </style>
 </head>
 <body>
-  <div id="stage">
-    <canvas id="tower"></canvas>
-    <div id="build-ghost" hidden aria-hidden="true"><span id="build-ghost-reason"></span></div>
-    <div id="clock"></div>
-    <div id="log"></div>
-  </div>
-
-  <aside>
-    <h1>LIFT<small>tower management game</small></h1>
-
-    <div class="goal">
-      <strong>OBJECTIVE</strong>
-      <div id="goal-copy">Keep delivery above 55% so tenants stay.</div>
-      <div class="player-help">The lot is empty and the <b>lobby</b> tool is armed: your first click builds the entrance, and the ground it stands on is free. Then add rooms — each one brings its own storey — and run a shaft up to them. A tool stays armed until <b>Esc</b>.</div>
-      <div class="player-help-links"><a href="../../../docs/HOW_TO_PLAY.md" target="_blank" rel="noreferrer">How to play</a> · <a href="../../../docs/RULES.md" target="_blank" rel="noreferrer">Rules</a></div>
-      <div class="player-key"><b>W</b> waiting · <b>T</b> tenants/capacity · <b>delivery</b> trips completed · <b>reputation</b> tenant trust · <b>desirability</b> room appeal</div>
-      <div class="player-color-key"><b>room colors:</b> blue office · green condo · amber shop · violet hotel · gray empty · red fade = low appeal · yellow/red line = tenant stress</div>
-      <div class="player-session-controls"><button id="restart-game" type="button" title="reset this tower and start a fresh session">new session</button></div>
+  <!-- The player HUD. It is a sibling of the stage and the sidebar, not a
+       child of either, so it cannot scroll away with the column that used to
+       carry every reading at once (issue #13). -->
+  <header id="topbar">
+    <div class="hud-row">
+      <h1 class="hud-brand">LIFT</h1>
+      <div id="top-bar-mount"></div>
       <div id="time-controls" class="time-controls" aria-label="time controls">
-        <label>TIME</label>
         <button type="button" data-speed="0">pause</button>
         <button type="button" data-speed="1">1x</button>
         <button type="button" data-speed="4">4x</button>
         <button type="button" data-speed="12">12x</button>
       </div>
+    </div>
+    <div class="hud-context" id="hud-context-mount"></div>
+  </header>
+
+  <div id="stage">
+    <canvas id="tower"></canvas>
+    <div id="build-ghost" hidden aria-hidden="true"><span id="build-ghost-reason"></span></div>
+    <div id="log"></div>
+  </div>
+
+  <aside>
+    <div class="goal">
+      <strong>OBJECTIVE</strong>
+      <div id="goal-copy">Keep delivery above 55% so tenants stay.</div>
       <div id="quick-action" class="quick-action" hidden aria-live="polite">
         <div class="quick-action-label">NEXT ACTION</div>
         <button id="quick-action-button" type="button">—</button>
         <div id="quick-action-detail" class="quick-action-detail">—</div>
       </div>
-    </div>
-
-    <div class="guide beta-path">
-      <strong>FIRST SESSION PATH</strong>
-      <div id="beta-path">—</div>
+      <div class="player-session-controls"><button id="restart-game" type="button" title="reset this tower and start a fresh session">new session</button></div>
     </div>
 
     <h2>BUILD</h2>
@@ -483,19 +548,9 @@
       </div>
     </div>
 
-    <div id="stat-bar-mount"></div>
-
-    <div class="rule"></div>
-
-    <div class="guide">
-      <strong>START HERE</strong>
-      <ol>
-      <li>The <b>lobby</b> tool is already armed. Click the ground floor to place the entrance.</li>
-      <li>Stack a storey with <b>floor</b>, run a <b>shaft</b> up it, then fill it with offices.</li>
-      <li>Watch the <b>W</b> waiting badge and <b>T</b> tenant badge.</li>
-      <li>When waiting turns amber or red, add a car to the highlighted shaft.</li>
-      </ol>
-    </div>
+    <div id="mode" role="status" aria-live="polite" aria-atomic="true">OFFICE selected — click an upper floor to place it.</div>
+    <button id="cancel-tool" type="button" hidden>cancel action</button>
+    <div id="placement-preview" class="placement-preview" hidden></div>
 
     <h2 class="rent-heading">RENT</h2>
     <div id="rent-control">
@@ -505,32 +560,58 @@
     </div>
     <p class="rent-hint">Higher rent pays more but lowers room evaluation. Cafeterias ±1; parking ±2; clinics ±3; security ±4; recycling ±2.</p>
 
-    <div id="mode" role="status" aria-live="polite" aria-atomic="true">OFFICE selected — click an upper floor to place it.</div>
-    <button id="cancel-tool" type="button" hidden>cancel action</button>
-    <div id="placement-preview" class="placement-preview" hidden></div>
+    <!-- The contextual inspector. Present with a selection, gone without one:
+         each panel hides itself and the region collapses with them, so nothing
+         stands here empty (issue #13). -->
+    <div id="inspector-region">
+      <div id="facility-inspector"></div>
+      <div id="shaft-inspector"></div>
 
-    <div id="facility-inspector"></div>
-    <div id="shaft-inspector"></div>
-
-    <div id="unit-inspector">
-      <div id="unit-title">—</div>
-      <div id="unit-status">—</div>
-      <div id="unit-detail">—</div>
-      <div id="unit-utilization-context">—</div>
-      <div id="conversion-controls"></div>
-      <div id="unit-actions">
-        <button id="renovate-unit">renovate</button>
-        <button id="rerent-unit">re-rent</button>
-        <button id="demolish-unit">demolish</button>
-        <button id="cancel-confirmation" hidden>cancel preview</button>
+      <div id="unit-inspector">
+        <div id="unit-title">—</div>
+        <div id="unit-appeal-why">—</div>
+        <div id="unit-status">—</div>
+        <div id="unit-detail">—</div>
+        <div id="unit-utilization-context">—</div>
+        <div id="conversion-controls"></div>
+        <div id="unit-actions">
+          <button id="renovate-unit">renovate</button>
+          <button id="rerent-unit">re-rent</button>
+          <button id="demolish-unit">demolish</button>
+          <button id="cancel-confirmation" hidden>cancel preview</button>
+        </div>
+        <div id="recovery-warning"></div>
+        <div id="rerent-reason">—</div>
       </div>
-      <div id="recovery-warning"></div>
-      <div id="rerent-reason">—</div>
     </div>
+
+    <details class="player-details">
+      <summary>HOW TO READ THE TOWER</summary>
+      <div class="player-help">The lot is empty and the <b>lobby</b> tool is armed: your first click builds the entrance, and the ground it stands on is free. Then add rooms — each one brings its own storey — and run a shaft up to them. A tool stays armed until <b>Esc</b>.</div>
+      <div class="player-key"><b>W</b> waiting · <b>T</b> tenants/capacity · <b>delivery</b> trips completed · <b>reputation</b> tenant trust · <b>desirability</b> room appeal</div>
+      <div class="player-color-key"><b>room colors:</b> blue office · green condo · amber shop · violet hotel · gray empty · red fade = low appeal · yellow/red line = tenant stress</div>
+      <div class="guide">
+        <strong>START HERE</strong>
+        <ol>
+        <li>The <b>lobby</b> tool is already armed. Click the ground floor to place the entrance.</li>
+        <li>Add an <b>office</b> above it — the room raises its own storey — then run a <b>shaft</b> up to it.</li>
+        <li>Watch the <b>waiting</b> and <b>delivered</b> readouts in the bar above the tower.</li>
+        <li>When waiting turns amber or red, add a car to the highlighted shaft.</li>
+        </ol>
+      </div>
+      <div class="player-help-links"><a href="../../../docs/HOW_TO_PLAY.md" target="_blank" rel="noreferrer">How to play</a> · <a href="../../../docs/RULES.md" target="_blank" rel="noreferrer">Rules</a></div>
+    </details>
+
+    <details class="player-details">
+      <summary>FIRST SESSION PATH</summary>
+      <div class="guide beta-path"><div id="beta-path">—</div></div>
+    </details>
 
     <button id="developer-toggle" class="developer-toggle" type="button" aria-expanded="false">show developer details</button>
     <section id="developer-panel" hidden>
       <h2>DEVELOPER DETAILS</h2>
+      <div id="stat-bar-mount"></div>
+      <div class="rule"></div>
       <div id="transport" class="diagnostics">—</div>
       <div id="expansion-safety" class="build-safety" role="status" aria-live="polite">—</div>
       <div class="legend">
