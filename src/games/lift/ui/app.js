@@ -5538,6 +5538,13 @@ addEventListener('keydown', (e) => {
   if (e.key.toLowerCase() === 'r') restart();
   if (e.key.toLowerCase() === 'e') exportTape();
   if (e.key.toLowerCase() === 'd') setDeveloperMode(!developerMode);
+  // The appeal view (issue #12). The renderer computes and draws it; without
+  // this line it is unreachable, which is precisely the defect issue #14 is
+  // about — art and code that exist and nothing ever asks for.
+  if (e.key.toLowerCase() === 'a') {
+    const on = renderer.toggleAppealOverlay();
+    toast(on ? 'appeal view — every room tinted by room appeal' : 'appeal view off', INFO);
+  }
 });
 
 function restart() {
