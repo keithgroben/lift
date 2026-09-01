@@ -1,6 +1,6 @@
 import {
-  nid, freeSlot, slotsUsed, unlocked, pushEvent, assignTenantJitter,
-  basementDepth, floorCost, isBuildableFloor, lowestFloor,
+  nid, freeSlot, freeSupportedSlot, slotsUsed, unlocked, pushEvent, assignTenantJitter,
+  basementDepth, floorCost, isBuildableFloor, isSupported, lowestFloor,
 } from './state.js';
 import { clampRentLevel, rentForLevel } from './pricing.js';
 import { unitEvaluation, leasingForecast } from './evaluation.js';
@@ -185,8 +185,10 @@ const ACTIONS = {
     } else if (!isBuildableFloor(state, a.floor, config)) {
       return { ok: false, reason: a.floor > state.floors ? 'nothing to build that on yet' : 'no such floor' };
     }
-    const slot = a.slot ?? freeSlot(state, config, a.floor);
+    const slot = a.slot ?? freeSupportedSlot(state, config, a.floor);
     if (slot < 0 || slotsUsed(state, a.floor).has(slot)) return { ok: false, reason: 'floor is full' };
+    // A room rests on something or it does not go up. See isSupported().
+    if (!isSupported(state, a.floor, slot, config)) return { ok: false, reason: 'nothing holds that up — build on top of the tower' };
     // Tenant demand is capped at the tower's current move-in capacity, so
     // rooms built faster than that just sit empty racking up vacant-unit
     // upkeep — a bankruptcy trap that has nothing to do with elevator
@@ -233,8 +235,9 @@ const ACTIONS = {
     if (!config.services?.[kind]) return { ok: false, reason: `no such facility ${kind}` };
     if (!unlocked(state, config, kind)) return { ok: false, reason: `${kind} is locked` };
     if (!isBuildableFloor(state, a.floor, config)) return { ok: false, reason: 'no such floor' };
-    const slot = a.slot ?? freeSlot(state, config, a.floor);
+    const slot = a.slot ?? freeSupportedSlot(state, config, a.floor);
     if (slot < 0 || slotsUsed(state, a.floor).has(slot)) return { ok: false, reason: 'floor is full' };
+    if (!isSupported(state, a.floor, slot, config)) return { ok: false, reason: 'nothing holds that up — build on top of the tower' };
     const cost = config.costs[kind];
     if (!Number.isFinite(cost)) return { ok: false, reason: `${kind} has no build cost` };
     if (!charge(state, floorCost(config, a.floor, cost))) return { ok: false, reason: 'not enough money' };

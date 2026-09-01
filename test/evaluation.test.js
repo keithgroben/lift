@@ -2597,7 +2597,9 @@ export const tests = {
     config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     const state = boot(config, 32);
-    const unit = applyAction(state, { type: 'build_unit', kind: 'office', floor: 3 }, config);
+    // On the first storey, which stands on the ground: this fixture is about
+    // a room with no shaft, and it must be buildable before there is one.
+    const unit = applyAction(state, { type: 'build_unit', kind: 'office', floor: 1 }, config);
     assert(unit.ok, unit.reason);
     state.units[0].occupied = false;
     state.units[0].vacantDays = config.units.office.relistDays - 1;

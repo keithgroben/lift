@@ -648,21 +648,32 @@ export function makeRenderer(canvas, config) {
 
     for (let f = visible.low; f <= visible.high; f++) {
       const y = L.floorY(f);
-      // A basement is cut out of the earth, so it needs its own dark ground
-      // rather than the translucent band an above-ground storey gets — soil
-      // showing through a room is what made the first dig look like a bug.
-      ctx.fillStyle = isUnderground(f) ? '#171d1a' : f === 0 ? '#141c26' : 'rgba(27,36,48,0.55)';
-      roundRect(ctx, L.x0 - 6, y, L.cw * L.cols + 12, L.fh - 2, 3);
-      ctx.fill();
-      // A dug storey is bare concrete until something is built in it. Rooms
-      // draw over this, so an occupied basement slot never shows it.
-      if (isUnderground(f)) {
-        for (let slot = 0; slot < L.cols; slot++) {
-          const x = L.x0 + slot * L.cw;
-          if (x + L.cw < 0 || x > W) continue;
-          sprites.drawSprite(ctx, { name: 'basement-empty', animation: 'tile', x, y, scale: L.zoom });
-        }
+      // A storey is only as wide as what stands on it. Painting the full grid
+      // as a slab is what let a single office on floor 6 look like a whole
+      // finished floor with the rest of it merely unfurnished — Keith,
+      // 2026-09-01: "you are making floors and filling in rooms wherever."
+      // Now the building is exactly the cells that were built, and the sky
+      // shows through the rest, which is also what the support rule says is
+      // true (see isSupported in sim/state.js).
+      const built = slotsUsed(state, f);
+      const isGround = f === (config.building.lobbyFloor ?? 0);
+      if (!built.size && !isGround) continue;
+
+      ctx.fillStyle = isUnderground(f) ? '#171d1a' : isGround ? '#141c26' : 'rgba(27,36,48,0.55)';
+      for (const slot of built) {
+        const x = L.x0 + slot * L.cw;
+        if (x + L.cw < 0 || x > W) continue;
+        // Segments butt against each other, so a run of built slots reads as
+        // one slab and a gap reads as a gap.
+        ctx.fillRect(x, y, L.cw, L.fh - 2);
+        // A dug storey is bare concrete until something is built in it. Rooms
+        // draw over this, so an occupied basement slot never shows it.
+        if (isUnderground(f)) sprites.drawSprite(ctx, { name: 'basement-empty', animation: 'tile', x, y, scale: L.zoom });
       }
+      // The ground floor keeps its full-width band: it is the plot, and the
+      // street runs the length of it whether or not anything stands there yet.
+      if (isGround) ctx.fillRect(L.x0, y, L.cw * L.cols, L.fh - 2);
+
       ctx.fillStyle = isUnderground(f) ? 'rgba(198,166,124,0.45)' : 'rgba(142,202,230,0.35)';
       ctx.font = '10px ui-monospace, monospace';
       ctx.textAlign = 'right';

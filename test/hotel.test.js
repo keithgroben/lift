@@ -60,7 +60,9 @@ export const tests = {
   'poor reputation reduces the next hotel booking load without emptying it'() {
     const config = unlockedHotelConfig();
     const state = boot(config, 503);
-    const built = applyAction(state, { type: 'build_unit', kind: 'hotel', floor: 3 }, config);
+    // The first storey stands on the ground; with no shaft anywhere, a hotel
+    // is just as unreachable here as it was on F3.
+    const built = applyAction(state, { type: 'build_unit', kind: 'hotel', floor: 1 }, config);
     assert(built.ok, built.reason);
     const hotel = state.units[0];
     state.log = [{ deliveryRate: 0 }, { deliveryRate: 20 }];
@@ -76,7 +78,7 @@ export const tests = {
   'hotel room evaluation also controls booking load'() {
     const config = unlockedHotelConfig();
     const stranded = boot(config, 504);
-    const poorBuilt = applyAction(stranded, { type: 'build_unit', kind: 'hotel', floor: 3 }, config);
+    const poorBuilt = applyAction(stranded, { type: 'build_unit', kind: 'hotel', floor: 1 }, config);
     assert(poorBuilt.ok, poorBuilt.reason);
     const poorHotel = stranded.units[0];
     const poorClosed = dayClose(stranded, config);
@@ -97,13 +99,13 @@ export const tests = {
   'hotel service summary identifies missing and covered services'() {
     const config = unlockedHotelConfig();
     const state = boot(config, 506);
-    const built = applyAction(state, { type: 'build_unit', kind: 'hotel', floor: 3 }, config);
+    const built = applyAction(state, { type: 'build_unit', kind: 'hotel', floor: 1 }, config);
     assert(built.ok, built.reason);
     const hotel = state.units[0];
     const before = hotelServiceSummary(state, hotel, config);
     assert(before.requiredCount === 4 && before.coveredCount === 0 && before.missing.includes('food'),
       'hotel service summary did not expose missing coverage');
-    assert(applyAction(state, { type: 'build_facility', kind: 'food', floor: 3 }, config).ok,
+    assert(applyAction(state, { type: 'build_facility', kind: 'food', floor: 1 }, config).ok,
       'could not build hotel food service');
     const after = hotelServiceSummary(state, hotel, config);
     assert(after.coveredCount === 1 && !after.missing.includes('food'),
@@ -113,13 +115,13 @@ export const tests = {
   'hotel guest experience reflects stress and service coverage'() {
     const config = unlockedHotelConfig();
     const state = boot(config, 507);
-    const built = applyAction(state, { type: 'build_unit', kind: 'hotel', floor: 3 }, config);
+    const built = applyAction(state, { type: 'build_unit', kind: 'hotel', floor: 1 }, config);
     assert(built.ok, built.reason);
     const hotel = state.units[0];
     const before = hotelGuestExperience(state, hotel, config);
     assert(before.score === config.units.hotel.guestExperience.stressWeight,
       'unserved hotel did not expose its service-based experience score');
-    assert(applyAction(state, { type: 'build_facility', kind: 'food', floor: 3 }, config).ok,
+    assert(applyAction(state, { type: 'build_facility', kind: 'food', floor: 1 }, config).ok,
       'could not build hotel experience food service');
     const afterService = hotelGuestExperience(state, hotel, config);
     assert(afterService.score > before.score && afterService.servicePenalty < before.servicePenalty,
@@ -133,7 +135,7 @@ export const tests = {
   'hotel guest feedback summary records a daily trend signal'() {
     const config = unlockedHotelConfig();
     const state = boot(config, 508);
-    const built = applyAction(state, { type: 'build_unit', kind: 'hotel', floor: 3 }, config);
+    const built = applyAction(state, { type: 'build_unit', kind: 'hotel', floor: 1 }, config);
     assert(built.ok, built.reason);
     const hotel = state.units[0];
     const first = dayClose(state, config);
@@ -150,8 +152,8 @@ export const tests = {
   'hotel feedback weights rooms by booked guests'() {
     const config = unlockedHotelConfig();
     const state = boot(config, 510);
-    const firstBuilt = applyAction(state, { type: 'build_unit', kind: 'hotel', floor: 3 }, config);
-    const secondBuilt = applyAction(state, { type: 'build_unit', kind: 'hotel', floor: 3 }, config);
+    const firstBuilt = applyAction(state, { type: 'build_unit', kind: 'hotel', floor: 1 }, config);
+    const secondBuilt = applyAction(state, { type: 'build_unit', kind: 'hotel', floor: 1 }, config);
     assert(firstBuilt.ok && secondBuilt.ok, 'could not build multi-room hotel feedback fixture');
     const [fullRoom, smallRoom] = state.units;
     smallRoom.heads = config.units.hotel.minGuests;

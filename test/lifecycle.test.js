@@ -89,11 +89,13 @@ export const tests = {
     config.economy.startMoney = 10000000;
     config.stars.tiers[1].pop = 0;
     const state = boot(config, 120);
-    assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 3, slot: 1 }, config).ok,
+    // Same three rooms, same three columns, moved down to the storey that
+    // stands on the ground. This fixture counts heads, not altitude.
+    assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 1, slot: 1 }, config).ok,
       'could not build first demand mix office');
-    assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 3, slot: 2 }, config).ok,
+    assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 1, slot: 2 }, config).ok,
       'could not build second demand mix office');
-    assert(applyAction(state, { type: 'build_unit', kind: 'condo', floor: 3, slot: 3 }, config).ok,
+    assert(applyAction(state, { type: 'build_unit', kind: 'condo', floor: 1, slot: 3 }, config).ok,
       'could not build demand mix condo');
     const mix = tenantMixDemand(state, config);
     const offices = mix.find((entry) => entry.kind === 'office');
@@ -114,7 +116,9 @@ export const tests = {
     config.stars.tiers[1].pop = 0;
     const state = boot(config, 126);
     const office = applyAction(state, { type: 'build_unit', kind: 'office', floor: 1 }, config);
-    const condo = applyAction(state, { type: 'build_unit', kind: 'condo', floor: 3 }, config);
+    // Down to the ground storey, and far enough along it that the two rooms
+    // stay the non-neighbours they were three floors apart.
+    const condo = applyAction(state, { type: 'build_unit', kind: 'condo', floor: 1, slot: 5 }, config);
     assert(office.ok && condo.ok, 'could not build reputation-demand fixture');
     const high = marketDemandBonus(state, { kind: 'hotel' }, config);
     const factor = reputationDemandFactor(state, config, 60);
@@ -182,7 +186,7 @@ export const tests = {
     const first = dayClose(state, config);
     assert(first.tenantMix && Number.isFinite(first.tenantMix.balance),
       'day close did not record tenant mix');
-    assert(applyAction(state, { type: 'build_unit', kind: 'condo', floor: 3 }, config).ok,
+    assert(applyAction(state, { type: 'build_unit', kind: 'condo', floor: 1, slot: 5 }, config).ok,
       'could not build second mix-history condo');
     const second = dayClose(state, config);
     const history = tenantMixHistory(state, config);
@@ -305,7 +309,9 @@ export const tests = {
     config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     const state = boot(config, 121);
-    const built = applyAction(state, { type: 'build_unit', kind: 'office', floor: 3, slot: 1 }, config);
+    // The shaft this fixture adds later is what makes the room lettable; the
+    // room itself has to stand up before that, so it starts on the ground storey.
+    const built = applyAction(state, { type: 'build_unit', kind: 'office', floor: 1, slot: 1 }, config);
     assert(built.ok, built.reason);
     const unit = state.units[0];
     unit.occupied = false;
@@ -389,7 +395,7 @@ export const tests = {
     config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     const state = boot(config, 117);
-    assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 3 }, config).ok,
+    assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 1 }, config).ok,
       'could not build office');
     const unit = state.units[0];
     const occupied = applyAction(state, { type: 'demolish_unit', id: unit.id }, config);
@@ -457,7 +463,7 @@ export const tests = {
     config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     const state = boot(config, 115);
-    assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 3 }, config).ok,
+    assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 1 }, config).ok,
       'could not build office');
     const unit = state.units[0];
     const occupied = applyAction(state, { type: 'convert_unit', id: unit.id, kind: 'condo' }, config);
@@ -498,7 +504,7 @@ export const tests = {
     config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     const state = boot(config, 113);
-    assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 3 }, config).ok,
+    assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 1 }, config).ok,
       'could not build office');
     const unit = state.units[0];
     const occupied = applyAction(state, { type: 'renovate_unit', id: unit.id }, config);
@@ -544,7 +550,7 @@ export const tests = {
     config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     const state = boot(config, 112);
-    assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 3 }, config).ok,
+    assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 1 }, config).ok,
       'could not build office');
     const unit = state.units[0];
     unit.occupied = false;

@@ -10,8 +10,16 @@ function makeNoisePair(kind) {
   config.economy.startMoney = 10000000;
   config.stars.tiers[1].pop = 0;
   const state = boot(config, kind === 'condo' ? 52 : 53);
-  assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok,
+  assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3, slot: 0 }, config).ok,
     'could not build shaft');
+  // The control room sits a storey below the receiver, in the same column, and
+  // a room has to rest on something. Support it with a second shaft rather than
+  // a room: a shaft is not a noise source, so the measurement is untouched, and
+  // both rooms end up exactly one slot from a shaft — the access term shifts
+  // for the receiver and the control by the same amount, which is what keeps
+  // their scores comparable.
+  assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3, slot: 3 }, config).ok,
+    'could not build the support shaft');
   assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 3, slot: 1 }, config).ok,
     'could not build noise source');
   assert(applyAction(state, { type: 'build_unit', kind, floor: 3, slot: 2 }, config).ok,

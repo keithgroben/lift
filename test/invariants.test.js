@@ -53,7 +53,10 @@ export const tests = {
   'stranded riders are charged the full abandon wait, not zero'() {
     const s = withFloors(boot(CONFIG, 5), CONFIG);
     applyAction(s, { type: 'build_shaft', bottom: 0, top: 1 }, CONFIG); // reaches floor 1 only
-    applyAction(s, { type: 'build_unit', kind: 'office', floor: 3 }, CONFIG);
+    // Directly on top of the stub shaft's own column: floor 2 is the first
+    // storey the shaft cannot reach, and the shaft's top cell is what holds
+    // the office up.
+    applyAction(s, { type: 'build_unit', kind: 'office', floor: 2 }, CONFIG);
     // Day 1's schedule was built by boot(), before the fixture unit existed —
     // read day 2, the first day that actually has trips to strand.
     while (s.day <= 3) step(s, CONFIG.time.dt, CONFIG);

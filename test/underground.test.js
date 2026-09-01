@@ -94,6 +94,12 @@ export const tests = {
     assert(isBuildableFloor(state, -2, config) && !isBuildableFloor(state, -3, config),
       'buildability does not stop at the dug depth');
 
+    // A basement hangs off the storey above it, so B2 slot 3 needs B1 slot 3
+    // built before anything can hang there. A parking deck, not a room: it
+    // holds the column up without becoming state.units[0].
+    assert(act(state, config, 'build_facility', { kind: 'parking', floor: -1, slot: 3 }).ok,
+      'could not hang a parking deck off B1');
+
     const before = state.money;
     assert(act(state, config, 'build_unit', { kind: 'office', floor: -2, slot: 3 }).ok,
       'could not build an office on B2');

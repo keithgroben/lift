@@ -168,9 +168,75 @@ export function slotsUsed(state, floor) {
   return used;
 }
 
+/**
+ * Is anything standing in this cell? Rooms, facilities, the lobby, and any
+ * transport column passing through it all count as built.
+ */
+export function cellBuilt(state, floor, slot) {
+  return slotsUsed(state, floor).has(slot);
+}
+
+/**
+ * **A room has to rest on something.** Keith's ruling, 2026-09-01, looking at
+ * a tower whose offices climbed the screen in a diagonal staircase with open
+ * air underneath each one: "you build the lobby, then you can only build on
+ * top of the lobby — you can only build another floor on top of existing
+ * structure."
+ *
+ * The mistake that produced that picture was checking the wrong thing. The
+ * rule was written at STOREY granularity — "the floor index exists, so build
+ * away" — when support is a property of a CELL. A storey being open for
+ * business says nothing about whether that particular slot has anything
+ * holding it up.
+ *
+ * A cell is legal to build in when either:
+ *
+ *  - the cell directly beneath it is built — it sits ON something; or
+ *  - a neighbour on its own storey is built — the floor spreads sideways from
+ *    somewhere that is itself supported.
+ *
+ * The second clause is what lets a tower widen as it rises instead of growing
+ * as a single column, and it stays anchored because every built cell was
+ * itself legal when it was placed. Follow any of them down and you arrive at
+ * the lobby, which is why the lobby is the first thing you buy.
+ */
+export function isSupported(state, floor, slot, config) {
+  const ground = config?.building?.lobbyFloor ?? 0;
+  if (!Number.isInteger(floor) || !Number.isInteger(slot)) return false;
+  if (floor === ground) return true;               // the ground rests on the ground
+
+  // Underground digs downward, so "beneath" is the cell ABOVE for a basement:
+  // a basement hangs off the storey over it, which is the direction it was
+  // excavated from.
+  const beneath = floor > ground ? floor - 1 : floor + 1;
+  // The storey immediately on the ground stands on the ground itself — a
+  // building spreads along its street before it climbs. Everything above that
+  // has to stack.
+  if (beneath === ground) return (state?.floors ?? 0) > ground;
+  if (cellBuilt(state, beneath, slot)) return true;
+  return cellBuilt(state, floor, slot - 1) || cellBuilt(state, floor, slot + 1);
+}
+
 export function freeSlot(state, config, floor) {
   const used = slotsUsed(state, floor);
   for (let i = 0; i < config.building.slotsPerFloor; i++) if (!used.has(i)) return i;
+  return -1;
+}
+
+/**
+ * The first free slot on this storey that something is actually holding up.
+ *
+ * This is what a caller means when it says "put an office on floor 6" without
+ * naming a column: the tower picks a spot, and every spot the tower picks has
+ * to obey the same physics a player's click does. Falls back to -1 rather than
+ * to an unsupported slot — a storey with nothing under any of its free columns
+ * is genuinely full, however much empty grid it shows.
+ */
+export function freeSupportedSlot(state, config, floor) {
+  const used = slotsUsed(state, floor);
+  for (let i = 0; i < config.building.slotsPerFloor; i++) {
+    if (!used.has(i) && isSupported(state, floor, i, config)) return i;
+  }
   return -1;
 }
 

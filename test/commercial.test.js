@@ -21,6 +21,12 @@ export const tests = {
   'shop lunch demand uses a local floor catchment'() {
     const config = unlockedShopConfig();
     const nearState = boot(config, 601);
+    // The catchment is a floor distance, so the shop has to be four storeys up
+    // — and something has to hold it there. A shaft column is the cheapest
+    // honest support: it carries the floors without adding a tenant that would
+    // change the office count this test is measuring.
+    assert(applyAction(nearState, { type: 'build_shaft', bottom: 0, top: 5, slot: 0 }, config).ok,
+      'could not build near catchment shaft');
     assert(applyAction(nearState, { type: 'build_unit', kind: 'office', floor: 1 }, config).ok,
       'could not build near office');
     assert(applyAction(nearState, { type: 'build_unit', kind: 'shop', floor: 4 }, config).ok,
@@ -33,6 +39,8 @@ export const tests = {
       'near shop did not create lunch demand');
 
     const farState = boot(config, 602);
+    assert(applyAction(farState, { type: 'build_shaft', bottom: 0, top: 5, slot: 0 }, config).ok,
+      'could not build far catchment shaft');
     assert(applyAction(farState, { type: 'build_unit', kind: 'office', floor: 1 }, config).ok,
       'could not build far office');
     assert(applyAction(farState, { type: 'build_unit', kind: 'shop', floor: 5 }, config).ok,
@@ -76,7 +84,7 @@ export const tests = {
   'closed day records realized traffic for each shop'() {
     const config = unlockedShopConfig();
     const state = boot(config, 604);
-    assert(applyAction(state, { type: 'build_unit', kind: 'shop', floor: 2 }, config).ok,
+    assert(applyAction(state, { type: 'build_unit', kind: 'shop', floor: 1 }, config).ok,
       'could not build realized-income shop');
     const shop = state.units[0];
     shop.servedToday = 4;
@@ -135,7 +143,7 @@ export const tests = {
   'shop traffic tenant-mix preview prices a nearby office and forecasts its gain'() {
     const config = unlockedShopConfig();
     const state = boot(config, 605);
-    assert(applyAction(state, { type: 'build_unit', kind: 'shop', floor: 2 }, config).ok,
+    assert(applyAction(state, { type: 'build_unit', kind: 'shop', floor: 1 }, config).ok,
       'could not build tenant-mix preview shop');
     const shop = state.units.find((unit) => unit.kind === 'shop');
     config.demand.shopCatchmentFloors = 1;

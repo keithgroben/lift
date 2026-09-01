@@ -83,6 +83,8 @@ function ensureOpeningFloors(state, config, floors = 4) {
 function opening(state, config, shaftCount = 3) {
   ensureOpeningFloors(state, config);
   for (let i = 0; i < shaftCount; i++) act(state, config, 'build_shaft', { bottom: 0, top: state.floors - 1 });
+  // Bottom up: a room on floor 3 needs floor 2 under it, so filling storeys in
+  // order is the only sequence that gets a tower off the ground.
   for (let f = 1; f < state.floors; f++) act(state, config, 'build_unit', { kind: 'office', floor: f });
 }
 
