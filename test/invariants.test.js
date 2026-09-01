@@ -4,6 +4,19 @@ import { POLICIES } from '../src/games/lift/policies.js';
 
 const assert = (c, m) => { if (!c) throw new Error(m); };
 
+/**
+ * Floors are a purchase now (`building.startFloors: 0` — a new session opens
+ * on bare ground), so a fixture that needs a standing tower buys its storeys
+ * through the same action seam the player uses.
+ */
+const withFloors = (state, config, floors = 4) => {
+  for (let i = 0; i < floors; i++) {
+    const built = applyAction(state, { type: 'build_floor' }, config);
+    if (!built.ok) throw new Error('fixture could not build a floor: ' + built.reason);
+  }
+  return state;
+};
+
 function play(policyKey, days, seed = 3, cfg = CONFIG) {
   const s = boot(cfg, seed);
   POLICIES[policyKey].open(s, cfg);
@@ -38,7 +51,7 @@ export const tests = {
    * must pin to the abandon ceiling — not sit near zero.
    */
   'stranded riders are charged the full abandon wait, not zero'() {
-    const s = boot(CONFIG, 5);
+    const s = withFloors(boot(CONFIG, 5), CONFIG);
     applyAction(s, { type: 'build_shaft', bottom: 0, top: 1 }, CONFIG); // reaches floor 1 only
     applyAction(s, { type: 'build_unit', kind: 'office', floor: 3 }, CONFIG);
     // Day 1's schedule was built by boot(), before the fixture unit existed —

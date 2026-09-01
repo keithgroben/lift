@@ -9,6 +9,7 @@ const assert = (condition, message) => {
 export const tests = {
   'first-session path exposes transport pressure and recovers with a car'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     const state = boot(config, 7006);
 
     assert(applyAction(state, { type: 'build_lobby', slot: 0 }, config).ok,
@@ -48,6 +49,7 @@ export const tests = {
 
   'beta acceptance path carries transport recovery into service management'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     const state = boot(config, 7006);
 
     assert(applyAction(state, { type: 'build_lobby', slot: 0 }, config).ok,
@@ -91,6 +93,7 @@ export const tests = {
     let serviceRuns = 0;
     for (let seed = 1; seed <= 20; seed++) {
       const config = structuredClone(CONFIG);
+      config.building.startFloors = 4;
       const state = boot(config, seed);
       assert(applyAction(state, { type: 'build_lobby', slot: 0 }, config).ok,
         'balance sample could not build the lobby for seed ' + seed);

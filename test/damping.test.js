@@ -27,6 +27,7 @@ function fixture(config) {
 export const tests = {
   'damper knobs at their defaults reproduce the binary gate exactly'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     const state = fixture(config);
     const open = leasingForecast(state, config, 80);
     assert(open.flowFactor === 1, 'default knobs must give full flow above the gate');
@@ -39,6 +40,7 @@ export const tests = {
 
   'proportional gate scales applicant flow between the gate and full-flow rep'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.occupancy.moveInFullFlowRate = 85;
     const state = fixture(config);
     const low = leasingForecast(state, config, 58);
@@ -51,6 +53,7 @@ export const tests = {
 
   'capacity cap clamps the flood'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.occupancy.moveInCapacityMax = 3;
     const state = fixture(config);
     const forecast = leasingForecast(state, config, 95);
@@ -59,11 +62,13 @@ export const tests = {
 
   'vacate jitter is off by default and bounded when enabled'() {
     const off = structuredClone(CONFIG);
+    off.building.startFloors = 4;
     const stateOff = fixture(off);
     assert(stateOff.units.every((u) => u.vacateJitter === 1 && u.graceJitter === 0),
       'jitter must be inert with the knobs off');
 
     const on = structuredClone(CONFIG);
+    on.building.startFloors = 4;
     on.occupancy.vacateJitterRange = 0.3;
     on.occupancy.graceJitterDays = 2;
     const stateOn = fixture(on);
@@ -78,6 +83,7 @@ export const tests = {
     // must be identical to a config that has never heard of the dampers —
     // otherwise every historical seed and replay silently changes.
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     const a = boot(structuredClone(config), 77);
     const b = boot(structuredClone(config), 77);
     fixtureLike(a, config);

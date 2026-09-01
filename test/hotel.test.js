@@ -8,6 +8,7 @@ const assert = (c, m) => { if (!c) throw new Error(m); };
 
 function unlockedHotelConfig() {
   const config = structuredClone(CONFIG);
+  config.building.startFloors = 4;
   config.economy.startMoney = 10000000;
   config.stars.tiers[0].unlocks.push('hotel');
   return config;
@@ -16,6 +17,7 @@ function unlockedHotelConfig() {
 export const tests = {
   'hotel unlocks at the population gate and uses guest capacity'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     config.building.startFloors = 30;
     const state = boot(config, 501);

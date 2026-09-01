@@ -27,6 +27,7 @@ export const tests = {
 
   'canvas badges name their counts without relying on color'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     assert(waitingBadgeText(0) === 'W 0' && waitingBadgeText(12) === 'W 12' &&
       shaftWaitingBadgeText(1, 0) === 'S1 · W 0' && shaftWaitingBadgeText(3, 12) === 'S3 · W 12' &&
       shaftQueueTrendMarker([0]) === '' && shaftQueueTrendMarker([0, 4]) === '↑' &&

@@ -59,6 +59,20 @@ function preferredRoomSlot(state, config, floor) {
 }
 
 /**
+ * Floors are a purchase now — `building.startFloors` is 0 so a human session
+ * opens on bare ground and buys the lobby first (spec/tower-view.md §4). A
+ * headless run has no such opening move, and a shaft cannot span a tower with
+ * no storeys, so every policy buys the four it used to be handed. Keeping the
+ * number here rather than reading startFloors is deliberate: the opening a
+ * sweep is measuring should not move when the human opening does.
+ */
+function ensureOpeningFloors(state, config, floors = 4) {
+  while (state.floors < floors) {
+    if (!act(state, config, 'build_floor').ok) return;
+  }
+}
+
+/**
  * Every policy opens the same way, so runs are comparable. Claims a few
  * shaft columns up front, before any room construction can fill them — a
  * shaft needs a clear column from the lobby to wherever it reaches, and once
@@ -67,6 +81,7 @@ function preferredRoomSlot(state, config, floor) {
  * maxCarsPerShaft instead of getting stuck there.
  */
 function opening(state, config, shaftCount = 3) {
+  ensureOpeningFloors(state, config);
   for (let i = 0; i < shaftCount; i++) act(state, config, 'build_shaft', { bottom: 0, top: state.floors - 1 });
   for (let f = 1; f < state.floors; f++) act(state, config, 'build_unit', { kind: 'office', floor: f });
 }
@@ -98,6 +113,7 @@ function zoneHeight(config) {
 /** Zoned equivalent of `opening()` — the shared one always claims full-height
  * local shafts, which is exactly what zoning is meant to avoid building. */
 function zonedOpening(state, config) {
+  ensureOpeningFloors(state, config);
   manageZones(state, config);
   for (let f = 1; f < state.floors; f++) {
     act(state, config, 'build_unit', { kind: 'office', floor: f, slot: preferredRoomSlot(state, config, f) ?? undefined });

@@ -7,6 +7,7 @@ const assert = (c, m) => { if (!c) throw new Error(m); };
 
 function tallTower(floors = 40) {
   const config = structuredClone(CONFIG);
+  config.building.startFloors = 4;
   config.economy.startMoney = 50000000;
   config.building.startFloors = floors;
   const state = boot(config, 701);

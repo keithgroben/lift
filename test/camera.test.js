@@ -18,6 +18,21 @@ import { CONFIG } from '../src/games/lift/config.js';
 const assert = (c, m) => { if (!c) throw new Error(m); };
 const near = (a, b, tol = 1e-9) => Math.abs(a - b) <= tol;
 
+/** A tower with floors to look at.
+ *
+ *  The opening position is bare ground now (spec/tower-view.md §4 — lobby
+ *  first), so a camera test that wants to point at floor 2 has to build one.
+ *  Uses the sim's own action rather than writing state.floors, so these tests
+ *  keep exercising a tower the game could actually produce. */
+function bootedTower(floors, seed = 7) {
+  const state = boot(CONFIG, seed);
+  while (state.floors < floors) {
+    if (!applyAction(state, { type: 'build_floor' }, CONFIG).ok) throw new Error('could not build floor ' + state.floors);
+  }
+  return state;
+}
+
+
 /** A canvas that records nothing. The renderer never reads back from it, so a
  *  stub is enough to exercise the real camera and the real pick seam. */
 function stubCtx() {
@@ -96,7 +111,7 @@ export const tests = {
   },
 
   'a pick at a known screen point lands on the expected floor and slot at every zoom'() {
-    const state = boot(CONFIG, 7);
+    const state = bootedTower(8);
     const w = 1200, h = 900;
     const middleSlot = Math.floor((CONFIG.building.slotsPerFloor - 1) / 2);
     for (const zoom of ZOOM_LEVELS) {
@@ -127,7 +142,7 @@ export const tests = {
   },
 
   'panning moves the picks with the view'() {
-    const state = boot(CONFIG, 7);
+    const state = bootedTower(8);
     const w = 1200, h = 900;
     const renderer = testRenderer(w, h);
     renderer.setZoom(state, 1);
@@ -283,7 +298,7 @@ export const tests = {
   },
 
   'the minimap maps rows to floors and jumps the camera'() {
-    const state = boot(CONFIG, 7);
+    const state = bootedTower(8);
     const w = 1200, h = 900;
     const renderer = testRenderer(w, h);
     const cols = CONFIG.building.slotsPerFloor;

@@ -8,6 +8,7 @@ const assert = (c, m) => { if (!c) throw new Error(m); };
 export const tests = {
   'clinic coverage serves condo demand within its floor range'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     config.building.startFloors = 7;
     config.stars.tiers[1].pop = 0;
@@ -43,6 +44,7 @@ export const tests = {
 
   'medical service is not a requirement for offices'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     const state = boot(config, 82);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok,
@@ -57,6 +59,7 @@ export const tests = {
 
   'medical facility remains gated until the condo tier'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     const state = boot(config, 83);
     const locked = applyAction(state, { type: 'build_facility', kind: 'medical', floor: 1 }, config);

@@ -4,9 +4,22 @@ import { chooseServingShaft, resolve, shaftAccessDistance, shaftAccessSeconds } 
 
 const assert = (c, m) => { if (!c) throw new Error(m); };
 
+/**
+ * Floors are a purchase now (`building.startFloors: 0` — a new session opens
+ * on bare ground), so a fixture that needs a standing tower buys its storeys
+ * through the same action seam the player uses.
+ */
+const withFloors = (state, config, floors = 4) => {
+  for (let i = 0; i < floors; i++) {
+    const built = applyAction(state, { type: 'build_floor' }, config);
+    if (!built.ok) throw new Error('fixture could not build a floor: ' + built.reason);
+  }
+  return state;
+};
+
 export const tests = {
   'shaft choice accounts for endpoint walking distance'() {
-    const s = boot(CONFIG, 21);
+    const s = withFloors(boot(CONFIG, 21), CONFIG);
     const first = applyAction(s, { type: 'build_shaft', bottom: 0, top: 3 }, CONFIG);
     assert(first.ok, first.reason);
     const nearUnit = applyAction(s, { type: 'build_unit', kind: 'office', floor: 3 }, CONFIG);
@@ -27,7 +40,7 @@ export const tests = {
   },
 
   'a meaningful queue can outweigh a longer walk to another shaft'() {
-    const s = boot(CONFIG, 22);
+    const s = withFloors(boot(CONFIG, 22), CONFIG);
     const first = applyAction(s, { type: 'build_shaft', bottom: 0, top: 3 }, CONFIG);
     assert(first.ok, first.reason);
     const nearUnit = applyAction(s, { type: 'build_unit', kind: 'office', floor: 3 }, CONFIG);
@@ -43,7 +56,7 @@ export const tests = {
   },
 
   'walking access contributes to tenant stress separately from elevator wait'() {
-    const s = boot(CONFIG, 23);
+    const s = withFloors(boot(CONFIG, 23), CONFIG);
     const shaft = applyAction(s, { type: 'build_shaft', bottom: 0, top: 3 }, CONFIG);
     assert(shaft.ok, shaft.reason);
     const unit = applyAction(s, { type: 'build_unit', kind: 'office', floor: 3 }, CONFIG);

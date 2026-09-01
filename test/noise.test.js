@@ -6,6 +6,7 @@ const assert = (c, m) => { if (!c) throw new Error(m); };
 
 function makeNoisePair(kind) {
   const config = structuredClone(CONFIG);
+  config.building.startFloors = 4;
   config.economy.startMoney = 10000000;
   config.stars.tiers[1].pop = 0;
   const state = boot(config, kind === 'condo' ? 52 : 53);
@@ -33,6 +34,7 @@ export const tests = {
 
   'rooms directly above and below share a smaller noise effect'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     const state = boot(config, 54);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok,

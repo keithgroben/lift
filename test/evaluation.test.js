@@ -31,6 +31,19 @@ import { shaftInvestmentComparison } from '../src/games/lift/sim/evaluation.js';
 
 const assert = (c, m) => { if (!c) throw new Error(m); };
 
+/**
+ * Floors are a purchase now (`building.startFloors: 0` — a new session opens
+ * on bare ground), so a fixture that needs a standing tower buys its storeys
+ * through the same action seam the player uses.
+ */
+const withFloors = (state, config, floors = 4) => {
+  for (let i = 0; i < floors; i++) {
+    const built = applyAction(state, { type: 'build_floor' }, config);
+    if (!built.ok) throw new Error('fixture could not build a floor: ' + built.reason);
+  }
+  return state;
+};
+
 export const tests = {
   'cash runway summarizes recent closed-day net'() {
     const positive = cashRunwaySummary({ money: 900, log: [
@@ -98,6 +111,7 @@ export const tests = {
 
   'tower desirability nudges tenant demand within a small bound'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     const state = {
       floors: 4,
       units: [
@@ -123,6 +137,7 @@ export const tests = {
 
   'room appeal retention pressure is bounded and recoverable'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     const state = {
       floors: 4,
       units: [{ id: 1, kind: 'office', floor: 3, slot: 1, heads: 6, occupied: true, stress: 0, rent: config.units.office.rent }],
@@ -146,6 +161,7 @@ export const tests = {
 
   'rising appeal pressure recommends the largest room improvement'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     const state = {
       floors: 4,
       units: [{ id: 1, kind: 'office', floor: 3, slot: 1, heads: 6, occupied: true, stress: 0, desirabilityPressure: 0.8, rent: config.units.office.rent }],
@@ -162,6 +178,7 @@ export const tests = {
 
   'service guidance chooses the open floor with the strongest nearby coverage'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     const state = {
       floors: 4,
       units: [
@@ -213,6 +230,7 @@ export const tests = {
 
   'room desirability breaks an otherwise tied vacancy ranking within its bound'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     const state = {
       floors: 4,
       units: [
@@ -278,6 +296,7 @@ export const tests = {
 
   'floor tenant mix reports actual shares and buildable slots'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     config.stars.tiers[1].pop = 0;
     const state = boot(config, 38);
@@ -295,6 +314,7 @@ export const tests = {
 
   'placement mix preview projects the selected room after construction'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     config.stars.tiers[1].pop = 0;
     const state = boot(config, 39);
@@ -310,6 +330,7 @@ export const tests = {
 
   'placement mix preview flags a material balance drop'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     const state = boot(config, 40);
     state.units = [
       { kind: 'office', occupied: true, heads: 11 },
@@ -325,6 +346,7 @@ export const tests = {
 
   'condo placement forecast combines mixed-use and floor quality'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     config.stars.tiers[1].pop = 0;
     config.building.startFloors = 6;
@@ -344,6 +366,7 @@ export const tests = {
 
   'floor placement preview combines room evaluation and mix impact'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     const state = boot(config, 41);
     assert(applyAction(state, { type: 'build_lobby', slot: 0 }, config).ok &&
@@ -359,6 +382,7 @@ export const tests = {
 
   'floor placement comparison identifies why another floor is better'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     config.building.startFloors = 20;
     const state = boot(config, 42);
@@ -373,6 +397,7 @@ export const tests = {
 
   'two candidate floors retain independent previews across tenant types'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     config.building.startFloors = 20;
     const state = boot(config, 43);
@@ -396,6 +421,7 @@ export const tests = {
 
   'a selected comparison floor exposes its combined placement signals'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     config.building.startFloors = 20;
     const state = boot(config, 46);
@@ -412,6 +438,7 @@ export const tests = {
 
   'comparison choices state stronger and weaker candidates'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.evaluation.relistMinScore = 60;
     const makePreview = (floor, score, balanceDelta) => ({
       floor,
@@ -434,6 +461,7 @@ export const tests = {
 
   'candidate decision labels separate quality and mix tradeoffs'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     const makePreview = (score, balanceDelta) => ({
       available: true,
       evaluation: { score },
@@ -449,6 +477,7 @@ export const tests = {
 
   'placement decision reason calls out a negative mix signal'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     const makePreview = (score, balanceDelta) => ({
       available: true,
       evaluation: { score },
@@ -476,10 +505,10 @@ export const tests = {
   },
 
   'placement warning distinguishes floor choice from infrastructure investment'() {
-    const readyState = boot(CONFIG, 1);
-    const lowMoneyState = boot(CONFIG, 2);
+    const readyState = withFloors(boot(CONFIG, 1), CONFIG);
+    const lowMoneyState = withFloors(boot(CONFIG, 2), CONFIG);
     lowMoneyState.money = 100000;
-    const blockedState = boot(CONFIG, 3);
+    const blockedState = withFloors(boot(CONFIG, 3), CONFIG);
     blockedState.money = 5000000;
     blockedState.units = Array.from({ length: blockedState.floors - 1 }, (_, floorIndex) =>
       Array.from({ length: CONFIG.building.slotsPerFloor }, (_, slot) => ({
@@ -532,6 +561,7 @@ export const tests = {
 
   'placement investment preview reports the expected room-evaluation gain'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     const routedState = boot(config, 47);
     assert(applyAction(routedState, { type: 'build_lobby', slot: 0 }, config).ok &&
@@ -579,6 +609,7 @@ export const tests = {
 
   'occupied room evaluation exposes first-day stress drift'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     const state = boot(config, 49);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok &&
@@ -639,6 +670,7 @@ export const tests = {
 
   'tenant demand quality rewards useful access and required services'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     config.stars.tiers[1].pop = 0;
     config.occupancy.experienceDemandWeight = 8;
@@ -670,6 +702,7 @@ export const tests = {
 
   'leasing forecast applies stable route access confidence separately from appeal and reputation'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     config.stars.tiers[1].pop = 0;
     config.occupancy.transportAccessDemandWeight = 2;
@@ -695,6 +728,7 @@ export const tests = {
 
   'tenant leasing history keeps compact closed-day outcomes'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.occupancy.tenantDemandHistoryDays = 2;
     const state = { log: [
       { day: 1, leasing: { candidates: 2, capacity: 1, movedIn: [{ experienceDemandScore: 80, experienceDemandBonus: 6 }] } },
@@ -714,6 +748,7 @@ export const tests = {
 
   'tenant leasing history retains the daily transport-access forecast'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     const state = { log: [
       { day: 1, leasing: { candidates: 1, capacity: 1, transportAccess: { key: 'helping', label: 'stable access evidence', bonus: 2, tests: 2, trendKey: 'stable-helping', trendBars: '↑↑' }, movedIn: [] } },
     ] };
@@ -738,6 +773,7 @@ export const tests = {
 
   'leasing history records changed room-appeal factors between ranking days'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.occupancy.tenantDemandHistoryDays = 2;
     const factors = { view: 2, amenities: 0, layout: 0, renovation: 0, rent: 0, fit: -1, noise: -2, services: -10 };
     const state = { log: [
@@ -766,6 +802,7 @@ export const tests = {
 
   'vacancy appeal follow-up compares the next closed day with the action baseline'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     const state = boot(config, 124);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok &&
@@ -803,6 +840,7 @@ export const tests = {
 
   'service appeal follow-up measures the targeted room after the next close'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     const state = boot(config, 125);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok &&
@@ -830,6 +868,7 @@ export const tests = {
 
   'vacancy appeal follow-up names the tenant type that filled the room'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     const state = boot(config, 126);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok &&
@@ -863,6 +902,7 @@ export const tests = {
 
   'vacancy demand summary explains the likely tenant and ranking'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     const state = boot(config, 122);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok &&
@@ -880,6 +920,7 @@ export const tests = {
 
   'vacancy demand inspection exposes the current transport-access signal'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     config.stars.tiers[1].pop = 0;
     const state = boot(config, 123);
@@ -900,6 +941,7 @@ export const tests = {
 
   'leasing forecast keeps candidate access confidence separate for ranking'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     config.stars.tiers[1].pop = 0;
     const state = boot(config, 124);
@@ -978,6 +1020,7 @@ export const tests = {
 
   'vacancy pre-fill outcome shows tenant mix change'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     const state = boot(config, 321);
     const outcome = vacancyPreFillOutcome(state, { id: 9, kind: 'office', occupied: false }, config, {
       marketCandidates: [{ unit: { id: 9, floor: 4, kind: 'office' } }],
@@ -990,6 +1033,7 @@ export const tests = {
 
   'vacancy pre-fill result retains ranking breakdown'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     const state = boot(config, 777);
     const unit = { id: 11, floor: 4, kind: 'office', occupied: false };
     const preview = vacancyPreFillOutcome(state, unit, config, {
@@ -1011,6 +1055,7 @@ export const tests = {
 
   'vacancy pre-fill override identifies the strongest component pull'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     const state = boot(config, 888);
     const unit = { id: 12, floor: 3, kind: 'office', occupied: false };
     const preview = vacancyPreFillOutcome(state, unit, config, {
@@ -1030,6 +1075,7 @@ export const tests = {
 
   'vacancy pre-fill result compares actual tenant mix'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     const state = boot(config, 654);
     const unit = { id: 9, floor: 4, kind: 'office', occupied: false };
     const preview = vacancyPreFillOutcome(state, unit, config, {
@@ -1066,6 +1112,7 @@ export const tests = {
 
   'first-session pressure warning preserves a recovery window'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     const live = firstSessionPressureWarning({
       money: 250000,
       people: [{ state: 'waiting' }],
@@ -1093,6 +1140,7 @@ export const tests = {
 
   'first-session recovery watch exposes current and latest readings'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     const watching = firstSessionRecoveryReadings({
       people: [{ state: 'waiting' }, { state: 'waiting' }],
       units: [{ kind: 'office', occupied: true }, { kind: 'office', occupied: false }],
@@ -1127,6 +1175,7 @@ export const tests = {
 
   'first-session recovery evidence accepts a healthy same-day live response'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     const live = firstSessionRecoveryEvidence([
       { day: 2, cars: 2, elevatorTrips: 4, abandoned: 0, deliveryRate: 92, rep: 96, occupied: 2, vacant: 1, desirability: 27 },
     ], { day: 2, waiting: 1, stressedUnits: 0, occupied: 3, vacant: 0 }, config);
@@ -1140,6 +1189,7 @@ export const tests = {
 
   'post-beta management goal starts with the weakest required service'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     const state = boot(config, 515);
     state.units.push({ id: 1, kind: 'office', floor: 1, occupied: true, heads: config.units.office.workers, stress: 0 });
     const serviceGoal = postBetaManagementGoal(state, config);
@@ -1154,6 +1204,7 @@ export const tests = {
 
   'post-beta management goal points to the first mixed-use expansion'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     const state = boot(config, 516);
     for (let index = 0; index < 10; index += 1) {
       state.units.push({
@@ -1177,6 +1228,7 @@ export const tests = {
 
   'post-beta management goal names the first condo service follow-up'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     const state = {
       floors: 4,
       units: [{ id: 1, kind: 'condo', floor: 2, slot: 1, occupied: true, heads: 3, stress: 0, rent: config.units.condo.rent }],
@@ -1190,6 +1242,7 @@ export const tests = {
 
   'repeated service goal names the rooms still uncovered'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     const state = {
       floors: 4,
       units: [
@@ -2321,7 +2374,7 @@ export const tests = {
   },
 
   'room health history distinguishes active and resolved warnings'() {
-    const state = boot(CONFIG, 1);
+    const state = withFloors(boot(CONFIG, 1), CONFIG);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, CONFIG).ok &&
       applyAction(state, { type: 'build_unit', kind: 'office', floor: 3 }, CONFIG).ok,
       'could not build room-health status fixture');
@@ -2352,6 +2405,7 @@ export const tests = {
 
   'combined ranking explains a top quality and mix tradeoff'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.evaluation.relistMinScore = 68;
     const makePreview = (floor, score, balanceDelta) => ({
       floor,
@@ -2370,6 +2424,7 @@ export const tests = {
 
   'replacement previews exclude compared floors and keep open alternatives'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     config.building.startFloors = 4;
     const state = boot(config, 44);
@@ -2402,6 +2457,7 @@ export const tests = {
 
   'replacement previews rank combined decision strength before score'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     config.building.startFloors = 20;
     config.evaluation.relistMinScore = 68.5;
@@ -2425,6 +2481,7 @@ export const tests = {
 
   'room evaluation combines access and stress'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     const state = boot(config, 31);
     const shaft = applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config);
@@ -2445,6 +2502,7 @@ export const tests = {
 
   'higher floors receive a capped view desirability bonus'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     config.building.startFloors = 20;
     const state = boot(config, 33);
@@ -2466,6 +2524,7 @@ export const tests = {
 
   'tenant floor preference is explicit and bounded'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     config.building.startFloors = 20;
     const state = boot(config, 35);
@@ -2488,6 +2547,7 @@ export const tests = {
 
   'mixed-use neighbors add one bounded layout bonus'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     config.stars.tiers[1].pop = 0;
     config.stars.tiers[2].pop = 0;
@@ -2511,6 +2571,7 @@ export const tests = {
 
   'cafeteria coverage adds one clear amenity bonus without stacking'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     const state = boot(config, 34);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok,
@@ -2533,6 +2594,7 @@ export const tests = {
 
   'poor room evaluation blocks re-letting without a shaft'() {
     const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
     config.economy.startMoney = 10000000;
     const state = boot(config, 32);
     const unit = applyAction(state, { type: 'build_unit', kind: 'office', floor: 3 }, config);
