@@ -2,7 +2,7 @@ import { lerp, mix } from './juice.js';
 import { makeSpriteBook } from './sprites.js';
 import { buildOccupiedFloorIndex, shaftQueueTrend, tenantDemandQuality, tenantLoadStatus, unitEvaluation, waitingPressureSummary } from '../sim/evaluation.js';
 import { localRouteOccupancy } from '../sim/demand.js';
-import { freeSlot, slotsUsed } from '../sim/state.js';
+import { freeSlot, isUnderground, lowestFloor, slotsUsed } from '../sim/state.js';
 
 /** Convert a floor queue into the same readable pressure scale used by the
  * canvas badge. Twelve waiting people is the critical point; deeper queues stay
@@ -356,11 +356,12 @@ export function visibleWorldRect(camera, viewport) {
 }
 
 /** Floors that touch the viewport, so a 60-floor tower only draws what it must. */
-export function visibleFloorRange(camera, viewport, floors) {
+export function visibleFloorRange(camera, viewport, floors, lowest = 0) {
   const rect = visibleWorldRect(camera, viewport);
+  const bottom = Math.min(0, Math.round(lowest));
   return {
-    low: Math.max(0, floorAtWorldY(rect.bottom)),
-    high: Math.min(Math.max(0, Math.round(floors) - 1), floorAtWorldY(rect.top)),
+    low: Math.max(bottom, floorAtWorldY(rect.bottom)),
+    high: Math.min(Math.max(bottom, Math.round(floors) - 1), floorAtWorldY(rect.top)),
   };
 }
 
@@ -384,8 +385,9 @@ export function cameraZoomedAt(camera, viewport, nextZoom, screenX, screenY) {
 
 export const MINIMAP = { width: 36, margin: 12, pad: 3, gutter: 5, minRowH: 1, maxRowH: 6 };
 
-export function minimapMetrics(viewport, rows, cols) {
+export function minimapMetrics(viewport, rows, cols, lowest = 0) {
   const rowCount = Math.max(1, Math.round(rows) || 1);
+  const bottom = Math.min(0, Math.round(lowest) || 0);
   const colCount = Math.max(1, Math.round(cols) || 1);
   const availH = Math.max(MINIMAP.minRowH, viewport.h - MINIMAP.margin * 2 - MINIMAP.pad * 2);
   const rowH = Math.max(MINIMAP.minRowH, Math.min(MINIMAP.maxRowH, Math.floor(availH / rowCount)));
@@ -398,17 +400,21 @@ export function minimapMetrics(viewport, rows, cols) {
     // the strip grows upward as the building does.
     y: Math.max(MINIMAP.margin, viewport.h - MINIMAP.margin - MINIMAP.pad - h),
     w, h, rowH, cellW, rows: rowCount, cols: colCount,
+    // The floor the bottom row stands for. 0 until the tower digs.
+    lowest: bottom,
     gutter: MINIMAP.gutter, pad: MINIMAP.pad,
   };
 }
 
 export function minimapRowY(metrics, floor) {
-  return metrics.y + metrics.h - (floor + 1) * metrics.rowH;
+  const row = floor - (metrics.lowest ?? 0);
+  return metrics.y + metrics.h - (row + 1) * metrics.rowH;
 }
 
 export function minimapFloorAt(metrics, screenY) {
-  const floor = Math.floor((metrics.y + metrics.h - screenY) / metrics.rowH);
-  return Math.min(metrics.rows - 1, Math.max(0, floor));
+  const bottom = metrics.lowest ?? 0;
+  const row = Math.floor((metrics.y + metrics.h - screenY) / metrics.rowH);
+  return Math.min(bottom + metrics.rows - 1, Math.max(bottom, bottom + row));
 }
 
 export function minimapSlotAt(metrics, screenX) {
@@ -525,10 +531,11 @@ export function makeRenderer(canvas, config) {
     const slackX = W / (4 * z) + SLOT_W;
     const slackY = H / (4 * z) + FLOOR_H;
     const roof = floorTopWorldY(Math.max(0, Math.round(state?.floors ?? 0)) + 2);
+    // The floor of the world is whatever has been dug, plus two storeys of
+    // earth to look at. An undug tower still gets a little ground under it.
+    const cellar = floorBottomWorldY(Math.min(0, lowestFloor(state)) - 2);
     camera.x = Math.min(cols * SLOT_W + slackX, Math.max(-slackX, camera.x));
-    // Below the ground line there is only earth for now; leave room for the
-    // B1..B10 the sim will grow into (spec §3) without letting the view sink.
-    camera.y = Math.min(FLOOR_H * 6 + slackY, Math.max(roof - slackY, camera.y));
+    camera.y = Math.min(cellar + slackY, Math.max(roof - slackY, camera.y));
   }
 
   /**
@@ -617,7 +624,7 @@ export function makeRenderer(canvas, config) {
     sprites.advance(dtMs);
     followCamera(state, layout(state));
     const L = layout(state);
-    const visible = visibleFloorRange(camera, viewport(), state.floors);
+    const visible = visibleFloorRange(camera, viewport(), state.floors, lowestFloor(state));
     const [sx, sy] = juice.offset();
     // Built once per frame and shared across every room's evaluation below —
     // without it, each occupied room re-scans the whole tower for noise and
@@ -627,18 +634,33 @@ export function makeRenderer(canvas, config) {
 
     ctx.setTransform(dpr, 0, 0, dpr, sx * dpr, sy * dpr);
     paintSky(state);
-    drawEarth(L);
+    drawEarth(L, state);
 
     for (let f = visible.low; f <= visible.high; f++) {
       const y = L.floorY(f);
-      ctx.fillStyle = f === 0 ? '#141c26' : 'rgba(27,36,48,0.55)';
+      // A basement is cut out of the earth, so it needs its own dark ground
+      // rather than the translucent band an above-ground storey gets — soil
+      // showing through a room is what made the first dig look like a bug.
+      ctx.fillStyle = isUnderground(f) ? '#171d1a' : f === 0 ? '#141c26' : 'rgba(27,36,48,0.55)';
       roundRect(ctx, L.x0 - 6, y, L.cw * L.cols + 12, L.fh - 2, 3);
       ctx.fill();
-      ctx.fillStyle = 'rgba(142,202,230,0.35)';
+      // A dug storey is bare concrete until something is built in it. Rooms
+      // draw over this, so an occupied basement slot never shows it.
+      if (isUnderground(f)) {
+        for (let slot = 0; slot < L.cols; slot++) {
+          const x = L.x0 + slot * L.cw;
+          if (x + L.cw < 0 || x > W) continue;
+          sprites.drawSprite(ctx, { name: 'basement-empty', animation: 'tile', x, y, scale: L.zoom });
+        }
+      }
+      ctx.fillStyle = isUnderground(f) ? 'rgba(198,166,124,0.45)' : 'rgba(142,202,230,0.35)';
       ctx.font = '10px ui-monospace, monospace';
       ctx.textAlign = 'right';
-      ctx.fillText(f === 0 ? 'L' : String(f), L.x0 - 12, y + L.fh * 0.68);
+      ctx.fillText(floorLabel(f), L.x0 - 12, y + L.fh * 0.68);
     }
+
+    // The slab the whole tower stands on, at the bottom of whatever is dug.
+    drawFoundation(state, L);
 
     // The horizon and the street sit on top of floor 0's slab, so the ground
     // floor reads as a storey standing ON something instead of floating.
@@ -875,8 +897,31 @@ export function makeRenderer(canvas, config) {
 
   /** Everything below the ground line. Earth today, B1..B10 once the sim
    *  carries a floor range (spec §3). */
-  function drawEarth(L) {
-    const groundY = L.y0;
+  /** Floor names as the player says them: L, 1, 2 ... and B1, B2 below. */
+  function floorLabel(f) {
+    return f === 0 ? 'L' : isUnderground(f) ? 'B' + -f : String(f);
+  }
+
+  /** The foundation slab, drawn under the deepest storey so a dug tower reads
+   *  as standing ON something instead of hanging in the soil. */
+  function drawFoundation(state, L) {
+    const bottom = Math.min(0, lowestFloor(state));
+    const y = L.floorY(bottom) + L.fh;
+    if (y < -20 || y > H + 20) return;
+    const h = Math.max(2, Math.round(6 * L.zoom));
+    for (let slot = 0; slot < L.cols; slot++) {
+      const x = L.x0 + slot * L.cw;
+      if (x + L.cw < 0 || x > W) continue;
+      if (sprites.drawSprite(ctx, { name: 'foundation-slab', animation: 'tile', x, y, scale: L.zoom })) continue;
+      ctx.fillStyle = '#2a2520';
+      ctx.fillRect(x, y, L.cw, h);
+    }
+  }
+
+  function drawEarth(L, state) {
+    // Soil starts under the deepest dug storey; above that line the basements
+    // are rooms, not dirt.
+    const groundY = L.floorY(Math.min(0, lowestFloor(state))) + L.fh;
     if (groundY > H + 60) return;
     const top = Math.max(-60, groundY);
 
@@ -962,8 +1007,11 @@ export function makeRenderer(canvas, config) {
    *  main view already computes, with a box marking what it is looking at. */
   function drawMinimap(state, L) {
     if (!W || !H) return;
-    const rows = Math.max(1, state.floors);
-    const m = minimapMetrics(viewport(), rows, L.cols);
+    // Rows span the whole tower, basements included, so a dug storey shows up
+    // on the strip the moment it exists rather than only in the main view.
+    const bottom = Math.min(0, lowestFloor(state));
+    const rows = Math.max(1, state.floors - bottom);
+    const m = minimapMetrics(viewport(), rows, L.cols, bottom);
     ctx.fillStyle = 'rgba(10,13,18,0.86)';
     roundRect(ctx, m.x - m.pad, m.y - m.pad, m.w + m.pad * 2, m.h + m.pad * 2, 3);
     ctx.fill();
@@ -973,7 +1021,7 @@ export function makeRenderer(canvas, config) {
 
     const cells = new Map();
     const mark = (floor, slot, color) => {
-      if (floor < 0 || floor >= rows || slot < 0 || slot >= m.cols) return;
+      if (floor < bottom || floor >= state.floors || slot < 0 || slot >= m.cols) return;
       if (!cells.has(floor)) cells.set(floor, new Map());
       cells.get(floor).set(slot, color);
     };
@@ -996,9 +1044,11 @@ export function makeRenderer(canvas, config) {
     }
 
     const gridX = m.x + m.gutter;
-    for (let f = 0; f < rows; f++) {
+    for (let f = bottom; f < state.floors; f++) {
       const y = minimapRowY(m, f);
-      ctx.fillStyle = 'rgba(27,36,48,0.85)';
+      // Below ground reads as earth on the strip too, so depth is legible at a
+      // glance instead of looking like more tower.
+      ctx.fillStyle = isUnderground(f) ? 'rgba(59,45,33,0.85)' : 'rgba(27,36,48,0.85)';
       ctx.fillRect(gridX, y, m.cellW * m.cols, m.rowH);
       const row = cells.get(f);
       if (row) for (const [slot, color] of row) {
@@ -1289,10 +1339,13 @@ export function makeRenderer(canvas, config) {
   }
 
   /** Which floor a click landed on, for build placement. */
+  /** The floor under a point, or **null** when the point is not on the tower.
+   *  Not -1: that is B1 now, and a sentinel that collides with a real floor is
+   *  how a click in the earth ends up digging. */
   function floorAt(state, px, py) {
     const L = layout(state);
     const f = Math.floor((L.y0 - py) / L.fh);
-    return f >= 0 && f < state.floors ? f : -1;
+    return f >= lowestFloor(state) && f < state.floors ? f : null;
   }
 
   /** Which floor slot a click landed in, for ground-floor lobby placement. */
@@ -1476,12 +1529,16 @@ export function makeRenderer(canvas, config) {
   /** The HUD's explicit "go to" — the third and last case where the camera is
    *  allowed to move itself (spec §2). */
   function goTo(state, floor, slot = null) {
-    centerOnCell(state, Math.max(0, Math.round(floor) || 0),
+    const wanted = Math.round(floor) || 0;
+    const bottom = Math.min(0, lowestFloor(state));
+    const top = Math.max(bottom, Math.round(state?.floors ?? 0) - 1);
+    centerOnCell(state, Math.min(top, Math.max(bottom, wanted)),
       slot == null ? (config.building.slotsPerFloor - 1) / 2 : slot);
   }
 
   const minimapAt = (state, px, py) => {
-    const m = minimapMetrics(viewport(), Math.max(1, state.floors), config.building.slotsPerFloor);
+    const m = minimapMetrics(viewport(), Math.max(1, state.floors - lowestFloor(state)),
+      config.building.slotsPerFloor, lowestFloor(state));
     return minimapContains(m, px, py) ? { floor: minimapFloorAt(m, py), slot: minimapSlotAt(m, px) } : null;
   };
 

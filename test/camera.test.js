@@ -135,10 +135,32 @@ export const tests = {
         'one slot right was not one slot right at ' + zoom + 'x');
       assert(renderer.slotAt(state, w / 2 - SLOT_W * zoom) === middleSlot - 1,
         'one slot left was not one slot left at ' + zoom + 'x');
-      // Below the ground line there is no floor to pick — that is earth.
+      // Below the ground line there is no floor to pick — that is earth. The
+      // miss is null, not -1: -1 is B1 once the tower digs, and a sentinel
+      // that collides with a real floor is how a click in the soil builds.
       const [groundY] = [renderer.layout(state).y0];
-      assert(renderer.floorAt(state, w / 2, groundY + 4) === -1, 'a click on the earth returned a floor at ' + zoom + 'x');
+      assert(renderer.floorAt(state, w / 2, groundY + 4) === null, 'a click on the earth returned a floor at ' + zoom + 'x');
     }
+  },
+
+  'a dug basement reads back as a floor, and the earth under it does not'() {
+    const state = bootedTower(4);
+    while (state.lowestFloor > -3) {
+      assert(applyAction(state, { type: 'dig_basement' }, CONFIG).ok, 'could not dig to B3');
+    }
+    const w = 1200, h = 900;
+    const renderer = testRenderer(w, h);
+    renderer.setZoom(state, 1);
+
+    for (const floor of [-1, -2, -3]) {
+      renderer.goTo(state, floor, 4);
+      assert(renderer.floorAt(state, w / 2, h / 2) === floor,
+        'B' + -floor + ' did not read back as floor ' + floor);
+    }
+    // One storey below the deepest dig is soil, and soil is not a floor.
+    renderer.goTo(state, -3, 4);
+    assert(renderer.floorAt(state, w / 2, h / 2 + FLOOR_H) === null,
+      'the earth under the deepest basement read as a floor');
   },
 
   'panning moves the picks with the view'() {

@@ -1,5 +1,5 @@
 import { CONFIG } from '../config.js';
-import { boot, step, applyAction, population, starTier, unlocked } from '../sim/index.js';
+import { basementDepth, boot, step, applyAction, lowestFloor, population, starTier, unlocked } from '../sim/index.js';
 import { averageEvaluation, boundedEvaluationTrend, conversionPreview, evaluationDrift, firstWavePressure, floorDiagnosisAgeCue, floorDiagnosisChange, floorDiagnosisNextAction, floorDiagnosisRepeatedFailure, floorHandoffPreview, floorOperationsSummary, hotelBookingFeedback, hotelExperienceHistory, hotelExperienceSummary, hotelGuestExperience, hotelServiceSummary, indicatorColorKey, leaseStatus, leasingForecast, marketDemandBonus, rememberFloorDiagnosisResult, rememberRoomHealthHistory, rememberShopTrafficFollowup, reputationDemandFactor, reputationHistory, reputationRecommendation, roomEvaluationResponse, roomHealthHistoryAction, roomHealthHistoryAge, roomHealthHistoryAgeLabel, roomHealthHistoryChange, roomHealthHistoryPriority, roomHealthHistoryStatus, roomHealthHistoryUrgency, routePlacementStatus, shaftBuildControlStatus, shaftCapacityProjection, shaftCandidateCoverageLabel, shaftPlacementProjection, shaftQueueReliefProjection, shaftQueueReliefRecommendation, shaftRouteCoverageLabel, shopTrafficEstimate, shopTrafficFollowupCountAccessibleLabel, shopTrafficFollowupCountLabel, shopTrafficFollowupFilterAccessibleLabel, shopTrafficFollowupFilterButtonLabel, shopTrafficFollowupFilterLabel, shopTrafficFollowupOutcome, shopTrafficFollowupResult, shopTrafficFollowupScoreAccessibleLabel, shopTrafficFollowupScoreDetail, shopTrafficFollowupScopeAccessibleLabel, shopTrafficFollowupStatus, shopTrafficFollowupSummary, shopTrafficFollowupSummaryHeading, shopTrafficFollowupWindow, shopTrafficHistory, shopTrafficLastCloseAggregate, shopTrafficLastCloseDetail, shopTrafficLastCloseRevenueDetail, shopTrafficPeriodsAccessibleLabel, shopTrafficPeriodsHeading, shopTrafficPeriodsHeadingAccessibleLabel, shopTrafficPeriodsLegendLabel, shopTrafficResponseFilterId, shopTrafficServedDelta, shopTrafficServedTodayDetail, sustainedLowEvaluation, tenantDemandForecast, tenantFloorMix, tenantLeasingHistory, tenantLoadStatus, tenantLoadSummary, tenantMixDemand, tenantMixDiagnosis, tenantMixHistory, tenantMixResponse, tenantPlacementAlternativeReason, tenantPlacementComparisonChoice, tenantPlacementDecision, tenantPlacementDecisionReason, tenantPlacementFloorComparison, tenantPlacementInvestmentPreview, tenantPlacementInvestmentReason, tenantPlacementMixPreview, tenantPlacementPreview, tenantPlacementRankingReason, tenantPlacementReplacementPreviews, tenantPlacementSmallestInvestment, tenantUtilizationDelta, tenantUtilizationHistoryLabel, tenantUtilizationHintFocusLabel, tenantUtilizationManagementHint, tenantUtilizationRecoveryResult, tenantUtilizationRecoverySummary, tenantUtilizationRoomContext, tenantUtilizationTrend, transportCoverageText, unitEvaluation, vacancyRecoveryComparison } from '../sim/evaluation.js';
 import { clampRentLevel, rentForLevel } from '../sim/pricing.js';
 import { makeRng } from '../sim/rng.js';
@@ -66,7 +66,9 @@ let conversionTargetKind = null;
 let renovationTargetId = null;
 let rerentTargetId = null;
 let demolitionTargetId = null;
-let hoverFloor = -1;
+// null, not -1: -1 is B1 now. A sentinel that collides with a real floor is
+// how a hover in the earth reads as a hover on the first basement.
+let hoverFloor = null;
 let hoverSlot = -1;
 let hoverShaftId = null;
 let hoverFacilityId = null;
@@ -227,6 +229,9 @@ function armedAction(toolKey, spot) {
   const { floor, slot, unitId, shaftId } = spot;
   if (toolKey === 'floor') {
     return { actions: [{ type: 'build_floor' }], row: state.floors };
+  }
+  if (toolKey === 'dig') {
+    return { actions: [{ type: 'dig_basement' }], row: lowestFloor(state) - 1 };
   }
   if (toolKey === 'lobby' || toolKey === 'lobby_wing') {
     if (floor !== ground) return { blocked: 'the lobby belongs on the ground floor' };
@@ -830,6 +835,10 @@ function modeText() {
       ? 'FLOOR selected — the lobby buys the ground storey; click to stack the first one above it.'
       : 'FLOOR selected — click to stack storey F' + state.floors + ' on top.';
   }
+  if (tool === 'dig') {
+    return 'DIG selected — click to sink B' + (basementDepth(state) + 1) +
+      '. Underground slots are cheaper and less appealing, and a shaft has to reach them.';
+  }
   if (tool === 'lobby') return 'LOBBY selected — click the ground floor to place it. It buys the ground storey it stands on.';
   if (tool === 'lobby_wing') return 'LOBBY WING selected — click an open ground-floor slot to expand it.';
   if (tool === 'shaft') {
@@ -979,7 +988,7 @@ function investmentContext(kind) {
     floor: investmentTarget.recommendedFloor ?? investmentTarget.floor,
     coverageFloor: investmentTarget.floor,
   };
-  const hoverText = hoverFloor >= 0 ? ' · hover F' + hoverFloor + ': ' + investmentHoverStatus(guide, hoverFloor) : '';
+  const hoverText = hoverFloor != null ? ' · hover F' + hoverFloor + ': ' + investmentHoverStatus(guide, hoverFloor) : '';
   if (CONFIG.services?.[kind]) {
     const cost = CONFIG.costs[kind];
     const dailyUpkeep = CONFIG.services[kind].dailyUpkeep ?? 0;
@@ -1039,7 +1048,7 @@ function investmentPlacementIssue(kind, floor) {
 }
 
 function hoverFloorSignalText() {
-  if (hoverFloor < 0 || hoverFloor >= state.floors) return '';
+  if (hoverFloor == null || hoverFloor >= state.floors) return '';
   const summary = floorOperationsSummary(state, hoverFloor, CONFIG);
   const tenantStatus = summary.key === 'full' ? 'full' : summary.key === 'partial' ? 'partial' : 'light';
   return ' · W ' + summary.waiting + ' ' + summary.waitingBand + ' · T ' + summary.tenants + '/' + summary.capacity + ' ' + tenantStatus;
@@ -1501,7 +1510,7 @@ function renderInvestmentPreview() {
     return;
   }
   const targetPreview = tenantPlacementFloorComparison(state, investmentTarget.tool, investmentTarget.floor, CONFIG);
-  const floor = hoverFloor >= 0 ? hoverFloor : investmentTarget.recommendedFloor ?? investmentTarget.floor;
+  const floor = hoverFloor != null ? hoverFloor : investmentTarget.recommendedFloor ?? investmentTarget.floor;
   const preview = tenantPlacementInvestmentPreview(targetPreview, investmentTarget, state, CONFIG, floor);
   element.hidden = false;
   if (!preview.available) {
@@ -3944,6 +3953,7 @@ function refresh() {
 
   const costs = {
     floor: money(CONFIG.costs.floor),
+    dig: money(CONFIG.underground.digCost),
     shaft: money(CONFIG.costs.shaft) + ' + span',
     express: money(CONFIG.costs.expressShaft) + ' + span',
     car: money(CONFIG.costs.car),
@@ -3967,6 +3977,7 @@ function refresh() {
     : CONFIG.costs.lobby + (state.floors <= groundFloor ? CONFIG.costs.floor : 0);
   const tileCosts = {
     floor: CONFIG.costs.floor,
+    dig: CONFIG.underground.digCost,
     lobby: lobbyTileCost,
     shaft: CONFIG.costs.shaft,
     express: CONFIG.costs.expressShaft,
@@ -4005,6 +4016,12 @@ function refresh() {
     if (b.dataset.do === 'escalator') {
       b.disabled = !state.lobby || state.money < CONFIG.costs.escalator;
       b.title = !state.lobby ? 'build a lobby first' : state.money < CONFIG.costs.escalator ? 'not enough money' : 'place an escalator from the lobby';
+    }
+    if (b.dataset.do === 'dig') {
+      const atMax = basementDepth(state) >= CONFIG.underground.maxDepth;
+      b.disabled = atMax || state.money < CONFIG.underground.digCost;
+      b.title = atMax ? 'at max depth (B' + CONFIG.underground.maxDepth + ')'
+        : state.money < CONFIG.underground.digCost ? 'not enough money' : 'sink one storey below ground';
     }
     if (b.dataset.do === 'floor') {
       const atMax = state.floors >= CONFIG.building.maxFloors;
@@ -4647,8 +4664,8 @@ canvas.addEventListener('mousemove', (e) => {
   const px = e.clientX - r.left, py = e.clientY - r.top;
   // The minimap is furniture on top of the world, not part of it.
   if (renderer.minimapAt(state, px, py)) {
-    if (hoverFloor === -1 && hoverSlot === -1 && hoverShaftId == null && hoverFacilityId == null) return;
-    hoverFloor = -1;
+    if (hoverFloor == null && hoverSlot === -1 && hoverShaftId == null && hoverFacilityId == null) return;
+    hoverFloor = null;
     hoverSlot = -1;
     hoverShaftId = null;
     hoverFacilityId = null;
@@ -4676,14 +4693,14 @@ canvas.addEventListener('mousemove', (e) => {
 });
 
 canvas.addEventListener('mouseleave', () => {
-  if (hoverFloor === -1 && hoverSlot === -1 && hoverShaftId == null) return;
+  if (hoverFloor == null && hoverSlot === -1 && hoverShaftId == null) return;
   if (tool === 'car' && hoverShaftId != null) {
     transportFocusTarget = null;
     const recommendation = shaftQueueReliefRecommendation(state, CONFIG, carQueueDailyHistory);
     recommendedShaftId = recommendation.bestShaftId ?? hoverShaftId;
     routeTarget = { kind: 'car', shaftId: recommendedShaftId };
   }
-  hoverFloor = -1;
+  hoverFloor = null;
   hoverSlot = -1;
   hoverShaftId = null;
   hoverFacilityId = null;
@@ -4717,6 +4734,14 @@ canvas.addEventListener('click', (e) => {
     if (added.ok) {
       refresh();
       setMode('FLOOR ADDED · the tower now stands ' + state.floors + ' storeys · FLOOR stays armed.');
+    }
+    return;
+  }
+  if (tool === 'dig') {
+    const dug = act('dig_basement');
+    if (dug.ok) {
+      refresh();
+      setMode('DUG B' + basementDepth(state) + ' · a shaft has to reach it before anyone will go down there · DIG stays armed.');
     }
     return;
   }
@@ -5376,6 +5401,12 @@ els.build.addEventListener('click', (e) => {
     toast('click the tower to stack the next storey', INFO);
     refresh();
   }
+  if (b.dataset.do === 'dig') {
+    tool = 'dig';
+    setMode();
+    toast('click the tower to sink the next basement', INFO);
+    refresh();
+  }
   if (b.dataset.do === 'demolish') {
     tool = 'demolish';
     setMode();
@@ -5485,7 +5516,7 @@ function restart() {
   tenantUtilizationHistory = [{ day: state.day, ratio: tenantUtilizationBaseline }];
   managementHintConfirmation = null;
   tape = [];
-  hoverFloor = -1;
+  hoverFloor = null;
   hoverSlot = -1;
   hoverShaftId = null;
   hoverFacilityId = null;
