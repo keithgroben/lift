@@ -204,11 +204,11 @@ const placementReason = (verdict) =>
  */
 function pickBuildFloor(px, py) {
   const floor = renderer.floorAt(state, px, py);
-  if (floor >= 0) return floor;
+  if (floor != null) return floor;
   const ground = CONFIG.building.lobbyFloor ?? 0;
   const L = renderer.layout(state);
   const y = L.floorY(ground);
-  return py >= y && py <= y + L.fh ? ground : -1;
+  return py >= y && py <= y + L.fh ? ground : null;
 }
 
 const spotAt = (px, py) => ({
@@ -263,7 +263,7 @@ function armedAction(toolKey, spot) {
       column: { slot, bottom: ground, top: floor },
     };
   }
-  if (floor < 0 || slot < 0) return null;
+  if (floor == null || slot < 0) return null;
   if (CONFIG.services?.[toolKey]) return { actions: [{ type: 'build_facility', kind: toolKey, floor, slot }] };
   if (CONFIG.units[toolKey]) return { actions: [{ type: 'build_unit', kind: toolKey, floor, slot }] };
   return null;
@@ -303,7 +303,7 @@ function ghostGeometry(armed, verdict, spot) {
     const slot = Number.isInteger(verdict.slot) ? verdict.slot : armed.column.slot;
     return slot < 0 ? null : column(slot, armed.column.bottom, armed.column.top);
   }
-  return spot.floor < 0 || spot.slot < 0 ? null : cell(spot.floor, spot.slot);
+  return spot.floor == null || spot.slot < 0 ? null : cell(spot.floor, spot.slot);
 }
 
 /**
@@ -321,7 +321,7 @@ function updateGhost() {
     return;
   }
   const key = [tool, ghostSpot.floor, ghostSpot.slot, ghostSpot.unitId, ghostSpot.shaftId,
-    state.money, state.floors, state.units.length, state.facilities.length,
+    state.money, state.floors, lowestFloor(state), state.units.length, state.facilities.length,
     state.shafts.length, state.stairs.length, state.escalators.length, Boolean(state.lobby)].join('|');
   if (key === lastGhostKey) return;
   lastGhostKey = key;
@@ -4833,7 +4833,7 @@ canvas.addEventListener('click', (e) => {
     return;
   }
   const floor = pickBuildFloor(px, py);
-  if (floor < 0) return toast('click a floor', WARN);
+  if (floor == null) return toast('click a floor', WARN);
   if (tool === 'observe') return toast('choose a build action above, then click the tower', INFO);
   // The ghost is a dry run of exactly this click, so a red ghost refuses the
   // click with the same words rather than letting it fail somewhere quieter.
