@@ -30,6 +30,7 @@ This file is the only agent-instruction file in the repo. Do not create
 | `src/games/*/render/`, `ui/` | **Open.** Feel, readability, juice. Cannot affect outcomes. |
 | `src/games/*/sim/` | **Careful.** Changes the game. Add a test with the change. |
 | `harness/` | **Careful.** Shared by every game. Nothing game-specific belongs here — put it in that game's `game.js` manifest. |
+| `tools/` | **Open.** Developer-side utilities (art ingest, asset catalogue). May have dependencies the game may not — nothing here can become required to run a test or a sweep. Not `harness/`. |
 | `test/` | **Careful.** Never weaken an assertion to make a run pass. |
 
 ## Commands
