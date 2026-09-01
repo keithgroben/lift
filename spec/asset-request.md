@@ -157,6 +157,28 @@ Three palette swaps each, so a crowd is not one person repeated.
 
 ---
 
+## Delivered vs requested (first pass, 2026-09-01)
+
+All 28 subjects arrived, native size, transparent, with every frame distinct
+and non-blank — verified against the real pixels, not the delivery note. The
+sheet on disk wins wherever it disagrees with this document, because that is
+what the renderer has to draw. What it does not yet cover:
+
+- **`palette-icons.png` is a different 17 tools** — it carries bulldozer,
+  inspect, repair and finances, and is missing **floor, shaft and car**. Six
+  buildable tools have no icon, and the style is glossy rather than mixel. The
+  redo request is in `ROADMAP.md`. Tiles run on text monograms until it lands.
+- **Walk cycles came back 2 frames, not 4.** People walk, but the gait is
+  coarser than the manifest asks for.
+- **`elevator-car` has a single `opening` frame**, not the 3-frame door
+  animation. Doors pop rather than slide.
+- **`escalator-segment`'s four frames are nearly identical**, so the loop may
+  not read as movement at 1x.
+- **`roof-cap` is very faint** against the sky.
+- Bonus nobody asked for: **`slot-empty` came back as four UI states** —
+  empty, selected, unavailable, highlighted. The highlighted frame is the
+  build-palette ghost, and it is already wired.
+
 ## Order to produce in
 
 1. **1, 3, 5, 9** — ground and earth. The horizon is the single biggest
