@@ -5,6 +5,47 @@ import { shaftAccessDistance } from '../src/games/lift/sim/demand.js';
 const assert = (c, m) => { if (!c) throw new Error(m); };
 
 export const tests = {
+  /**
+   * spec/tower-view.md §4, Keith's call 2026-09-01. `+ floor` is gone, so a
+   * room has to raise the storey it stands on or the tower can never grow.
+   */
+  'a room placed above the roof raises the storey and pays for both'() {
+    const config = structuredClone(CONFIG);
+    const state = boot(config, 3);
+    assert(applyAction(state, { type: 'build_lobby', slot: 0 }, config).ok, 'lobby did not build');
+    assert(state.floors === 1, 'the lobby did not raise the ground storey');
+
+    const before = state.money;
+    const roof = state.floors;
+    const built = applyAction(state, { type: 'build_unit', kind: 'office', floor: roof, slot: 2 }, config);
+    assert(built.ok, 'a room on the storey above the roof was refused: ' + built.reason);
+    assert(state.floors === roof + 1, 'the room did not raise a storey');
+    assert(before - state.money === config.costs.office + config.costs.floor,
+      'the room did not charge for its slab: paid ' + (before - state.money));
+
+    // One storey up, never two: a room needs something under it.
+    const tooHigh = applyAction(state, { type: 'build_unit', kind: 'office', floor: state.floors + 1, slot: 3 }, config);
+    assert(!tooHigh.ok, 'a room built two storeys above the roof, standing on nothing');
+    assert(/nothing to build that on/.test(tooHigh.reason), 'the refusal did not say why: ' + tooHigh.reason);
+
+    // And a room on a storey that already exists costs the room alone.
+    const paidBefore = state.money;
+    const onExisting = applyAction(state, { type: 'build_unit', kind: 'office', floor: roof, slot: 4 }, config);
+    assert(onExisting.ok, 'a room on an existing storey was refused: ' + onExisting.reason);
+    assert(paidBefore - state.money === config.costs.office, 'an existing storey was charged for twice');
+  },
+
+  'the lobby buys the entrance, not the ground under it'() {
+    const config = structuredClone(CONFIG);
+    const state = boot(config, 3);
+    assert(state.floors === 0, 'a new tower did not open on bare ground');
+    const before = state.money;
+    assert(applyAction(state, { type: 'build_lobby', slot: 0 }, config).ok, 'lobby did not build');
+    assert(before - state.money === config.costs.lobby,
+      'the lobby was charged for the ground storey: paid ' + (before - state.money));
+    assert(state.floors === 1, 'the ground storey did not come with the lobby');
+  },
+
   'lobby occupies its ground-floor slot before a shaft is built'() {
     const config = structuredClone(CONFIG);
     config.building.startFloors = 4;

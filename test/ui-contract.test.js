@@ -56,6 +56,13 @@ export const tests = {
     // to stay clickable on its own account or the first click cannot land.
     assert(app.includes('function pickBuildFloor('), 'the ground row is unreachable on a tower with no floors');
     assert(placementHandler().includes('pickBuildFloor(px, py)'), 'the tower click does not use the ground-aware pick');
+    // A room raises its own storey now, so the row above the roof has to be a
+    // legal click target too. Without it the sim rule is unreachable and the
+    // tower can only ever be one storey tall — the interface would refuse a
+    // move the rules allow.
+    const pick = app.slice(app.indexOf('function pickBuildFloor('));
+    assert(/rowAt\(state\.floors\)/.test(pick.slice(0, pick.indexOf('\n}'))),
+      'a build click cannot reach the storey above the roof, so a room can never raise one');
   },
 
   /**

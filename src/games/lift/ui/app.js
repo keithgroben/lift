@@ -202,13 +202,29 @@ const placementReason = (verdict) =>
  * where the lobby goes — would be unclickable. Ground is always a legal
  * target; everything above it still has to be built first.
  */
+/**
+ * The floor a build click means, which is not the same as the floor under the
+ * cursor. Two rows exist to be built on before they exist to be picked:
+ *
+ *  - the GROUND row, on bare ground, or the first click of a new game has
+ *    nowhere to land; and
+ *  - the row immediately ABOVE THE ROOF, because a room carries its own
+ *    storey now (spec/tower-view.md §4). Without this the sim rule is
+ *    unreachable from the interface — the tower could only ever be one
+ *    storey tall.
+ *
+ * One row above the roof, never two, matching `build_unit`: a room needs
+ * something under it, and a click into open sky is still nothing.
+ */
 function pickBuildFloor(px, py) {
   const floor = renderer.floorAt(state, px, py);
   if (floor != null) return floor;
-  const ground = CONFIG.building.lobbyFloor ?? 0;
   const L = renderer.layout(state);
-  const y = L.floorY(ground);
-  return py >= y && py <= y + L.fh ? ground : null;
+  const rowAt = (row) => {
+    const y = L.floorY(row);
+    return py >= y && py <= y + L.fh ? row : null;
+  };
+  return rowAt(CONFIG.building.lobbyFloor ?? 0) ?? rowAt(state.floors);
 }
 
 const spotAt = (px, py) => ({
@@ -3986,15 +4002,17 @@ function refresh() {
     if (b.dataset.do === 'lobby') {
       const built = Boolean(state.lobby);
       const buildCost = lobbyTileCost;
-      const withSlab = !built && state.floors <= groundFloor;
+      // The lot is free, so the tile is just the entrance's price — no slab
+      // line item any more (Keith's call, 2026-09-01).
+      const onBareGround = !built && state.floors <= groundFloor;
       b.disabled = state.money < buildCost;
       b.title = built
         ? state.money < buildCost ? 'not enough money' : 'add another lobby entrance'
         : state.money < buildCost ? 'not enough money'
-          : withSlab ? 'place the entrance — it buys the ground storey it stands on' : 'place the ground-floor entrance';
+          : onBareGround ? 'place the entrance — the ground it stands on is free' : 'place the ground-floor entrance';
       const label = b.querySelector('.btn-label');
       if (label) label.textContent = built ? 'lobby wing' : 'lobby';
-      if (cost) cost.textContent = money(buildCost) + (withSlab ? ' + slab' : '');
+      if (cost) cost.textContent = money(buildCost);
     }
     if (b.dataset.do === 'stairs') {
       b.disabled = !state.lobby || state.money < CONFIG.costs.stairs;
