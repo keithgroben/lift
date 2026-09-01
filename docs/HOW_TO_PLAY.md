@@ -96,6 +96,9 @@ The screen has three parts, and each answers a different question.
   build palette. When you select a room, shaft, or facility, its panel appears
   below the palette; when nothing is selected, nothing is there.
 
+The bar also carries the **appeal view** toggle (also `A`), which tints the
+whole tower by room appeal on demand.
+
 `HOW TO READ THE TOWER` and `FIRST SESSION PATH` are collapsed at the bottom of
 the sidebar. Everything else — the full telemetry column, transport
 diagnostics, the legend, and the tuning knobs — is behind
@@ -117,8 +120,17 @@ tall one. Read the pair, never the score alone.
   a reading for inspecting rather than for glancing, so it sits with the rest
   of the telemetry behind `D`.
 - Room colors identify the space type: blue office, green condo, amber shop,
-  violet hotel, and gray empty. A redder room is losing appeal; the thin
-  yellow/red line along its bottom shows tenant stress.
+  violet hotel, and gray empty. A redder room is losing appeal.
+- **Two warnings sit on a room, and they are different problems.** A bar
+  filling up the room's **left** edge is a departure wick: this tenant is
+  walking out over **room appeal**, one notch per day left. A line along the
+  room's **bottom** edge is **tenant stress** from slow lifts. Both run amber
+  to red, so read the *edge*, not the colour — appeal is answered with
+  services, rent or noise, and stress with cars and shafts. A healthy room
+  shows neither.
+- Press **A**, or the **appeal view** toggle in the top bar, to tint every room
+  by appeal at once. That is the view for "which half of my tower is rotting";
+  the wick is for "which room, and how soon".
 - Delivery: the share of trips completed. Low delivery creates stress and
   harms reputation.
 - Room appeal/desirability: how attractive a space is after access, stress,

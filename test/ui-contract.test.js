@@ -10,6 +10,7 @@ const config = read('../src/games/lift/config.js');
 const guide = read('../docs/HOW_TO_PLAY.md');
 const topBar = read('../src/games/lift/ui/hud/TopBar.tsx');
 const statBar = read('../src/games/lift/ui/hud/StatBar.tsx');
+const canvas = read('../src/games/lift/render/canvas.js');
 
 /** The markup between two ids, so "is X inside Y" is asked of a real region. */
 function region(source, open, close) {
@@ -19,13 +20,13 @@ function region(source, open, close) {
   return source.slice(start, end);
 }
 
-/** A named function body in app.js, bounded at its closing brace in column 0. */
-function fn(name) {
-  const start = app.indexOf('function ' + name + '(');
-  assert(start > 0, 'app.js has no function ' + name);
-  const end = app.indexOf('\n}', start);
+/** A named function body, bounded at its closing brace in column 0. */
+function fn(name, source = app) {
+  const start = source.indexOf('function ' + name + '(');
+  assert(start > 0, 'no function ' + name);
+  const end = source.indexOf('\n}', start);
   assert(end > start, 'could not bound ' + name);
-  return app.slice(start, end);
+  return source.slice(start, end);
 }
 
 /** Every tool tile in the palette, in the order the player reads them. */
@@ -315,6 +316,69 @@ export const tests = {
     assert(!/classList\.(?:toggle|add|remove)\(/.test(toggle),
       'the control carries a second on/off flag beside aria-pressed');
     assert(/\[aria-pressed="true"\]/.test(page), 'nothing styles the pressed state of the view toggle');
+  },
+
+  /**
+   * The key has to name the signals the tower actually draws — the miniature of
+   * the whole problem, and the one that cost a tower. Keith ran delivery at 100%
+   * and reputation at 100 and lost every tenant to room appeal, because nothing
+   * told him which cause he was looking at; meanwhile the key went on describing
+   * a red fade as THE appeal warning after the wick replaced it as the warning.
+   * A legend that names the wrong signal is worse than no legend.
+   *
+   * Both markers run amber to red, so colour cannot separate them: the key must
+   * say which EDGE each sits on, and the edge it names must be the edge the
+   * renderer draws it on. That last half is what stops the copy drifting away
+   * from the drawing the next time a marker moves.
+   */
+  'the room key names the markers the renderer draws, on the edges it draws them'() {
+    const key = region(page, 'class="player-color-key"', '</div>');
+
+    // Where the renderer actually puts each marker.
+    const wickBox = fn('departureWickBox', canvas);
+    assert(/return \{ x: x \+ /.test(wickBox) && !/x \+ L?\.?cw/.test(wickBox),
+      'the departure wick no longer sits on the room\'s left edge, and the key still says it does');
+    // EVERY stress-line draw, not any one of them: the sprite path and the
+    // fallback path both draw it, and an assertion satisfied by either would
+    // pass while one of them moved off the bottom edge the key promises.
+    const stressDraws = [...canvas.matchAll(/fillRect\(x \+ 2, y \+ ([^,]+), \(L\.cw - 4\) \* stress/g)]
+      .map((match) => match[1]);
+    assert(stressDraws.length >= 2, 'the stress line draw sites moved or were renamed; re-anchor this check');
+    for (const at of stressDraws) {
+      assert(at === 'L.fh - 7',
+        'a stress line is drawn at ' + at + ', not the room\'s bottom edge the key promises');
+    }
+
+    // And the key says so, in words, with the edge attached to the cause.
+    assert(/LEFT edge/.test(key) && /BOTTOM edge/.test(key),
+      'the key does not say which edge each warning sits on, and colour cannot tell them apart');
+    const left = key.indexOf('LEFT edge');
+    const bottom = key.indexOf('BOTTOM edge');
+    assert(key.slice(left, bottom).includes('room appeal'),
+      'the left-edge marker is not tied to room appeal');
+    assert(key.slice(bottom).includes('slow lifts'),
+      'the bottom-edge marker is not tied to slow lifts');
+    // Different causes, different money — the point of separating them at all.
+    assert(/services, rent or noise/.test(key) && /cars and shafts/.test(key),
+      'the key names two warnings and gives them one fix');
+
+    // Negated: the stale claim that the fade IS the appeal warning must be gone.
+    assert(!/red fade = low appeal/.test(page),
+      'the key still sells the red fade as the appeal warning the wick replaced');
+
+    // The appeal view is findable from the key and from the shortcut list.
+    assert(/appeal view/.test(key), 'the key never mentions the appeal view');
+    assert(/<b>A<\/b> appeal view/.test(page), 'the shortcut list does not list A');
+
+    // The developer legend carries a row for each of the three, so the view we
+    // tune with names them too.
+    const legend = region(page, 'LEGEND &amp; SIGNALS', '</section>');
+    for (const [swatch, meaning] of [['swatch-wick', 'departure wick'], ['swatch-stress', 'stress line'],
+      ['swatch-appeal', 'appeal view']]) {
+      assert(legend.includes(swatch), 'the legend has no row for the ' + meaning);
+      assert(legend.includes(meaning), 'the legend row for ' + meaning + ' does not name it');
+      assert(new RegExp('\\.' + swatch + ' \\{').test(page), 'the ' + meaning + ' row has no swatch to show');
+    }
   },
 
   /** Issue #13: the sidebar reduced to the next action and the palette. */
