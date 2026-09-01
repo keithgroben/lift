@@ -1216,7 +1216,20 @@ export function makeRenderer(canvas, config) {
     // drew before there was any, and it stays because a sheet can always be
     // missing — an unfinished subject must cost a rectangle, not a blank room.
     const art = unitSprite(u, state);
-    if (art && sprites.drawSprite(ctx, { ...art, x, y, scale: L.zoom, phaseMs: idPhase(u.id) })) {
+    // An empty room has to READ as empty. The art's own "vacant" frame still
+    // has desks and figures in it, so at a glance a room waiting for a tenant
+    // looks exactly like one full of them — Keith, 2026-09-01: "rooms fill up
+    // with 6/6 tenants, need an empty / for-lease graphic." Until the art has
+    // a real empty shell, the renderer says it: the room is dimmed towards the
+    // night sky and carries a FOR LEASE tag instead of a tenant count.
+    if (!u.occupied) ctx.globalAlpha = 0.42;
+    const drew = art && sprites.drawSprite(ctx, { ...art, x, y, scale: L.zoom, phaseMs: idPhase(u.id) });
+    ctx.globalAlpha = 1;
+    if (drew) {
+      if (!u.occupied) {
+        drawVacancyTag(x, y, L);
+        return;
+      }
       if (u.occupied) {
         const stressed = Math.min(1, u.stress / tune.vacateAt);
         if (stressed > 0.02) {
@@ -1261,6 +1274,28 @@ export function makeRenderer(canvas, config) {
     }
 
     drawTenantBadge(u, x, y, L);
+  }
+
+  /** FOR LEASE, over an empty room. Shortened before it is squeezed: an
+   *  unreadable tag is worse than a shorter word. */
+  function drawVacancyTag(x, y, L) {
+    if (L.fh < 14) return;
+    const k = L.zoom >= 3 ? 1.25 : L.zoom >= 2 ? 1 : 0.75;
+    const text = L.cw >= 84 ? 'FOR LEASE' : L.cw >= 60 ? 'LEASE' : 'TO LET';
+    const w = Math.min(L.cw - 6 * k, text.length * 5.6 * k + 10 * k);
+    const h = 11 * k;
+    const bx = x + (L.cw - w) / 2;
+    const by = y + L.fh / 2 - h / 2;
+    ctx.fillStyle = 'rgba(14,17,22,0.82)';
+    roundRect(ctx, bx, by, w, h, 2);
+    ctx.fill();
+    ctx.strokeStyle = WARN;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = WARN;
+    ctx.textAlign = 'center';
+    ctx.font = '700 ' + Math.round(8 * k) + 'px ui-monospace, monospace';
+    ctx.fillText(text, x + L.cw / 2, by + h * 0.78);
   }
 
   // The room color communicates quality; this small badge communicates how
@@ -1587,12 +1622,30 @@ export function makeRenderer(canvas, config) {
     }
   }
 
+  /** One art tile per storey a route spans, so a flight of stairs looks like a
+   *  stairwell instead of a translucent box with a line through it. Returns
+   *  false when the sheet is not there, leaving the placeholder to draw. */
+  function drawRouteColumn(name, animation, slot, bottom, top, L) {
+    if (!sprites.has(name, animation)) return false;
+    for (let f = bottom; f <= top; f++) {
+      const x = L.x0 + slot * L.cw;
+      const y = L.floorY(f);
+      if (x + L.cw < 0 || x > W || y + L.fh < 0 || y > H) continue;
+      if (!sprites.drawSprite(ctx, { name, animation, x, y, scale: L.zoom, phaseMs: f * 90 })) return false;
+    }
+    return true;
+  }
+
   function drawStairs(stair, L, state) {
     const x = L.x0 + stair.slot * L.cw;
     const top = L.floorY(stair.top), bot = L.floorY(stair.bottom) + L.fh;
     const occupancy = localRouteOccupancy(state, 'stairs', stair.id);
     const capacity = Math.max(1, Math.floor(Number(config.stairs?.capacity) || 0));
     const full = occupancy >= capacity;
+    if (drawRouteColumn('stairs-segment', 'tile', stair.slot, stair.bottom, stair.top, L)) {
+      routeBadge('STAIRS ' + occupancy + '/' + capacity, full, x, bot, L);
+      return;
+    }
     ctx.fillStyle = 'rgba(90,169,230,0.22)';
     roundRect(ctx, x + 3, top + 1, L.cw - 6, bot - top - 2, 4);
     ctx.fill();
@@ -1608,12 +1661,30 @@ export function makeRenderer(canvas, config) {
     ctx.fillText('STAIRS ' + occupancy + '/' + capacity, x + L.cw / 2, bot - 7);
   }
 
+  /** The occupancy count, over whichever art the route drew. */
+  function routeBadge(text, full, x, bottomY, L) {
+    if (L.fh < 18) return;
+    const k = L.zoom >= 3 ? 1.25 : L.zoom >= 2 ? 1 : 0.75;
+    ctx.fillStyle = 'rgba(14,17,22,0.72)';
+    const w = Math.max(30 * k, text.length * 5.4 * k + 8 * k);
+    roundRect(ctx, x + L.cw / 2 - w / 2, bottomY - 13 * k, w, 11 * k, 3);
+    ctx.fill();
+    ctx.fillStyle = full ? '#ff8da6' : '#8ecae6';
+    ctx.textAlign = 'center';
+    ctx.font = '700 ' + Math.round(8 * k) + 'px ui-monospace, monospace';
+    ctx.fillText(text, x + L.cw / 2, bottomY - 4.5 * k);
+  }
+
   function drawEscalator(escalator, L, state) {
     const x = L.x0 + escalator.slot * L.cw;
     const top = L.floorY(escalator.top), bot = L.floorY(escalator.bottom) + L.fh;
     const occupancy = localRouteOccupancy(state, 'escalator', escalator.id);
     const capacity = Math.max(1, Math.floor(Number(config.escalator?.capacity) || 0));
     const full = occupancy >= capacity;
+    if (drawRouteColumn('escalator-segment', 'run', escalator.slot, escalator.bottom, escalator.top, L)) {
+      routeBadge('ESC ' + occupancy + '/' + capacity, full, x, bot, L);
+      return;
+    }
     ctx.fillStyle = 'rgba(244,162,97,0.24)';
     roundRect(ctx, x + 3, top + 1, L.cw - 6, bot - top - 2, 4);
     ctx.fill();
