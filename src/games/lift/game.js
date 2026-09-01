@@ -36,6 +36,24 @@ meta.cliff = (log) => {
   return null;
 };
 
+/**
+ * Population held at the end of the run. Population is the game's own
+ * currency — every star tier is a population gate — and averaging the last
+ * ten closed days scores the tower a policy can HOLD rather than the peak it
+ * overshot to on one good day. A run that went bankrupt ends on its collapse,
+ * so dying is priced in without a separate penalty term.
+ *
+ * This exists so `harness/tune.js` can run against lift at all: it refuses a
+ * game with no `meta.score`, and its spread number — does playing well beat
+ * playing badly at this config value — is the only thing a tuning pass can
+ * settle without a human at the keyboard.
+ */
+meta.score = (state) => {
+  const tail = state.log.slice(-10);
+  return tail.length ? +(tail.reduce((sum, d) => sum + (d.pop ?? 0), 0) / tail.length).toFixed(1) : 0;
+};
+meta.scoreLabel = 'held pop';
+
 meta.summary = (state) => {
   const d = state.log[state.log.length - 1];
   if (!d) return 'no days completed';

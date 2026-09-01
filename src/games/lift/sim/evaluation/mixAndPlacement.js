@@ -1,5 +1,5 @@
 /** Tenant mix targets and "what if I build/convert here" placement previews. */
-import { freeSlot, slotsUsed, unlocked } from '../state.js';
+import { buildableFloors, freeSlot, isBuildableFloor, slotsUsed, unlocked } from '../state.js';
 import { dailyIncomeBreakdown, marketDemandBonus, tenantDemandQuality } from './leasing.js';
 import { tenantCapacity, unitEvaluation } from './room.js';
 import { clearRouteColumn, formatCost } from './transport.js';
@@ -54,7 +54,7 @@ export function tenantMixDemand(state, config) {
 
 /** Return the occupied tenant mix and buildable capacity for each upper floor. */
 export function tenantFloorMix(state, config) {
-  return Array.from({ length: Math.max(0, state.floors - 1) }, (_, index) => index + 1)
+  return buildableFloors(state, config)
     .map((floor) => {
       const units = state.units.filter((unit) => unit.floor === floor);
       const headsByKind = new Map(Object.keys(config.units).map((kind) => [kind, 0]));
@@ -254,7 +254,7 @@ export function tenantPlacementMixPreview(state, kind, config) {
 
 /** Preview room quality at a specific upper-floor placement without building it. */
 export function tenantPlacementFloorPreview(state, kind, floor, config) {
-  if (floor <= config.building.lobbyFloor || floor >= state.floors) {
+  if (!isBuildableFloor(state, floor, config)) {
     return { available: false, floor, reason: 'not buildable' };
   }
   const slot = freeSlot(state, config, floor);
@@ -281,7 +281,7 @@ export function tenantPlacementFloorPreview(state, kind, floor, config) {
 export function tenantPlacementFloorComparison(state, kind, floor, config) {
   const current = tenantPlacementFloorPreview(state, kind, floor, config);
   if (!current.available) return current;
-  const alternatives = Array.from({ length: Math.max(0, state.floors - 1) }, (_, index) => index + 1)
+  const alternatives = buildableFloors(state, config)
     .map((candidateFloor) => tenantPlacementFloorPreview(state, kind, candidateFloor, config))
     .filter((preview) => preview.available);
   const best = alternatives.sort((a, b) => b.evaluation.score - a.evaluation.score)[0] ?? current;
@@ -308,7 +308,7 @@ function placementDecisionStrength(preview, config) {
 /** Return open floors that can replace unavailable comparison candidates. */
 export function tenantPlacementReplacementPreviews(state, kind, comparedFloors, config) {
   const compared = new Set(comparedFloors);
-  return Array.from({ length: Math.max(0, state.floors - 1) }, (_, index) => index + 1)
+  return buildableFloors(state, config)
     .filter((floor) => !compared.has(floor))
     .map((floor) => tenantPlacementFloorComparison(state, kind, floor, config))
     .filter((preview) => preview.available)
@@ -387,7 +387,7 @@ function unlockLabel(config, kind) {
 
 function facilityPlaceableForFloor(state, config, kind, floor) {
   const radius = config.services?.[kind]?.coverageFloors ?? 0;
-  return Array.from({ length: Math.max(0, state.floors - 1) }, (_, index) => index + 1)
+  return buildableFloors(state, config)
     .some((candidateFloor) => Math.abs(candidateFloor - floor) <= radius && freeSlot(state, config, candidateFloor) >= 0);
 }
 
@@ -497,7 +497,7 @@ export function tenantPlacementInvestmentPreview(preview, target, state, config,
   };
   if (config.services?.[target.tool]) {
     const radius = config.services[target.tool].coverageFloors ?? 0;
-    if (floor <= config.building.lobbyFloor || floor >= state.floors) {
+    if (!isBuildableFloor(state, floor, config)) {
       return { available: false, reason: 'choose an upper floor' };
     }
     if (Math.abs(floor - targetFloor) > radius) {

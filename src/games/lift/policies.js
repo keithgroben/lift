@@ -1,6 +1,6 @@
 import { applyAction } from './sim/index.js';
-import { unlocked, slotsUsed } from './sim/state.js';
-import { postBetaManagementGoal } from './sim/evaluation.js';
+import { basementDepth, lowestFloor, unlocked, slotsUsed } from './sim/state.js';
+import { postBetaManagementGoal, servicePlacementCoveragePreview, tenantPlacementFloorPreview } from './sim/evaluation.js';
 
 /**
  * Autoplayers. A headless run needs someone to press the buttons, and the
@@ -334,10 +334,11 @@ function grow(state, config, reserve = 0, healthGate = null, headroomFloors = 2,
  * fine for a small tower but falls behind a fast-diversifying one, so keep
  * taking the next-largest gap until none is left.
  */
-function closeServiceGaps(state, config, pickSlot = null) {
+function closeServiceGaps(state, config, pickSlot = null, undergroundFirst = false) {
   for (let i = 0; i < 5; i++) {
     const goal = postBetaManagementGoal(state, config);
     if (!goal?.action || goal.recommendedFloor == null) break;
+    if (undergroundFirst && placeServiceUnderground(state, config, goal.action)) continue;
     // Under a column plan, a full recommended floor means "try a neighbor
     // inside the coverage radius", never "let the sim pick a slot" (that
     // parked garages in the express column) and never "skip the service"
@@ -356,6 +357,80 @@ function closeServiceGaps(state, config, pickSlot = null) {
     }
     if (!placed) break;
   }
+}
+
+/**
+ * Basements, as a hypothesis. Digging is only worth it if the pure-overhead
+ * facilities move down there and give their above-ground slots back to
+ * rentable rooms — so these three helpers do exactly that and nothing else,
+ * and the sweep decides whether it pays.
+ */
+
+/**
+ * Dig one storey, but never ahead of use: the deepest basement must already
+ * hold something before another is sunk. An empty hole is floor upkeep with
+ * no coverage, which would make digging look bad for a reason that has
+ * nothing to do with the tradeoff being measured.
+ */
+function digBasements(state, config, reserve) {
+  const maxDepth = Math.max(0, Number(config.underground?.maxDepth) || 0);
+  if (basementDepth(state) >= maxDepth) return;
+  if (state.money - (Number(config.underground?.digCost) || 0) < reserve) return;
+  const deepest = lowestFloor(state);
+  const inUse = deepest === 0
+    || (state.facilities ?? []).some((f) => f.floor === deepest)
+    || state.units.some((u) => u.floor === deepest);
+  if (!inUse) return;
+  act(state, config, 'dig_basement', {});
+}
+
+/**
+ * Transport has to reach them or they are as dead as an unserved 40th floor.
+ * One dedicated shaft from the deepest basement up to the lobby, extended
+ * DOWN as the tower digs: basement trips transfer at floor 0 exactly the way
+ * a sky lobby works, so this never fights the zone locals for a column all
+ * the way up the building.
+ */
+function serveBasements(state, config) {
+  const bottom = lowestFloor(state);
+  if (bottom >= 0) return;
+  const shaft = state.shafts.find((sh) => sh.kind !== 'express' && sh.top === 0);
+  if (!shaft) { act(state, config, 'build_shaft', { bottom, top: 0 }); return; }
+  if (shaft.bottom > bottom) act(state, config, 'extend_shaft', { id: shaft.id, bottom });
+}
+
+/**
+ * Rent the basements out, but only where a tenant would actually take the
+ * room. The appeal penalty is the entire question: at a low one a basement
+ * office is simply free rentable space and the tower gets bigger for nothing,
+ * at a high one it never leases and the space is worth more as plant. Asking
+ * the game's own placement preview — the same score the leasing gate uses —
+ * is what turns that penalty into a curve a sweep can read.
+ */
+function fillBasements(state, config, reserve) {
+  const kind = pickRoomKind(state, config);
+  if (state.money - config.costs[kind] < reserve) return;
+  for (let floor = -1; floor >= lowestFloor(state); floor--) {
+    const preview = tenantPlacementFloorPreview(state, kind, floor, config);
+    if (!preview.available) continue;
+    if ((preview.evaluation?.score ?? 0) < config.evaluation.relistMinScore) continue;
+    if (act(state, config, 'build_unit', { kind, floor, slot: preview.slot }).ok) return;
+  }
+}
+
+/**
+ * Put the service underground when it actually covers rooms there. The
+ * coverage preview is the authority, not the depth: a garage that reaches
+ * nobody is worse than one squatting a rentable slot. Shallowest first, so
+ * the reach into the basements themselves stays as good as it can be.
+ */
+function placeServiceUnderground(state, config, kind) {
+  for (let floor = -1; floor >= lowestFloor(state); floor--) {
+    const preview = servicePlacementCoveragePreview(state, kind, floor, config);
+    if (!preview.available || preview.roomsDelta <= 0) continue;
+    if (act(state, config, 'build_facility', { kind, floor }).ok) return true;
+  }
+  return false;
 }
 
 export const POLICIES = {
@@ -466,6 +541,35 @@ export const POLICIES = {
       grow(state, config, config.costs.car * 3, towerIsHealthy, 6, preferredRoomSlot);
       pushTowardNextZone(state, config, config.costs.car * 3);
       closeServiceGaps(state, config, preferredRoomSlot);
+      manageZones(state, config);
+    },
+  },
+
+  /**
+   * H6: does digging pay? Identical to "skyscraper" in every above-ground
+   * respect — same ratio, same zoning, same health gate — so any difference
+   * in the sweep is the underground decision and nothing else. It digs B1..Bn
+   * as it fills them, runs one shaft down from the lobby, and sends every
+   * pure-overhead facility below ground wherever that still covers rooms,
+   * freeing the above-ground slots those garages and plant rooms were taking
+   * from rentable space. If this never beats "skyscraper", the basement is
+   * decoration.
+   */
+  underground: {
+    name: 'underground (digs; services go below ground)',
+    officesPerCar: 1.5,
+    open: zonedOpening,
+    decide(state, config) {
+      const zh = zoneHeight(config);
+      const tiers = Math.floor((config.building.maxFloors - 1) / zh);
+      const expressColumns = new Set(Array.from({ length: tiers }, (_, i) => 3 + i));
+      addTransportCapacity(state, config, this.officesPerCar, expressColumns);
+      grow(state, config, config.costs.car * 3, towerIsHealthy, 6, preferredRoomSlot);
+      pushTowardNextZone(state, config, config.costs.car * 3);
+      digBasements(state, config, config.costs.car * 3);
+      serveBasements(state, config);
+      closeServiceGaps(state, config, preferredRoomSlot, true);
+      fillBasements(state, config, config.costs.car * 3);
       manageZones(state, config);
     },
   },
