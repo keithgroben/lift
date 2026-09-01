@@ -113,22 +113,37 @@ export const CONFIG = {
      * of reach up from the ground line is the furthest a basement garage can
      * plausibly claim.
      *
-     * ⚠ THAT CURVE IS STALE. It was measured before the lobby-first change,
-     * when every policy was handed four free storeys; policies now buy their
-     * own opening floors (~$160k), which moved every baseline. Re-measured on
-     * current main, 60d x 5 seeds: twin 92.1, and 0/2/6 -> 101.9 / 117.3 /
-     * 147.1. The DIRECTION survives — coverage is still what makes digging
-     * pay — but "a trap at 0" does not: digging now edges its twin even with
-     * no coverage at all, so the knee argument for 2 no longer holds on its
-     * own terms. The value is left where it is pending Keith's call, not
-     * because the evidence still says 2.
+     * ⚠ THAT CURVE IS STALE — kept only to explain how the value moved. It
+     * was measured when every policy was handed four free storeys. Policies
+     * now buy their own, and `+ floor` is gone entirely (a room raises its own
+     * storey), which moved every baseline.
      *
-     * Also worth knowing: at 40 days (tune.js's default) the knob is INERT —
-     * 0/1/2/4 -> 47.3 / 46.8 / 46.6 / 48.1. Depth needs time to matter, so a
-     * short sweep will read this dimension as a flat curve and conclude there
-     * is no game in it. Use TUNE_DAYS=60 or longer for anything underground.
+     * RE-SWEPT on the current baseline, 60d x 5 seeds, held population.
+     * Non-digging twin ("skyscraper") 92.1, best above-ground play
+     * ("managed") 128.1:
+     *
+     *   0 -> 101.9 · 1 -> 109.6 · 2 -> 117.3 · 3 -> 111.3
+     *   4 -> 133.0 · 6 -> 147.1 · 8 -> 144.4
+     *
+     * Two things changed. Digging beats its twin at EVERY value now, so it is
+     * never the trap it was at 0. And there is a real interior maximum at 6
+     * where the old curve merely flattened.
+     *
+     * 4 is Keith's call, 2026-09-01, and the line it is chosen against is
+     * 128.1 rather than 92.1. Below 4, digging loses to simply playing well
+     * above ground — so a strong player would rationally never dig, and the
+     * whole underground is a sideshow. At 4 it wins by 5 points: enough that
+     * digging can be the better move, not so much that it is the obvious one.
+     * 6 peaks higher but puts digging 19 clear of the best surface play,
+     * which is how an option turns into an obligation.
+     *
+     * Also worth knowing: at 40 days (tune.js's default) this knob reads
+     * INERT — 0/1/2/4 -> 47.3 / 46.8 / 46.6 / 48.1. Depth needs time to
+     * matter, so a short sweep sees a flat curve and concludes there is no
+     * game in this dimension. Use TUNE_DAYS=60 or longer for anything
+     * underground.
      */
-    serviceCoverageBonus: 2,
+    serviceCoverageBonus: 4,
   },
 
   access: {
