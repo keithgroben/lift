@@ -89,9 +89,10 @@ way it is**, so item 13 cannot be run honestly yet. Full spec in
       `tools/sprite-catalog.json`, and a renderer seam that falls back to the
       old rectangle whenever a sheet is missing or broken. Rooms, the lobby,
       the street and the earth draw from art now.
-- [ ] `palette-icons.png` redo — the delivered strip came back in a different
-      style with a different tool list (no floor, shaft or car). The tiles
-      carry text placeholders until it lands.
+- [x] `palette-icons.png` redo — the second strip came back in style with the
+      right 18 tools, was ingested by `tools/ingest_icon_grid.py`, and is on
+      the buttons. The tiles keep their text monograms underneath as the
+      fallback and the screen-reader label.
 - [ ] **Then** the recorded playthrough, and the loop balance pass it feeds.
 - [ ] **Only then** the developer sidebar comes out and its numbers move
       in-world. Deliberately gated on the playthrough, not on a date.
