@@ -204,7 +204,29 @@ export const CONFIG = {
     /** Noise at a unit's tolerance receives the full noise penalty. */
     noiseTolerance: 1,
     /** Minimum room score for a vacant unit to attract a replacement tenant. */
-    relistMinScore: 55,
+    /**
+     * The bar a room that has ALREADY driven a tenant out must clear before
+     * anyone else takes it — automatically, or through the player's own
+     * `rerent_unit`. Against `occupancy.firstLetMinScore` (20), which is all a
+     * brand-new room has to prove.
+     *
+     * It was 55, and that stranded every small tower permanently. Measured
+     * distribution of room scores: in a mature tower (23-38 floors) occupied
+     * rooms sit at a median of 58 and vacant ones at 48-51, so 55 filtered
+     * sensibly there. But a four-floor tower with one shaft tops out around
+     * 47 — no room could ever clear it, automatic re-letting was impossible,
+     * AND the player's own recovery action was refused for the same reason.
+     * Every early tower decayed to zero and stayed there. Keith found it while
+     * trying to build a tower worth photographing.
+     *
+     * 35 sits below what a healthy small-tower room reaches and above what a
+     * degraded one does, so a failed room still has to be fixed rather than
+     * simply waited out. Swept 60d x 5 seeds: 20/30/40 all score ~142-144 for
+     * the best policy against 125.7 at 55, and the spread between best and
+     * worst play holds at 92% — the curve is flat across the whole usable
+     * range, so this is a floor-raising fix rather than a difficulty knob.
+     */
+    relistMinScore: 35,
     /** Neutral starting point for the separate tower desirability index. */
     desirabilityBase: 60,
   },

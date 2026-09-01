@@ -474,10 +474,15 @@ export const tests = {
       evaluation: { score },
       mix: { balanceDelta },
     });
-    assert(tenantPlacementDecision(makePreview(80, 0), config).key === 'aligned' &&
-      tenantPlacementDecision(makePreview(80, -1), config).key === 'mix_tradeoff' &&
-      tenantPlacementDecision(makePreview(54, 0), config).key === 'quality_warning' &&
-      tenantPlacementDecision(makePreview(54, -1), config).key === 'combined_warning' &&
+    // Relative to the bar, not a literal: this test is about how the labels
+    // separate quality from mix, and it should keep meaning that whatever the
+    // bar is set to.
+    const passes = config.evaluation.relistMinScore + 25;
+    const fails = config.evaluation.relistMinScore - 1;
+    assert(tenantPlacementDecision(makePreview(passes, 0), config).key === 'aligned' &&
+      tenantPlacementDecision(makePreview(passes, -1), config).key === 'mix_tradeoff' &&
+      tenantPlacementDecision(makePreview(fails, 0), config).key === 'quality_warning' &&
+      tenantPlacementDecision(makePreview(fails, -1), config).key === 'combined_warning' &&
       tenantPlacementDecision({ available: false }, config).key === 'unavailable',
       'candidate decision labels did not distinguish aligned and conflicting signals');
   },
@@ -491,8 +496,8 @@ export const tests = {
       mix: { balanceDelta },
     });
     assert(tenantPlacementDecisionReason(makePreview(80, -3), config) === 'mix tradeoff: balance falls 3 pts' &&
-      tenantPlacementDecisionReason(makePreview(54, -2), config) === 'mix + quality warning: balance falls 2 pts' &&
-      tenantPlacementDecisionReason(makePreview(54, 0), config) === '' &&
+      tenantPlacementDecisionReason(makePreview(config.evaluation.relistMinScore - 1, -2), config) === 'mix + quality warning: balance falls 2 pts' &&
+      tenantPlacementDecisionReason(makePreview(config.evaluation.relistMinScore - 1, 0), config) === '' &&
       tenantPlacementDecisionReason(makePreview(80, 0), config) === '',
       'placement hover did not isolate the negative mix signal');
   },
@@ -2342,8 +2347,12 @@ export const tests = {
   'tenant utilization room context explains the focused room impact'() {
     const summary = { tenants: 6, capacity: 12 };
     const declining = { key: 'worsened', entries: [{}, {}, {}] };
-    const vacant = tenantUtilizationRoomContext({ kind: 'office', heads: 6, occupied: false }, { score: 48 }, summary, declining, CONFIG);
-    const atRisk = tenantUtilizationRoomContext({ kind: 'office', heads: 6, occupied: true }, { score: 48 }, summary, declining, CONFIG);
+    // A score BELOW the leasing threshold, expressed against the threshold: the
+    // test is about the wording connecting a room to the tower's warning, not
+    // about what the bar happens to be set to.
+    const belowBar = { score: CONFIG.evaluation.relistMinScore - 5 };
+    const vacant = tenantUtilizationRoomContext({ kind: 'office', heads: 6, occupied: false }, belowBar, summary, declining, CONFIG);
+    const atRisk = tenantUtilizationRoomContext({ kind: 'office', heads: 6, occupied: true }, belowBar, summary, declining, CONFIG);
     assert(vacant.key === 'vacant' && vacant.detail.includes('adds 6 capacity but no tenants') &&
       atRisk.key === 'at_risk' && atRisk.detail.includes('contributes 6 tenants to 6/12') && atRisk.detail.includes('below the leasing threshold'),
       'tenant utilization room context did not connect room state to the tower warning');

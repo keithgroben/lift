@@ -456,7 +456,7 @@ export function makeRenderer(canvas, config) {
   sprites.preload([
     'ground-street', 'ground-entrance', 'earth-fill', 'earth-edge', 'foundation-slab',
     'basement-empty', 'basement-parking', 'basement-storage', 'basement-utility',
-    'office', 'condo', 'shop', 'hotel', 'slot-empty', 'slot-construction',
+    'office', 'condo', 'shop', 'hotel', 'slot-empty', 'slot-construction', 'room-empty',
     'lobby', 'lobby-wing', 'floor-slab', 'roof-cap',
     'shaft-column', 'elevator-car', 'elevator-car-express', 'stairs-segment', 'escalator-segment',
     'sky-cloud', 'sky-bird', 'sky-plane', 'sky-balloon', 'sky-blimp', 'sky-explorer', 'sky-stunt',
@@ -698,6 +698,10 @@ export function makeRenderer(canvas, config) {
 
     // The slab the whole tower stands on, at the bottom of whatever is dug.
     drawFoundation(state, L);
+    // ...and a cap on the roof, so the top storey reads as finished rather
+    // than cut off. Another sheet that has been sitting unused since the first
+    // art drop.
+    drawRoofCap(state, L);
 
     // The horizon and the street sit on top of floor 0's slab, so the ground
     // floor reads as a storey standing ON something instead of floating. The
@@ -1036,6 +1040,25 @@ export function makeRenderer(canvas, config) {
     return f === 0 ? 'L' : isUnderground(f) ? 'B' + -f : String(f);
   }
 
+  /** The parapet along the top of the tower. Slot 0 of the built span gets the
+   *  antenna, because a skyline needs one thing sticking up. */
+  function drawRoofCap(state, L) {
+    const roof = (state?.floors ?? 0) - 1;
+    if (roof < 0) return;
+    const built = slotsUsed(state, roof);
+    if (!built.size) return;
+    const h = Math.max(2, Math.round(12 * L.zoom));
+    const y = L.floorY(roof) - h;
+    if (y > H || y + h < 0) return;
+    let first = true;
+    for (const slot of [...built].sort((a, b) => a - b)) {
+      const x = L.x0 + slot * L.cw;
+      if (x + L.cw < 0 || x > W) continue;
+      sprites.drawSprite(ctx, { name: 'roof-cap', animation: first ? 'antenna' : 'plain', x, y, scale: L.zoom });
+      first = false;
+    }
+  }
+
   /** The foundation slab, drawn under the deepest storey so a dug tower reads
    *  as standing ON something instead of hanging in the soil. */
   function drawFoundation(state, L) {
@@ -1354,9 +1377,24 @@ export function makeRenderer(canvas, config) {
     if (x + L.cw < 0 || x > W || bot < 0 || top > H) return;
     const express = sh.kind === 'express';
 
-    ctx.fillStyle = express ? 'rgba(24,13,36,0.92)' : 'rgba(8,11,15,0.9)';
-    roundRect(ctx, x + 3, top + 1, L.cw - 6, bot - top - 2, 4);
-    ctx.fill();
+    // The shaft column, one art tile per storey, inside the building's own
+    // shell — the sheet has been in the repo since the first art drop and
+    // nothing had ever asked for it.
+    let drewColumn = false;
+    if (!express && sprites.has('shaft-column', 'tile')) {
+      drewColumn = true;
+      for (let f = sh.bottom; f <= sh.top; f++) {
+        const fy = L.floorY(f);
+        if (fy + L.fh < 0 || fy > H) continue;
+        sprites.drawSprite(ctx, { name: 'slot-empty', animation: 'empty', x, y: fy, scale: L.zoom });
+        if (!sprites.drawSprite(ctx, { name: 'shaft-column', animation: 'tile', x, y: fy, scale: L.zoom })) drewColumn = false;
+      }
+    }
+    if (!drewColumn) {
+      ctx.fillStyle = express ? 'rgba(24,13,36,0.92)' : 'rgba(8,11,15,0.9)';
+      roundRect(ctx, x + 3, top + 1, L.cw - 6, bot - top - 2, 4);
+      ctx.fill();
+    }
     ctx.strokeStyle = express ? 'rgba(199,125,255,0.55)' : 'rgba(142,202,230,0.22)';
     ctx.lineWidth = 1;
     ctx.stroke();
@@ -1395,9 +1433,19 @@ export function makeRenderer(canvas, config) {
 
       const full = car.riders.length /
         (express ? (config.elevator.express?.capacity ?? config.elevator.capacity) : config.elevator.capacity);
-      ctx.fillStyle = car.state === 'doors' ? GOOD : mix(INFO, WARN, full);
-      roundRect(ctx, x + 5, next, L.cw - 10, L.fh - 8, 3);
-      ctx.fill();
+      // The car itself. Doors open while it is loading, shut while it moves —
+      // which is the single clearest read of what a lift is doing.
+      const carSheet = express ? 'elevator-car-express' : 'elevator-car';
+      const doorState = car.state === 'doors' ? 'open' : 'closed';
+      const drewCar = sprites.drawSprite(ctx, {
+        name: carSheet, animation: doorState,
+        x: x + (L.cw - 40 * L.zoom) / 2, y: next, scale: L.zoom,
+      });
+      if (!drewCar) {
+        ctx.fillStyle = car.state === 'doors' ? GOOD : mix(INFO, WARN, full);
+        roundRect(ctx, x + 5, next, L.cw - 10, L.fh - 8, 3);
+        ctx.fill();
+      }
 
       if (car.riders.length) {
         ctx.fillStyle = '#0e1116';
