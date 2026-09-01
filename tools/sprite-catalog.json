@@ -434,25 +434,24 @@
   "stairs-segment": {
     "frameW": 48,
     "frameH": 32,
+    "fit": "stretch",
     "states": [
       {
         "name": "tile",
-        "frames": 1
+        "frames": 2
       }
-    ],
-    "fit": "stretch"
+    ]
   },
   "escalator-segment": {
     "frameW": 48,
     "frameH": 32,
+    "fit": "stretch",
     "states": [
       {
-        "name": "run",
-        "frames": 4,
-        "speed": "escalator"
+        "name": "tile",
+        "frames": 2
       }
-    ],
-    "fit": "stretch"
+    ]
   },
   "person-worker": {
     "frameW": 16,
@@ -642,6 +641,29 @@
     "states": [
       {
         "name": "fly",
+        "frames": 1
+      }
+    ]
+  },
+  "room-empty": {
+    "frameW": 48,
+    "frameH": 32,
+    "fit": "stretch",
+    "states": [
+      {
+        "name": "office",
+        "frames": 1
+      },
+      {
+        "name": "condo",
+        "frames": 1
+      },
+      {
+        "name": "shop",
+        "frames": 1
+      },
+      {
+        "name": "hotel",
         "frames": 1
       }
     ]

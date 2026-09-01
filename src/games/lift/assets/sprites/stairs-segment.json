@@ -4,7 +4,7 @@
   "animations": {
     "tile": {
       "col": 0,
-      "frames": 1
+      "frames": 2
     }
   }
 }

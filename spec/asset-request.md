@@ -153,6 +153,7 @@ through the day.
 | 17 | `lobby.png` | 48x32 | day · night | Glass entrance. Tiles horizontally with `lobby-wing`. |
 | 18 | `lobby-wing.png` | 48x32 | day · night | Seamless continuation of the lobby. |
 | 19 | `floor-slab.png` | 48x4 tile | 1 | The line between floors; tiles horizontally. |
+| 20a | `room-empty.png` | 48x32 | office · condo · shop · hotel | The unfurnished shell of each room type, with a blank letting card in the window. This is what a room waiting for a tenant looks like; the game draws its own FOR LEASE label over the card. |
 | 20 | `roof-cap.png` | 48x12 | plain · antenna | Sits on the top floor. |
 
 ## Tier 1 — transport
@@ -162,8 +163,8 @@ through the day.
 | 21 | `shaft-column.png` | 48x32 tile | 1 | Dark interior with guide rails; tiles vertically. |
 | 22 | `elevator-car.png` | 40x26 | closed · opening (3f) · open | Riders are silhouettes in the window; the count is drawn by code. |
 | 23 | `elevator-car-express.png` | 40x26 | same set | Violet trim — express is already a distinct kind in the sim. |
-| 24 | `stairs-segment.png` | 48x32 tile | 1 | Diagonal flight; tiles vertically. |
-| 25 | `escalator-segment.png` | 48x32 tile | 4f loop | Moving-step animation. |
+| 24 | `stairs-segment.png` | 48x32 | tile (2f: lower, upper) | Diagonal flight; tiles vertically. |
+| 25 | `escalator-segment.png` | 48x32 | tile (2f: lower, upper) | Moving-step animation. |
 
 ## Tier 1 — people
 

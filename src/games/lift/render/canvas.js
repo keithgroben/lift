@@ -477,7 +477,11 @@ export function makeRenderer(canvas, config) {
   function unitSprite(u, state) {
     if (!['office', 'condo', 'shop', 'hotel'].includes(u.kind)) return null;
     const night = isNight(state);
-    if (!u.occupied) return { name: u.kind, animation: 'vacant' };
+    // The empty shell, not the furnished room's dim frame. Each type keeps its
+    // identity in the architecture alone — corporate glass, a balcony, a
+    // shutter, a door alcove — with a blank letting card in the window that
+    // drawVacancyTag writes over.
+    if (!u.occupied) return { name: 'room-empty', animation: u.kind };
     if (u.kind === 'shop') {
       if (night) return { name: 'shop', animation: 'closed-night' };
       const fronts = ['open-grocery', 'open-cafe', 'open-awning'];
@@ -1648,7 +1652,12 @@ export function makeRenderer(canvas, config) {
       // Without it the route tile is a box butted against the building, which
       // is what read as detached.
       sprites.drawSprite(ctx, { name: 'slot-empty', animation: 'empty', x, y, scale: L.zoom });
-      if (!sprites.drawSprite(ctx, { name, animation, x, y, scale: L.zoom, phaseMs: f * 90 })) return false;
+      // The art is one two-storey run cut in half: frame 0 is the lower
+      // flight, frame 1 the upper. Picking by the floor's own parity — not by
+      // a clock — makes a stairwell of any height read as a continuous
+      // switchback instead of the same tile repeated.
+      const half = ((f - bottom) % 2 + 2) % 2;
+      if (!sprites.drawSprite(ctx, { name, animation, x, y, scale: L.zoom, frame: half })) return false;
     }
     return true;
   }
