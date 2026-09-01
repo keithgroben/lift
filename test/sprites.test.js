@@ -12,6 +12,27 @@ const assert = (condition, message) => { if (!condition) throw new Error(message
 const here = path.dirname(fileURLToPath(import.meta.url));
 const assetDir = path.join(here, '..', 'src', 'games', 'lift', 'assets', 'sprites');
 
+/** The ingest catalogue, minus its `$comment` preamble. */
+function readCatalog() {
+  const raw = JSON.parse(fs.readFileSync(path.join(here, '..', 'tools', 'sprite-catalog.json'), 'utf8'));
+  return Object.fromEntries(Object.entries(raw).filter(([k]) => !k.startsWith('$')));
+}
+
+/** The sidecar `tools/ingest_sprite.py` writes for a catalogue entry. Kept in
+ *  step with `sidecar_for()` there; the tests below are what holds them level. */
+function sidecarFor(entry) {
+  const animations = {};
+  let col = 0;
+  for (const state of entry.states) {
+    const anim = { col, frames: state.frames };
+    if (state.speed) anim.speed = state.speed;
+    if (state.loop === false) anim.loop = false;
+    animations[state.name] = anim;
+    col += state.frames;
+  }
+  return { frameW: entry.frameW, frameH: entry.frameH, animations };
+}
+
 /** A sidecar shaped like the ones `spec/asset-request.md` asks for. */
 const OFFICE = {
   frameW: 48,
@@ -308,6 +329,105 @@ export const tests = {
     ctx.calls.length = 0;
     book.drawSprite(ctx, { name: 'placeholder', animation: 'occupied-day', scale: 1 });
     assert(ctx.calls[0][1] === 96, 'the clock did not advance the placeholder to its second frame');
+  },
+
+  'the ingest catalogue produces sidecars the loader accepts'() {
+    // tools/ingest_sprite.py builds every sidecar from this catalogue, so if a
+    // catalogue entry cannot be expressed as a valid sidecar, the tool would
+    // write art the renderer silently refuses to draw.
+    const catalog = readCatalog();
+    assert(Object.keys(catalog).length >= 28, 'the catalogue lost entries');
+
+    for (const [name, entry] of Object.entries(catalog)) {
+      assert(Number.isInteger(entry.frameW) && Number.isInteger(entry.frameH), `${name} has no native frame size`);
+      assert(entry.fit === 'stretch' || entry.fit === 'contain', `${name} has no fit policy`);
+      assert(Array.isArray(entry.states) && entry.states.length > 0, `${name} declares no states`);
+
+      const sidecar = sidecarFor(entry);
+      const cols = Object.values(sidecar.animations).reduce((n, a) => n + a.frames, 0);
+      const parsed = parseSheetManifest(sidecar, {
+        config: CONFIG,
+        sheetW: entry.frameW * cols,
+        sheetH: entry.frameH,
+      });
+      assert(parsed.ok, `${name} does not describe a loadable sheet: ${parsed.error}`);
+      assert(parsed.warnings.length === 0, `${name} warned: ${parsed.warnings.join(' / ')}`);
+
+      // Column offsets must tile the strip exactly — no gap, no overlap.
+      const spans = Object.values(parsed.sheet.animations)
+        .map((a) => [a.col, a.col + a.frames]).sort((x, y) => x[0] - y[0]);
+      let cursor = 0;
+      for (const [from, to] of spans) {
+        assert(from === cursor, `${name} has a gap or overlap at column ${from}`);
+        cursor = to;
+      }
+      assert(cursor === cols, `${name} does not fill its own strip`);
+    }
+  },
+
+  'every asset in spec/asset-request.md is in the catalogue, at the size the doc states'() {
+    // The doc is what Keith pastes to the image model; the catalogue is what
+    // the ingest tool cuts to. Drift between them means art arrives that
+    // nothing can ingest, which is only discovered by hand.
+    const doc = fs.readFileSync(path.join(here, '..', 'spec', 'asset-request.md'), 'utf8');
+    const catalog = readCatalog();
+
+    const rows = doc.split('\n').filter((line) => /^\|\s*\d+\s*\|/.test(line));
+    assert(rows.length >= 28, `only found ${rows.length} asset rows in the request doc`);
+
+    for (const row of rows) {
+      const cells = row.split('|').map((c) => c.trim());
+      const file = (cells[2] ?? '').match(/`([a-z0-9-]+)\.png`/);
+      assert(file, `could not read a file name from: ${row.slice(0, 60)}`);
+      const name = file[1];
+      const entry = catalog[name];
+      assert(entry, `${name}.png is in spec/asset-request.md but not in tools/sprite-catalog.json`);
+
+      // "48x32", "48x16 tile", "32x32 each, 17 across" — but not "16 px tall",
+      // which states only a height and is checked on its own.
+      const size = (cells[3] ?? '').match(/(\d+)x(\d+)/);
+      if (size) {
+        assert(entry.frameW === Number(size[1]) && entry.frameH === Number(size[2]),
+          `${name} is ${size[1]}x${size[2]} in the doc but ${entry.frameW}x${entry.frameH} in the catalogue`);
+      } else {
+        const tall = (cells[3] ?? '').match(/(\d+)\s*px tall/);
+        assert(tall, `${name} states no size the catalogue can be checked against: "${cells[3]}"`);
+        assert(entry.frameH === Number(tall[1]),
+          `${name} is ${tall[1]}px tall in the doc but ${entry.frameH} in the catalogue`);
+      }
+    }
+
+    for (const name of Object.keys(catalog)) {
+      assert(doc.includes(`\`${name}.png\``), `${name} is in the catalogue but nothing asked the artist for it`);
+    }
+  },
+
+  'any real art already ingested still matches the catalogue'() {
+    // Runs against whatever is in assets/sprites right now, so the moment
+    // Keith ingests a subject, `npm test` checks the pair instead of a person
+    // having to open the game. Files nobody catalogued (the placeholder) are
+    // skipped; a catalogued name must match exactly.
+    const catalog = readCatalog();
+    for (const file of fs.readdirSync(assetDir).filter((f) => f.endsWith('.json'))) {
+      const name = file.replace(/\.json$/, '');
+      const entry = catalog[name];
+      if (!entry) continue;
+
+      const png = path.join(assetDir, `${name}.png`);
+      assert(fs.existsSync(png), `${name}.json has no ${name}.png beside it`);
+      const bytes = fs.readFileSync(png);
+      const width = bytes.readUInt32BE(16), height = bytes.readUInt32BE(20);
+
+      const parsed = parseSheetManifest(fs.readFileSync(path.join(assetDir, file), 'utf8'),
+        { config: CONFIG, sheetW: width, sheetH: height });
+      assert(parsed.ok, `${name} is not loadable: ${parsed.error}`);
+
+      const cols = Object.values(parsed.sheet.animations).reduce((n, a) => n + a.frames, 0);
+      assert(width === entry.frameW * cols && height === entry.frameH,
+        `${name}.png is ${width}x${height}, but its states need ${entry.frameW * cols}x${entry.frameH}`);
+      assert(JSON.stringify(parsed.sheet.animations) === JSON.stringify(parseSheetManifest(sidecarFor(entry), { config: CONFIG }).sheet.animations),
+        `${name}'s sidecar has drifted from the catalogue — re-run tools/ingest_sprite.py`);
+    }
   },
 
   'nothing in sim/ or harness/ can reach the renderer'() {
