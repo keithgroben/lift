@@ -5,15 +5,16 @@
 1. A new game opens on bare ground with the `lobby` tool already armed. Click
    the ground floor: that first click places the entrance and the storey it
    stands on.
-2. Stack storeys with `floor`, run a `shaft` up them, then fill them with
-   rooms. A tool stays armed, so eight offices is eight clicks.
+2. Add a room above it — every room raises and pays for its own storey — then
+   run a `shaft` up to it. A tool stays armed, so eight offices is eight
+   clicks.
 3. Watch the building for a few seconds. People will use the elevator during
    rushes.
 4. When waiting rises, select `car`, then click the highlighted elevator
    shaft. Press `Esc` when you are done adding cars, and let the next rush
    run — delivery and reputation should recover.
-5. Add rooms or floors only when the building can afford them and transport
-   can serve them.
+5. Add rooms only when the building can afford them and transport can serve
+   them.
 6. If a room becomes unhealthy or abandoned, select it and follow the
    recovery action shown in the room panel.
 
@@ -61,7 +62,6 @@ population that unlocks it. Nothing disappears from the palette.
 - `lobby` places the ground-floor entrance, and on bare ground it buys the
   storey it stands on. Once placed it stays armed as the wing tool, for
   widening the entrance.
-- `floor` stacks one more storey on top of the tower.
 - `office`, `condo`, `shop`, and `hotel` place a room in the slot you click.
 - `shaft` runs a new elevator route from the lobby. Hover a clear building
   column, then click the top floor for the shaft span; the ghost turns red
@@ -76,12 +76,46 @@ population that unlocks it. Nothing disappears from the palette.
 Every construction choice spends money and can add operating costs. Empty
 rooms still have upkeep, so a larger tower is not automatically a better one.
 
+## Where things are
+
+The screen has three parts, and each answers a different question.
+
+- **The bar across the top — "how am I doing?"** It never scrolls. On the left
+  it carries who you are: star rating, money, the day with the clock and the
+  rush window, and population. Next to those, boxed together, are the three
+  numbers a build decision is actually made from: **waiting**, **delivered**,
+  and **reputation**. Speed controls sit at the right end.
+- **The line under the bar — "what is happening, and why?"** Point at a room
+  and it says that room's appeal, what the tower is currently held to, and the
+  single largest cause with its cost, e.g. `F3 office · appeal 21 · expected
+  30 — no food service within 1 floor (−12) · add food service`. Beside it,
+  once tenants start leaving, is the week's pattern — how many rooms were lost
+  and whether they left over **room appeal** or **slow lifts**. Those two take
+  different money to fix. On the right is the next star milestone.
+- **The sidebar — "what do I do next?"** The recommended next action, then the
+  build palette. When you select a room, shaft, or facility, its panel appears
+  below the palette; when nothing is selected, nothing is there.
+
+`HOW TO READ THE TOWER` and `FIRST SESSION PATH` are collapsed at the bottom of
+the sidebar. Everything else — the full telemetry column, transport
+diagnostics, the legend, and the tuning knobs — is behind
+`show developer details`, or the `D` key.
+
+### Appeal, and the number beside it
+
+The appeal line always shows an **expected** value next to the score, and it is
+not decoration. The bar a room has to clear rises as the tower grows, so an
+appeal of 30 can be comfortable in a three-storey building and failing in a
+tall one. Read the pair, never the score alone.
+
 ## What to watch
 
-- `W` waiting: people currently waiting for transport. Green is clear, amber
-  is building pressure, and red is critical.
+- `W` waiting: people currently waiting for transport, in the top bar. Green
+  is clear, amber is building pressure, and red is critical.
 - `T` tenants/capacity: how full the rentable rooms are. Green is healthy,
-  amber is partial, and red means much of the built capacity is unused.
+  amber is partial, and red means much of the built capacity is unused. It is
+  a reading for inspecting rather than for glancing, so it sits with the rest
+  of the telemetry behind `D`.
 - Room colors identify the space type: blue office, green condo, amber shop,
   violet hotel, and gray empty. A redder room is losing appeal; the thin
   yellow/red line along its bottom shows tenant stress.
@@ -95,7 +129,8 @@ rooms still have upkeep, so a larger tower is not automatically a better one.
 
 ## Recovery
 
-Select an unhealthy, vacant, or abandoned room. Read the cause before acting:
+Point at or select an unhealthy room. The line under the top bar names the
+single largest cause and what it costs the room, so read that before acting:
 
 - transport/access problems call for a shaft, car, stairs, or escalator;
 - missing services call for the named facility;

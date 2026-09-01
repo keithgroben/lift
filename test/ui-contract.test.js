@@ -8,6 +8,25 @@ const page = read('../src/games/lift/index.html');
 const app = read('../src/games/lift/ui/app.js');
 const config = read('../src/games/lift/config.js');
 const guide = read('../docs/HOW_TO_PLAY.md');
+const topBar = read('../src/games/lift/ui/hud/TopBar.tsx');
+const statBar = read('../src/games/lift/ui/hud/StatBar.tsx');
+
+/** The markup between two ids, so "is X inside Y" is asked of a real region. */
+function region(source, open, close) {
+  const start = source.indexOf(open);
+  const end = source.indexOf(close, start);
+  assert(start >= 0 && end > start, 'could not bound the region ' + open + ' .. ' + close);
+  return source.slice(start, end);
+}
+
+/** A named function body in app.js, bounded at its closing brace in column 0. */
+function fn(name) {
+  const start = app.indexOf('function ' + name + '(');
+  assert(start > 0, 'app.js has no function ' + name);
+  const end = app.indexOf('\n}', start);
+  assert(end > start, 'could not bound ' + name);
+  return app.slice(start, end);
+}
 
 /** Every tool tile in the palette, in the order the player reads them. */
 const paletteOrder = [...page.matchAll(/<button class="tile" data-(?:do|kind|facility)="([a-z_]+)"/g)]
@@ -216,6 +235,147 @@ export const tests = {
     assert(guide.includes('already armed'), 'player guide does not explain the armed opening tool');
     assert(guide.includes('stays armed'), 'player guide does not explain that a tool survives a placement');
     assert(guide.includes('new session'), 'player guide does not explain how to restart the loop');
+  },
+
+  /**
+   * Issue #13. Keith, three times: "I have no menu as a player, just the
+   * sidebar with EVERYTHING. I have no good HUD for any useful info." The fix
+   * is structural, not cosmetic — the bar is a sibling of the stage and the
+   * sidebar, in its own page-grid row, so it CANNOT scroll away with the
+   * column. A bar nested in the aside would look identical and fail the moment
+   * the palette got one tile longer.
+   */
+  'the player HUD is a bar of its own, outside the scrolling sidebar'() {
+    assert(page.includes('id="topbar"'), 'the page has no player HUD bar');
+    assert(page.indexOf('id="topbar"') < page.indexOf('<aside>'),
+      'the HUD bar is not ahead of the sidebar in the document');
+    const aside = region(page, '<aside>', '</aside>');
+    assert(!aside.includes('id="topbar"'), 'the HUD bar is nested inside the scrolling sidebar');
+    assert(!aside.includes('id="top-bar-mount"'), 'the HUD readouts are nested inside the scrolling sidebar');
+    assert(/#topbar \{[^}]*grid-column: 1 \/ -1/.test(page), 'the HUD bar does not span both page columns');
+    assert(/grid-template-rows: auto 1fr/.test(page), 'the page grid has no row for the HUD bar');
+    // Speed controls at the right end of the bar, not down the column.
+    const header = region(page, '<header id="topbar">', '</header>');
+    assert(header.includes('id="time-controls"'), 'the time controls are not in the HUD bar');
+    assert(header.includes('id="top-bar-mount"') && header.includes('id="hud-context-mount"'),
+      'the HUD bar is missing one of its mount points');
+  },
+
+  /**
+   * What is allowed in the bar is the whole point: the four identity readings
+   * and the three signals a build decision is made from. Everything else is
+   * behind `D`. Both halves are asserted — a bar that grew the telemetry column
+   * back would be the original complaint again, and a `D` view that lost a
+   * reading would cost the balance work its instrument.
+   */
+  'the HUD carries the decision signals and the developer view keeps the rest'() {
+    for (const glance of ['hud.star', 'hud.money', 'hud.day', 'hud.clock', 'hud.rush',
+      'hud.population', 'hud.waitingNow', 'hud.rate', 'hud.rep']) {
+      assert(topBar.includes(glance), 'the HUD bar does not show ' + glance);
+    }
+    for (const inspect of ['tenantUtilizationTrendHtml', 'roomEval', 'desirability', 'wait']) {
+      // `\b` because `hud.wait` is a prefix of `hud.waitingNow`, and a naive
+      // substring test would call the bar's own waiting readout a leak.
+      const reads = new RegExp('hud\\.' + inspect + '\\b');
+      assert(!reads.test(topBar), inspect + ' is a reading for inspecting, not for glancing');
+      assert(reads.test(statBar), inspect + ' was dropped rather than moved behind D');
+    }
+    const developer = region(page, 'id="developer-panel"', '</section>');
+    assert(developer.includes('id="stat-bar-mount"'), 'the telemetry column is not behind the developer toggle');
+    assert(developer.includes('id="transport"') && developer.includes('id="knobs"'),
+      'the developer view lost the diagnostics it is tuned with');
+    assert(app.includes("if (e.key.toLowerCase() === 'd') setDeveloperMode(!developerMode);"),
+      'D no longer opens the developer view');
+  },
+
+  /** Issue #13: the sidebar reduced to the next action and the palette. */
+  'the sidebar leads with the next action and the palette, not with readings'() {
+    const aside = region(page, '<aside>', '</aside>');
+    const beforeBuild = aside.slice(0, aside.indexOf('id="build"'));
+    assert(beforeBuild.includes('id="quick-action"'), 'the next action is not the first thing in the sidebar');
+    // The guided path and the reference keys are reachable, but closed: they
+    // are what "the sidebar with EVERYTHING" was made of.
+    assert(aside.indexOf('id="beta-path"') > aside.indexOf('id="build"'),
+      'the guided path still sits above the palette');
+    for (const stowed of ['id="beta-path"', 'class="player-color-key"']) {
+      const at = aside.indexOf(stowed);
+      const openedBy = aside.lastIndexOf('<details', at);
+      const closedBefore = aside.lastIndexOf('</details>', at);
+      assert(openedBy > closedBefore, stowed + ' is not stowed behind a disclosure');
+    }
+  },
+
+  /**
+   * Issue #13: "A contextual inspector that appears when a room, shaft or
+   * facility is selected and is ABSENT otherwise. Today it stands there empty."
+   */
+  'the contextual inspector is absent when nothing is selected'() {
+    const inspectors = region(page, 'id="inspector-region"', 'class="player-details"');
+    for (const panel of ['facility-inspector', 'shaft-inspector', 'unit-inspector']) {
+      assert(inspectors.includes('id="' + panel + '"'), panel + ' is outside the contextual region');
+      assert(new RegExp('#' + panel + ' \\{[^}]*display: none').test(page),
+        panel + ' does not hide itself when there is nothing to show');
+    }
+    assert(page.includes('#inspector-region:not(:has(.open)) { display: none; }'),
+      'the inspector region survives its own empty panels');
+    assert(fn('renderInspector').includes("els['unit-inspector'].classList.remove('open')"),
+      'the room inspector is never taken back down');
+  },
+
+  /**
+   * Issues #11 and #12: what the two lines SAY is asserted for real in
+   * test/hud-lines.test.js, against the sentences themselves. What is left for
+   * this file is where they go — a line nobody can see is the defect that
+   * started #11, since the sim had been producing the answer all along.
+   */
+  'the two HUD lines reach the places a player is looking'() {
+    const lines = read('../src/games/lift/ui/hud/lines.js');
+    // Pure and DOM-free, which is what lets the copy be tested as copy.
+    assert(!/document\.|window\.|els\[/.test(lines), 'the line builders touched the DOM and stopped being testable');
+    // A line, not a panel: the developer sidebar already has the panels, and
+    // burying the answer in a wall of readings is how it got missed.
+    assert(!/<br>|innerHTML|<span/.test(lines), 'the appeal answer grew into a panel again');
+    // The ranking stays in the sim. This reads the winner; it does not pick one.
+    assert(lines.includes('tenantRetentionRecommendation('),
+      'the cause is not taken from the sim\'s own ranking');
+    assert(!/\.sort\(/.test(lines), 'the UI re-ranks the causes instead of reading the sim\'s answer');
+
+    assert(app.includes('appealWhy: appealWhy ??'), 'the appeal line never reaches the HUD bar');
+    assert(app.includes("els['unit-appeal-why']"), 'the appeal line never reaches the selected room');
+    assert(app.includes('hoverUnitId = renderer.unitAt(state, px, py);'), 'hovering a room asks nothing');
+    assert(app.includes('weekPattern: weekPattern ??'), 'the week pattern never reaches the HUD bar');
+    const header = region(page, '<header id="topbar">', '</header>');
+    assert(header.includes('id="hud-context-mount"'), 'the two lines have no slot in the bar');
+    assert(topBar.includes('hud.appealWhy') && topBar.includes('hud.weekPattern'),
+      'the bar does not render the two lines');
+    // Silent when there is nothing to say: `Show` renders nothing for ''.
+    assert(/<Show when=\{hud\.appealWhy\.text\}>/.test(topBar) && /<Show when=\{hud\.weekPattern\.text\}>/.test(topBar),
+      'an empty line still occupies the bar with a dash');
+  },
+
+  /**
+   * The crash this locks down, because it cost a real one: selecting any VACANT
+   * room threw and took the refresh loop with it. `tenantRetentionRecommendation`
+   * answers null for a room with no tenant to retain, and `null?.key !== 'x'` is
+   * TRUE — so an optional chain in a NEGATIVE comparison passes the guard and
+   * the body then reads straight through the null. The rule is guarded, not the
+   * one line that got it wrong: any `x?.k !== <something other than null>` test
+   * must not be followed by an unguarded `x.` in its body.
+   *
+   * Two shapes are exempt, and both for the same reason — the null path never
+   * reaches the dereference. `x?.k != null` fails for undefined, so the branch
+   * that reads through is not taken; and `if (x?.k !== v) return` sends the
+   * null straight out of the function.
+   */
+  'an optional chain is never used as a guard for reading through the same value'() {
+    for (const match of app.matchAll(/(\w+)\?\.\w+ (?:!==|!=) (?!null|undefined)/g)) {
+      const [, name] = match;
+      const line = app.slice(match.index, app.indexOf('\n', match.index));
+      if (/\)\s*(?:return|continue|break)\b/.test(line)) continue;
+      const body = app.slice(match.index, match.index + 400);
+      assert(!new RegExp('[^.\\w]' + name + '\\.\\w').test(body),
+        name + '?.k !== ... guards a body that reads ' + name + '. directly — a null passes that test');
+    }
   },
 
   'opening the page is safe before the player starts the clock'() {

@@ -1,18 +1,18 @@
 import { hud } from './store';
 
 /**
- * Headline stat column: money → desirability. First panel migrated off
- * `app.js`'s manual `els[x].textContent = ...` sync (see AI_HANDOFF.md /
- * the perf write-up for why that pattern doesn't scale). Markup, ids, and
- * classes are unchanged from the static HTML this replaces, so the existing
- * `<style>` block in index.html still applies without edits.
+ * The telemetry column, now behind the `D` toggle (issue #13). What a player
+ * reads at a glance moved to `TopBar`; what is read while inspecting the
+ * simulation stayed here — utilization and its trend, the historical wait,
+ * room evaluation, tower desirability. It is the instrument the balance work
+ * is done with, so nothing was deleted on the way across, only relocated.
+ *
+ * Markup, ids, and classes are unchanged from the static HTML this replaced,
+ * so the existing `<style>` block in index.html still applies without edits.
  */
 export function StatBar() {
   return (
     <>
-      <div class="stat"><span>money</span><b id="money" style={{ color: hud.money.color }}>{hud.money.text}</b></div>
-      <div class="stat"><span>day</span><b id="day">{hud.day}</b></div>
-      <div class="stat"><span>population</span><b id="pop">{hud.population}</b></div>
       <div class="stat">
         <span>tenants / capacity</span>
         <b>
@@ -49,12 +49,6 @@ export function StatBar() {
           </small>
         </b>
       </div>
-      <div class="stat"><span>rating</span><b id="star">{hud.star}</b></div>
-      <div id="milestone"><strong>NEXT MILESTONE</strong><span id="milestone-copy">{hud.milestone}</span></div>
-
-      <div class="rule" />
-
-      <div class="stat"><span>waiting now</span><b id="waiting-now" style={{ color: hud.waitingNow.color }} title={hud.waitingNow.title} aria-label={hud.waitingNow.ariaLabel}>{hud.waitingNow.text}</b></div>
       <div class="metric-key" aria-label="headline metric key">
         <b>W</b> waiting people · <b>T</b> tenants / capacity<br />
         <b>W</b>: <span class="diag-good">green 0 clear</span> · <span class="diag-warn">amber 1–11 watch/busy</span> · <span class="diag-bad">red 12+ critical</span><br />
@@ -62,8 +56,6 @@ export function StatBar() {
         route focus: <span style={{ color: '#ffcf55' }}>yellow outline = selected shaft route</span> · <span class="diag-bad">red dashed outline = no assigned shaft</span>
       </div>
       <div class="stat"><span>avg wait</span><b id="wait" style={{ color: hud.wait.color }} title={hud.wait.title}>{hud.wait.text}</b></div>
-      <div class="stat"><span>delivered</span><b id="rate" style={{ color: hud.rate.color }}>{hud.rate.text}</b></div>
-      <div class="stat"><span>reputation</span><b id="rep" style={{ color: hud.rep.color }}>{hud.rep.text}</b></div>
       <div class="stat"><span>room eval</span><b id="eval" style={{ color: hud.roomEval.color }}>{hud.roomEval.text}</b></div>
       <div class="stat">
         <span>desirability</span>
