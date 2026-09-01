@@ -1,5 +1,5 @@
 import { CONFIG } from '../src/games/lift/config.js';
-import { boot, applyAction, population, slotsUsed } from '../src/games/lift/sim/index.js';
+import { boot, applyAction, population, slotsUsed, step } from '../src/games/lift/sim/index.js';
 import { conversionPreview, leaseStatus, leasingForecast, marketDemandBonus, relistDaysFor, reputationDemandFactor, reputationHistory, reputationRecommendation, tenantDemandForecast, tenantMixDemand, tenantMixDiagnosis, tenantMixHistory, tenantMixResponse, tenantMixSnapshot, unitEvaluation, vacancyRecoveryComparison } from '../src/games/lift/sim/evaluation.js';
 import { dayClose } from '../src/games/lift/sim/economy.js';
 import { occupy } from './support.js';
@@ -7,6 +7,76 @@ import { occupy } from './support.js';
 const assert = (c, m) => { if (!c) throw new Error(m); };
 
 export const tests = {
+  /**
+   * THE LOOP: build a tower, people move in — but only if they can get there.
+   *
+   * This is the game's premise and it had no test, which is how it came to be
+   * silently impossible: routing brand-new rooms through `relistMinScore` (the
+   * bar a FAILED room must clear before somebody else takes it) meant a new
+   * first-floor office with a shaft and a car scored 47 against a gate of 55.
+   * Nothing built anywhere could ever be let. Keith found it by playing.
+   */
+  'the loop: a served room fills, an unserved one never does'() {
+    const config = structuredClone(CONFIG);
+    const perDay = Math.round(config.time.daySeconds / config.time.dt);
+    const build = (transport) => {
+      const state = boot(config, 3);
+      assert(applyAction(state, { type: 'build_lobby', slot: 4 }, config).ok, 'lobby');
+      for (const slot of [3, 5]) applyAction(state, { type: 'expand_lobby', slot }, config);
+      for (const slot of [3, 4, 5]) {
+        assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 1, slot }, config).ok,
+          'could not build the office at slot ' + slot);
+      }
+      if (transport === 'shaft') {
+        assert(applyAction(state, { type: 'build_shaft', slot: 7, bottom: 0, top: 1 }, config).ok, 'shaft');
+        assert(applyAction(state, { type: 'add_car', id: state.shafts[0].id }, config).ok, 'car');
+      }
+      return state;
+    };
+    const runDays = (state, days) => {
+      for (let d = 0; d < days; d++) for (let i = 0; i < perDay; i++) step(state, config.time.dt, config);
+      return state.units.filter((u) => u.occupied).length;
+    };
+
+    // Every room starts empty: nobody comes with the keys.
+    const served = build('shaft');
+    assert(served.units.every((u) => !u.occupied), 'a room arrived already occupied');
+
+    // With transport, tenants arrive.
+    assert(runDays(served, 6) > 0, 'nobody ever moved into a tower with a shaft and a car');
+
+    // Without it, nobody ever does — however long you wait.
+    const stranded = build('none');
+    assert(runDays(stranded, 20) === 0, 'tenants moved into rooms no elevator can reach');
+  },
+
+  /**
+   * The two gates are different questions. A new room proves it can be
+   * REACHED; a room that already drove a tenant out has to prove it got
+   * BETTER. Collapsing them is what broke the loop.
+   */
+  'a failed room faces a higher bar than a new one'() {
+    const config = structuredClone(CONFIG);
+    assert(config.occupancy.firstLetMinScore < config.evaluation.relistMinScore,
+      'the first-let bar is not below the re-let bar, so a new room is held to a failed room standard');
+    // And the bar for a new room still refuses a room nothing can reach: a
+    // unit with no access scores 0, so any positive bar is the rule "no
+    // transport, no tenants".
+    assert(config.occupancy.firstLetMinScore > 0,
+      'the first-let bar is zero, so a room no elevator reaches would still let');
+
+    const state = boot(config, 3);
+    applyAction(state, { type: 'build_lobby', slot: 4 }, config);
+    applyAction(state, { type: 'build_unit', kind: 'office', floor: 1, slot: 3 }, config);
+    const room = state.units[0];
+    assert(room.everLet === false, 'a new room does not record that it has never been let');
+    room.occupied = true;
+    room.everLet = true;
+    room.occupied = false;
+    assert(room.everLet === true, 'a room forgets it was ever let, so it would be re-let on the new-room bar');
+  },
+
+
   'limited move-in demand chooses the highest-evaluated eligible room'() {
     const config = structuredClone(CONFIG);
     config.building.startFloors = 4;

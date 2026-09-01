@@ -444,6 +444,19 @@ export const CONFIG = {
    * wall. Tune them; do not delete them.
    */
   occupancy: {
+    /**
+     * The bar a room has to clear the FIRST time it is let, as against
+     * `evaluation.relistMinScore` (55) which a room faces after it has driven
+     * a tenant out.
+     *
+     * 20 is deliberately low, because the only thing a new room must prove is
+     * that somebody can reach it. Measured on a first-floor office: with no
+     * transport at all it scores 0 and is refused, with stairs 39, with a
+     * shaft and a car 47. So this bar admits any room the tower can actually
+     * serve and refuses every room it cannot — which is the loop, stated as a
+     * number.
+     */
+    firstLetMinScore: 20,
     /** Building-wide delivery rate (%) below which nobody new will move in. */
     relistMinDeliveryRate: 55,
     /**

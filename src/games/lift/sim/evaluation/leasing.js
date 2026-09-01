@@ -66,7 +66,19 @@ export function leasingForecast(state, config, reputation = null) {
       },
     };
   }).filter(({ unit, evaluation }) =>
-    evaluation.score >= config.evaluation.relistMinScore &&
+    // Two different questions, and they had been collapsed into one.
+    //
+    // `relistMinScore` asks "has this room got better?" — it exists to stop a
+    // failed room being re-let unimproved, and it is measured against a room
+    // that has already driven a tenant out.
+    //
+    // A brand-new room has failed at nothing. What it has to prove is that
+    // somebody can REACH it: a room with no transport scores 0 and is refused
+    // by any positive bar, which is the rule that matters ("no elevator, so
+    // nobody moves in"). Holding it to the re-let bar as well made the core
+    // loop impossible — a new first-floor office with a shaft and a car scored
+    // 47 against a gate of 55, so no room built anywhere could ever be let.
+    evaluation.score >= (unit.everLet ? config.evaluation.relistMinScore : config.occupancy.firstLetMinScore) &&
     unit.vacantDays >= relistDaysFor(state, unit, config, rep))
     .sort((a, b) => (b.evaluation.score + b.marketDemandBonus + b.experienceDemand.bonus) -
       (a.evaluation.score + a.marketDemandBonus + a.experienceDemand.bonus)

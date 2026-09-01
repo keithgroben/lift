@@ -148,6 +148,7 @@ export function dayClose(state, config) {
   };
   for (const { unit: u, evaluation, marketDemandBonus: demandBonus, experienceDemand } of selectedCandidates) {
     u.occupied = true;
+    u.everLet = true;
     u.vacantDays = 0;
     u.daysOccupied = 0;
     if (u.kind === 'hotel') u.heads = config.units.hotel.guests;

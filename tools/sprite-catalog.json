@@ -581,8 +581,8 @@
     ]
   },
   "sky-bird": {
-    "frameW": 20,
-    "frameH": 16,
+    "frameW": 10,
+    "frameH": 8,
     "fit": "contain",
     "states": [
       {
@@ -592,8 +592,8 @@
     ]
   },
   "sky-plane": {
-    "frameW": 48,
-    "frameH": 16,
+    "frameW": 34,
+    "frameH": 11,
     "fit": "contain",
     "states": [
       {
@@ -603,8 +603,8 @@
     ]
   },
   "sky-balloon": {
-    "frameW": 36,
-    "frameH": 48,
+    "frameW": 24,
+    "frameH": 32,
     "fit": "contain",
     "states": [
       {
@@ -614,8 +614,8 @@
     ]
   },
   "sky-blimp": {
-    "frameW": 56,
-    "frameH": 24,
+    "frameW": 38,
+    "frameH": 16,
     "fit": "contain",
     "states": [
       {
@@ -625,8 +625,8 @@
     ]
   },
   "sky-explorer": {
-    "frameW": 48,
-    "frameH": 60,
+    "frameW": 34,
+    "frameH": 42,
     "fit": "contain",
     "states": [
       {
@@ -636,8 +636,8 @@
     ]
   },
   "sky-stunt": {
-    "frameW": 96,
-    "frameH": 40,
+    "frameW": 64,
+    "frameH": 27,
     "fit": "contain",
     "states": [
       {

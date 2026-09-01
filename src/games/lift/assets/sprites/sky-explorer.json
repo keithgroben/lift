@@ -1,6 +1,6 @@
 {
-  "frameW": 48,
-  "frameH": 60,
+  "frameW": 34,
+  "frameH": 42,
   "animations": {
     "drift": {
       "col": 0,

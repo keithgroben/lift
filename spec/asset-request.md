@@ -133,12 +133,12 @@ through the day.
 | # | File name | Size (1x) | Frames / states | What it is |
 |---|---|---|---|---|
 | 29 | `sky-cloud.png` | 112x32 | small · medium · large | Three cloud masses, one per frame, drawn at a SHARED scale so they keep their relative sizes — fitting each to the frame would make them the same height, which is the one thing that tells them apart. Soft and low-contrast: they sit behind everything and must never compete with the tower. |
-| 30 | `sky-bird.png` | 20x16 | fly | One bird in flight. Flies in flocks of 2-7, so it has to read as a silhouette at a glance. |
-| 31 | `sky-plane.png` | 48x16 | fly | A small airliner in level flight, side on, nose to the right. |
-| 32 | `sky-balloon.png` | 36x48 | drift | An ordinary hot-air balloon: striped envelope, wicker basket. |
-| 33 | `sky-blimp.png` | 56x24 | drift | A small airship with a gondola and a blank banner panel on its flank. |
-| 34 | `sky-explorer.png` | 48x60 | drift | **A surprise.** A tall patched envelope, rope rigging, a laden basket with an explorer leaning out waving and a dog beside them. Dawn and dusk only, perhaps twice a session. |
-| 35 | `sky-stunt.png` | 96x40 | fly | **A surprise.** An aerobatic biplane in an invented racing livery, banking, with its smoke trail. The trail is part of the sheet, which is why the frame is wide. |
+| 30 | `sky-bird.png` | 10x8 | fly | One bird in flight. Flies in flocks of 2-7, so it has to read as a silhouette at a glance. |
+| 31 | `sky-plane.png` | 34x11 | fly | A small airliner in level flight, side on, nose to the right. |
+| 32 | `sky-balloon.png` | 24x32 | drift | An ordinary hot-air balloon: striped envelope, wicker basket. |
+| 33 | `sky-blimp.png` | 38x16 | drift | A small airship with a gondola and a blank banner panel on its flank. |
+| 34 | `sky-explorer.png` | 34x42 | drift | **A surprise.** A tall patched envelope, rope rigging, a laden basket with an explorer leaning out waving and a dog beside them. Dawn and dusk only, perhaps twice a session. |
+| 35 | `sky-stunt.png` | 64x27 | fly | **A surprise.** An aerobatic biplane in an invented racing livery, banking, with its smoke trail. The trail is part of the sheet, which is why the frame is wide. |
 
 ## Tier 1 — rooms and structure (replaces the coloured rectangles)
 

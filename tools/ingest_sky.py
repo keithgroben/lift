@@ -84,12 +84,18 @@ def subjects(path, expected, cols):
 # request guessed. Aspect is preserved: a balloon squeezed into a box drawn for
 # a different shape is worse than a slightly odd frame size.
 FLIERS = {
-    'bird':     ('sky-bird',     20, 16, 'fly'),
-    'plane':    ('sky-plane',    48, 16, 'fly'),
-    'balloon':  ('sky-balloon',  36, 48, 'drift'),
-    'blimp':    ('sky-blimp',    56, 24, 'drift'),
-    'explorer': ('sky-explorer', 48, 60, 'drift'),
-    'stunt':    ('sky-stunt',    96, 40, 'fly'),
+    # Sized against a room, which is 48x32. The first pass took its sizes from
+    # the source art and everything came out enormous — a bird was 20px wide
+    # against a 48px room and read as a pterodactyl at 2x zoom (Keith: "the
+    # birds are too big at 2x and honestly too big generally"). A bird should
+    # be a mark in the sky, an airliner should look far away, and only the two
+    # surprises are allowed to be big enough to look at.
+    'bird':     ('sky-bird',     10,  8, 'fly'),
+    'plane':    ('sky-plane',    34, 11, 'fly'),
+    'balloon':  ('sky-balloon',  24, 32, 'drift'),
+    'blimp':    ('sky-blimp',    38, 16, 'drift'),
+    'explorer': ('sky-explorer', 34, 42, 'drift'),
+    'stunt':    ('sky-stunt',    64, 27, 'fly'),
 }
 CLOUD_FRAME = (112, 32)
 OUT = 'src/games/lift/assets/sprites'

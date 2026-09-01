@@ -219,6 +219,11 @@ const ACTIONS = {
       rentLevel, rent: rentForLevel(config, kind, rentLevel),
       occupied: false, stress: 0, desirabilityPressure: 0, vacantDays: 0,
       daysOccupied: 0,
+      // Has anybody ever lived here? A brand-new room is let on whether it can
+      // be REACHED; a room that has already failed once has to improve before
+      // somebody else will take it. `daysOccupied` cannot answer this — it
+      // resets on every move-in.
+      everLet: false,
       renovated: false,
       servedToday: 0,
     };

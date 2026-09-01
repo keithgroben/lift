@@ -1,6 +1,6 @@
 {
-  "frameW": 48,
-  "frameH": 16,
+  "frameW": 34,
+  "frameH": 11,
   "animations": {
     "fly": {
       "col": 0,
