@@ -294,6 +294,132 @@ export function serviceFocusUncoveredRoomLabel(coverage, state, limit = 3) {
   return shown.join(', ') + (rooms.length > shown.length ? ' +' + (rooms.length - shown.length) + ' more' : '');
 }
 
+// ------------------------------------------------------------------ camera
+//
+// The world, in pixels at zoom 1x. These are the native art dimensions from
+// spec/sprite-manifest.md, and spec/tower-view.md §8 fixes them: building
+// higher makes the tower TALLER, it never makes it smaller. The old
+// fit-to-viewport layout drew a slot at 22x14 px at 60 floors — half the grid
+// the art is drawn on — which is why the tower got less legible the better you
+// played.
+
+/** One unit slot is 48 px wide at 1x. */
+export const SLOT_W = 48;
+/** One floor is 32 px tall at 1x, forever. */
+export const FLOOR_H = 32;
+/** Integer only: mixel art shears the moment it is scaled 1.5x. */
+export const ZOOM_LEVELS = [1, 2, 3];
+
+/**
+ * World coordinates. `x` grows right from slot 0's left edge; `y` grows DOWN
+ * from the ground line, which is floor 0's slab. Floor `f` therefore occupies
+ * `[-(f+1)*FLOOR_H, -f*FLOOR_H)`.
+ *
+ * The origin is the ground line rather than the bottom of the tower on
+ * purpose: everything at or below `y = 0` is earth today and becomes B1..B10
+ * when the sim learns about a floor range (spec §3), without the world origin
+ * moving under the player.
+ */
+export function floorTopWorldY(floor) { return -(floor + 1) * FLOOR_H; }
+export function floorBottomWorldY(floor) { return -floor * FLOOR_H; }
+export function slotLeftWorldX(slot) { return slot * SLOT_W; }
+export function floorAtWorldY(worldY) { return Math.floor(-worldY / FLOOR_H); }
+export function slotAtWorldX(worldX) { return Math.floor(worldX / SLOT_W); }
+
+export function clampZoom(zoom) {
+  const z = Math.round(Number(zoom) || 1);
+  return Math.min(ZOOM_LEVELS[ZOOM_LEVELS.length - 1], Math.max(ZOOM_LEVELS[0], z));
+}
+
+/** Camera state is `{ x, y, zoom }`, where x/y is the world point sitting at
+ *  the CENTER of the viewport. It lives in the renderer and nowhere else. */
+export function makeCamera(x = 0, y = 0, zoom = 1) {
+  return { x, y, zoom: clampZoom(zoom) };
+}
+
+export function worldToScreen(camera, viewport, worldX, worldY) {
+  const z = clampZoom(camera.zoom);
+  return [(worldX - camera.x) * z + viewport.w / 2, (worldY - camera.y) * z + viewport.h / 2];
+}
+
+/** The inverse transform every pick goes through. */
+export function screenToWorld(camera, viewport, screenX, screenY) {
+  const z = clampZoom(camera.zoom);
+  return [(screenX - viewport.w / 2) / z + camera.x, (screenY - viewport.h / 2) / z + camera.y];
+}
+
+export function visibleWorldRect(camera, viewport) {
+  const [left, top] = screenToWorld(camera, viewport, 0, 0);
+  const [right, bottom] = screenToWorld(camera, viewport, viewport.w, viewport.h);
+  return { left, top, right, bottom };
+}
+
+/** Floors that touch the viewport, so a 60-floor tower only draws what it must. */
+export function visibleFloorRange(camera, viewport, floors) {
+  const rect = visibleWorldRect(camera, viewport);
+  return {
+    low: Math.max(0, floorAtWorldY(rect.bottom)),
+    high: Math.min(Math.max(0, Math.round(floors) - 1), floorAtWorldY(rect.top)),
+  };
+}
+
+/** Zoom while holding the world point under `(screenX, screenY)` still — what
+ *  makes a wheel zoom land where the player was looking instead of drifting. */
+export function cameraZoomedAt(camera, viewport, nextZoom, screenX, screenY) {
+  const z = clampZoom(nextZoom);
+  const [worldX, worldY] = screenToWorld(camera, viewport, screenX, screenY);
+  return {
+    x: worldX - (screenX - viewport.w / 2) / z,
+    y: worldY - (screenY - viewport.h / 2) / z,
+    zoom: z,
+  };
+}
+
+// ----------------------------------------------------------------- minimap
+//
+// A narrow vertical strip, one pixel row per floor, with a box marking what
+// the main view is looking at (spec §2). It is what makes a 60-floor tower
+// navigable, and it is why zoom stays clean integer 1x/2x/3x.
+
+export const MINIMAP = { width: 36, margin: 12, pad: 3, gutter: 5, minRowH: 1, maxRowH: 6 };
+
+export function minimapMetrics(viewport, rows, cols) {
+  const rowCount = Math.max(1, Math.round(rows) || 1);
+  const colCount = Math.max(1, Math.round(cols) || 1);
+  const availH = Math.max(MINIMAP.minRowH, viewport.h - MINIMAP.margin * 2 - MINIMAP.pad * 2);
+  const rowH = Math.max(MINIMAP.minRowH, Math.min(MINIMAP.maxRowH, Math.floor(availH / rowCount)));
+  const h = rowH * rowCount;
+  const cellW = Math.max(1, Math.floor((MINIMAP.width - MINIMAP.gutter) / colCount));
+  const w = MINIMAP.gutter + cellW * colCount;
+  return {
+    x: Math.max(MINIMAP.margin, viewport.w - MINIMAP.margin - MINIMAP.pad - w),
+    // Anchored to the bottom, like the tower: floor 0 is the bottom row and
+    // the strip grows upward as the building does.
+    y: Math.max(MINIMAP.margin, viewport.h - MINIMAP.margin - MINIMAP.pad - h),
+    w, h, rowH, cellW, rows: rowCount, cols: colCount,
+    gutter: MINIMAP.gutter, pad: MINIMAP.pad,
+  };
+}
+
+export function minimapRowY(metrics, floor) {
+  return metrics.y + metrics.h - (floor + 1) * metrics.rowH;
+}
+
+export function minimapFloorAt(metrics, screenY) {
+  const floor = Math.floor((metrics.y + metrics.h - screenY) / metrics.rowH);
+  return Math.min(metrics.rows - 1, Math.max(0, floor));
+}
+
+export function minimapSlotAt(metrics, screenX) {
+  const slot = Math.floor((screenX - metrics.x - metrics.gutter) / metrics.cellW);
+  return Math.min(metrics.cols - 1, Math.max(0, slot));
+}
+
+export function minimapContains(metrics, screenX, screenY) {
+  return screenX >= metrics.x - metrics.pad && screenX <= metrics.x + metrics.w + metrics.pad &&
+    screenY >= metrics.y - metrics.pad && screenY <= metrics.y + metrics.h + metrics.pad;
+}
+
 /**
  * Draws a cross-section of the tower.
  *
@@ -331,21 +457,114 @@ export function makeRenderer(canvas, config) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
-  function layout(state) {
-    const pad = 24;
-    // Keep a little sky above the roof so there is somewhere to build, but do
-    // not let a four-floor opening render as a smudge at the bottom of the view.
-    const rows = Math.max(state.floors + 2, 10);
-    const fh = Math.min(44, (H - pad * 2) / rows);
+  // The camera. Fixed world scale, integer zoom, and it stays where the player
+  // put it — see followCamera() for the only three moves it makes on its own.
+  const camera = makeCamera(0, 0, 1);
+  let framedSeed = null;
+  let knownPlacements = null;
+
+  const viewport = () => ({ w: W, h: H });
+
+  /** Keep the tower reachable without snapping: the player may pan a quarter of
+   *  a viewport past its edges and no further, so the view can never be lost. */
+  function clampCamera(state) {
+    const z = camera.zoom;
     const cols = config.building.slotsPerFloor;
-    const cw = Math.min(fh * 1.6, (W - pad * 2) / cols);
-    const x0 = (W - cw * cols) / 2;
-    const y0 = H - pad;
-    return { fh, cw, x0, y0, cols, floorY: (f) => y0 - (f + 1) * fh };
+    const slackX = W / (4 * z) + SLOT_W;
+    const slackY = H / (4 * z) + FLOOR_H;
+    const roof = floorTopWorldY(Math.max(0, Math.round(state?.floors ?? 0)) + 2);
+    camera.x = Math.min(cols * SLOT_W + slackX, Math.max(-slackX, camera.x));
+    // Below the ground line there is only earth for now; leave room for the
+    // B1..B10 the sim will grow into (spec §3) without letting the view sink.
+    camera.y = Math.min(FLOOR_H * 6 + slackY, Math.max(roof - slackY, camera.y));
+  }
+
+  /**
+   * The old layout refit the whole tower into the viewport every frame. This
+   * one is the camera transform, in the same shape the drawing code already
+   * speaks: `x0`/`y0` are where world (0, 0) — slot 0's left edge, the ground
+   * line — lands on screen, and one floor is always FLOOR_H * zoom px tall.
+   */
+  function layout(state) {
+    const cols = config.building.slotsPerFloor;
+    const cw = SLOT_W * camera.zoom;
+    const fh = FLOOR_H * camera.zoom;
+    const [x0, y0] = worldToScreen(camera, viewport(), 0, 0);
+    return { fh, cw, x0, y0, cols, zoom: camera.zoom, floorY: (f) => y0 - (f + 1) * fh };
+  }
+
+  /** True when any part of a column from `bottom` to `top` is on screen. */
+  function spanVisible(L, bottom, top, slot) {
+    const x = L.x0 + slot * L.cw;
+    const spanTop = L.floorY(top);
+    const spanBottom = L.floorY(bottom) + L.fh;
+    return x + L.cw > 0 && x < W && spanBottom > 0 && spanTop < H;
+  }
+
+  function centerOnCell(state, floor, slot) {
+    camera.x = slotLeftWorldX(slot) + SLOT_W / 2;
+    camera.y = floorTopWorldY(floor) + FLOOR_H / 2;
+    clampCamera(state);
+  }
+
+  /** The opening shot: the lobby framed on bare ground, at the chunkiest zoom
+   *  whose full slot grid still fits the window. */
+  function frameLobby(state) {
+    const cols = config.building.slotsPerFloor;
+    const fits = ZOOM_LEVELS.filter((z) => cols * SLOT_W * z <= W - 80 && FLOOR_H * 8 * z <= H - 80);
+    camera.zoom = clampZoom(Math.min(2, fits[fits.length - 1] ?? 1));
+    camera.x = (cols * SLOT_W) / 2;
+    // Ground line at about 78% of the viewport height: street and a little
+    // earth below it, sky and room to build above it.
+    camera.y = -(H * 0.28) / camera.zoom;
+    clampCamera(state);
+  }
+
+  /** Every placed thing, keyed so a new one can be told from an old one, and
+   *  carrying its full span: a shaft from the lobby to F20 has NOT landed
+   *  off-screen just because its top is, so it must not yank the view. */
+  const mark = (id, bottom, top, slot) => ({ id, bottom, top, slot, floor: Math.round((bottom + top) / 2) });
+
+  function placementMarks(state) {
+    const marks = [];
+    for (const u of state.units) marks.push(mark('u' + u.id, u.floor, u.floor, u.slot));
+    for (const f of state.facilities ?? []) marks.push(mark('f' + f.id, f.floor, f.floor, f.slot));
+    for (const s of state.shafts) marks.push(mark('s' + s.id, s.bottom, s.top, s.slot));
+    for (const s of state.stairs ?? []) marks.push(mark('w' + s.id, s.bottom, s.top, s.slot));
+    for (const e of state.escalators ?? []) marks.push(mark('e' + e.id, e.bottom, e.top, e.slot));
+    for (const slot of state.lobby?.slots ?? (state.lobby ? [state.lobby.slot] : [])) {
+      const lobbyFloor = config.building.lobbyFloor ?? 0;
+      marks.push(mark('l' + slot, lobbyFloor, lobbyFloor, slot));
+    }
+    return marks;
+  }
+
+  /**
+   * Spec §2, follow rules: the camera stays where the player put it. It may
+   * move itself in exactly three cases — first load (frame the lobby), a
+   * confirmed placement that landed off-screen, and an explicit "go to" from
+   * the HUD (`goTo`). Anything else that yanks the view is a bug.
+   */
+  function followCamera(state, L) {
+    if (!W || !H) return;
+    const marks = placementMarks(state);
+    if (framedSeed !== state.seed) {
+      framedSeed = state.seed;
+      knownPlacements = new Set(marks.map((placed) => placed.id));
+      frameLobby(state);
+      return;
+    }
+    const fresh = marks.filter((placed) => !knownPlacements.has(placed.id));
+    for (const placed of marks) knownPlacements.add(placed.id);
+    const offscreen = fresh.find((placed) => !spanVisible(L, placed.bottom, placed.top, placed.slot));
+    if (offscreen) centerOnCell(state, offscreen.floor, offscreen.slot);
   }
 
   function draw(state, juice, dtMs, placementGuide = null, hoverFloor = -1, routeTarget = null, serviceFocus = null, hoverFacilityId = null, selectedShaftId = null, hoverShaftId = null, shaftQueueHistory = null) {
+    clampCamera(state);
+    followCamera(state, layout(state));
     const L = layout(state);
+    const visible = visibleFloorRange(camera, viewport(), state.floors);
     const [sx, sy] = juice.offset();
     // Built once per frame and shared across every room's evaluation below —
     // without it, each occupied room re-scans the whole tower for noise and
@@ -355,15 +574,9 @@ export function makeRenderer(canvas, config) {
 
     ctx.setTransform(dpr, 0, 0, dpr, sx * dpr, sy * dpr);
     paintSky(state);
+    drawEarth(L);
 
-    ctx.strokeStyle = PANEL;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(0, L.y0 + 1);
-    ctx.lineTo(W, L.y0 + 1);
-    ctx.stroke();
-
-    for (let f = 0; f < state.floors; f++) {
+    for (let f = visible.low; f <= visible.high; f++) {
       const y = L.floorY(f);
       ctx.fillStyle = f === 0 ? '#141c26' : 'rgba(27,36,48,0.55)';
       roundRect(ctx, L.x0 - 6, y, L.cw * L.cols + 12, L.fh - 2, 3);
@@ -373,6 +586,10 @@ export function makeRenderer(canvas, config) {
       ctx.textAlign = 'right';
       ctx.fillText(f === 0 ? 'L' : String(f), L.x0 - 12, y + L.fh * 0.68);
     }
+
+    // The horizon and the street sit on top of floor 0's slab, so the ground
+    // floor reads as a storey standing ON something instead of floating.
+    drawStreet(L);
 
     drawServiceFocus(serviceFocus, state, L, floorIndex);
     drawPlacementGuide(placementGuide, state, L, hoverFloor);
@@ -384,10 +601,13 @@ export function makeRenderer(canvas, config) {
     for (const facility of state.facilities ?? []) drawFacility(facility, L, serviceFocus?.facilityId === facility.id, hoverFacilityId === facility.id);
     for (const sh of state.shafts) drawShaft(sh, L, dtMs, state, shaftQueueHistory, selectedShaftId === sh.id, hoverShaftId === sh.id);
     drawRouteTarget(routeTarget, state, L, hoverFloor);
-    drawQueues(state, L, selectedShaftId);
+    drawQueues(state, L, selectedShaftId, visible);
 
     juice.draw(ctx);
+    // The minimap is screen furniture, not part of the world: it is drawn
+    // without the shake offset so it never jitters under the cursor.
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawMinimap(state, L);
   }
 
   function drawPlacementGuide(guide, state, L, hoverFloor) {
@@ -593,8 +813,158 @@ export function makeRenderer(canvas, config) {
     ctx.globalAlpha = 1;
   }
 
+  // The street tile is the bottom 16 world px of the ground floor — half a
+  // floor, which is exactly the 48x16 ground-street.png / ground-entrance.png
+  // grid in spec/asset-request.md. These are placeholder rectangles on that
+  // grid: the geometry is the deliverable, the art lands on top of it later.
+  const STREET_H = 16;
+  const streetHeight = (L) => STREET_H * L.zoom;
+
+  /** Everything below the ground line. Earth today, B1..B10 once the sim
+   *  carries a floor range (spec §3). */
+  function drawEarth(L) {
+    const groundY = L.y0;
+    if (groundY > H + 60) return;
+    const top = Math.max(-60, groundY);
+    const soil = ctx.createLinearGradient(0, groundY, 0, groundY + H + 120);
+    soil.addColorStop(0, '#3b2d21');
+    soil.addColorStop(1, '#150f0b');
+    ctx.fillStyle = soil;
+    ctx.fillRect(-60, top, W + 120, H + 120 - top);
+
+    // One stratum per floor height, so depth reads at any zoom and the future
+    // basements already have their grid drawn under them.
+    const step = FLOOR_H * L.zoom;
+    if (step >= 6) {
+      ctx.strokeStyle = 'rgba(0,0,0,0.28)';
+      ctx.lineWidth = 1;
+      for (let y = groundY + step; y < H + 60; y += step) {
+        if (y < -60) continue;
+        ctx.beginPath();
+        ctx.moveTo(-60, Math.round(y) + 0.5);
+        ctx.lineTo(W + 60, Math.round(y) + 0.5);
+        ctx.stroke();
+      }
+    }
+  }
+
+  /** Sidewalk, curb, and the ground line itself. */
+  function drawStreet(L) {
+    const groundY = L.y0;
+    const sh = streetHeight(L);
+    const streetTop = groundY - sh;
+    if (streetTop < H && groundY > -sh) {
+      ctx.fillStyle = '#48525e';
+      ctx.fillRect(-60, streetTop, W + 120, sh);
+      // Paving joints on the 48 px art grid, so the placeholder tiles exactly
+      // where ground-street.png will.
+      const tile = SLOT_W * L.zoom;
+      if (tile >= 10) {
+        ctx.strokeStyle = 'rgba(18,24,32,0.55)';
+        ctx.lineWidth = 1;
+        const first = L.x0 - Math.ceil((L.x0 + 60) / tile) * tile;
+        for (let x = first; x < W + 60; x += tile) {
+          ctx.beginPath();
+          ctx.moveTo(Math.round(x) + 0.5, streetTop + 1);
+          ctx.lineTo(Math.round(x) + 0.5, groundY - 1);
+          ctx.stroke();
+        }
+      }
+      // Curb above, gutter below: the two edges that turn a grey band into a
+      // street rather than another floor.
+      ctx.fillStyle = '#69747f';
+      ctx.fillRect(-60, streetTop, W + 120, Math.max(1, L.zoom));
+      ctx.fillStyle = '#20262e';
+      ctx.fillRect(-60, groundY - Math.max(1, L.zoom * 2), W + 120, Math.max(1, L.zoom * 2));
+    }
+    ctx.strokeStyle = PANEL;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-60, groundY + 1);
+    ctx.lineTo(W + 60, groundY + 1);
+    ctx.stroke();
+  }
+
+  /** The minimap strip: one row per floor, colored by the pressure signals the
+   *  main view already computes, with a box marking what it is looking at. */
+  function drawMinimap(state, L) {
+    if (!W || !H) return;
+    const rows = Math.max(1, state.floors);
+    const m = minimapMetrics(viewport(), rows, L.cols);
+    ctx.fillStyle = 'rgba(10,13,18,0.86)';
+    roundRect(ctx, m.x - m.pad, m.y - m.pad, m.w + m.pad * 2, m.h + m.pad * 2, 3);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(142,202,230,0.32)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    const cells = new Map();
+    const mark = (floor, slot, color) => {
+      if (floor < 0 || floor >= rows || slot < 0 || slot >= m.cols) return;
+      if (!cells.has(floor)) cells.set(floor, new Map());
+      cells.get(floor).set(slot, color);
+    };
+    for (const u of state.units) mark(u.floor, u.slot, u.occupied ? KIND[u.kind] : 'rgba(140,150,165,0.55)');
+    for (const facility of state.facilities ?? []) mark(facility.floor, facility.slot, '#b388ff');
+    for (const route of [...(state.stairs ?? []), ...(state.escalators ?? [])]) {
+      for (let f = route.bottom; f <= route.top; f++) mark(f, route.slot, 'rgba(142,202,230,0.45)');
+    }
+    for (const shaft of state.shafts) {
+      for (let f = shaft.bottom; f <= shaft.top; f++) mark(f, shaft.slot, shaft.kind === 'express' ? '#c77dff' : '#5aa9e6');
+    }
+    for (const slot of state.lobby?.slots ?? (state.lobby ? [state.lobby.slot] : [])) {
+      mark(config.building.lobbyFloor ?? 0, slot, '#5aa9e6');
+    }
+
+    const waiting = new Map();
+    for (const person of state.people) {
+      if (person.state !== 'waiting') continue;
+      waiting.set(person.from, (waiting.get(person.from) ?? 0) + 1);
+    }
+
+    const gridX = m.x + m.gutter;
+    for (let f = 0; f < rows; f++) {
+      const y = minimapRowY(m, f);
+      ctx.fillStyle = 'rgba(27,36,48,0.85)';
+      ctx.fillRect(gridX, y, m.cellW * m.cols, m.rowH);
+      const row = cells.get(f);
+      if (row) for (const [slot, color] of row) {
+        ctx.fillStyle = color;
+        ctx.fillRect(gridX + slot * m.cellW, y, m.cellW, m.rowH);
+      }
+      // The pressure gutter. This is the whole point of the strip: a queue
+      // building on F41 has to be visible while you are looking at F3.
+      const pressure = waitingPressure(waiting.get(f) ?? 0);
+      ctx.globalAlpha = 0.3 + pressure.ratio * 0.7;
+      ctx.fillStyle = indicatorColor(pressure.colorKey);
+      ctx.fillRect(m.x, y, m.gutter - 1, m.rowH);
+      ctx.globalAlpha = 1;
+    }
+
+    const rect = visibleWorldRect(camera, viewport());
+    const high = Math.min(rows - 1, Math.max(0, floorAtWorldY(rect.top)));
+    const low = Math.min(high, Math.max(0, floorAtWorldY(rect.bottom)));
+    const clampSlot = (worldX) => Math.min(m.cols, Math.max(0, worldX / SLOT_W));
+    const boxX = gridX + clampSlot(rect.left) * m.cellW;
+    const boxRight = gridX + clampSlot(rect.right) * m.cellW;
+    const boxTop = minimapRowY(m, high);
+    const boxBottom = minimapRowY(m, low) + m.rowH;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(Math.round(boxX) + 0.5, Math.round(boxTop) + 0.5,
+      Math.max(2, Math.round(boxRight - boxX) - 1), Math.max(2, Math.round(boxBottom - boxTop) - 1));
+
+    // The zoom level, above the strip. A camera nobody can see the state of is
+    // a camera nobody trusts.
+    ctx.fillStyle = 'rgba(142,202,230,0.7)';
+    ctx.textAlign = 'right';
+    ctx.font = '700 9px ui-monospace, monospace';
+    ctx.fillText(camera.zoom + 'x', m.x + m.w, m.y - m.pad - 5);
+  }
+
   function drawUnit(u, L, state, floorIndex = null) {
     const x = L.x0 + u.slot * L.cw, y = L.floorY(u.floor);
+    if (x + L.cw < 0 || x > W || y + L.fh < 0 || y > H) return;
     const tune = config.units[u.kind];
 
     if (!u.occupied) {
@@ -656,6 +1026,7 @@ export function makeRenderer(canvas, config) {
   function drawShaft(sh, L, dtMs, state, shaftQueueHistory = null, focused = false, hovered = false) {
     const x = L.x0 + sh.slot * L.cw;
     const top = L.floorY(sh.top), bot = L.floorY(sh.bottom) + L.fh;
+    if (x + L.cw < 0 || x > W || bot < 0 || top > H) return;
     const express = sh.kind === 'express';
 
     ctx.fillStyle = express ? 'rgba(24,13,36,0.92)' : 'rgba(8,11,15,0.9)';
@@ -740,7 +1111,7 @@ export function makeRenderer(canvas, config) {
 
   /** The queue: a line of dots on the landing, reddening and jittering as the
    *  wait grows. This is the readout the whole design depends on. */
-  function drawQueues(state, L, selectedShaftId = null) {
+  function drawQueues(state, L, selectedShaftId = null, visible = null) {
     const byFloor = new Map();
     for (const p of state.people) {
       if (p.state !== 'waiting') continue;
@@ -752,7 +1123,9 @@ export function makeRenderer(canvas, config) {
 
     // Every floor gets a count badge, including a green 0. This makes the
     // amount of waiting visible before a queue is large enough to form a bar.
-    for (let floor = 0; floor < state.floors; floor++) {
+    const low = visible ? visible.low : 0;
+    const high = visible ? visible.high : state.floors - 1;
+    for (let floor = low; floor <= high; floor++) {
       const queue = byFloor.get(floor) || [];
       const pressure = waitingPressure(queue.length);
       const badgeText = waitingBadgeText(queue.length);
@@ -780,6 +1153,7 @@ export function makeRenderer(canvas, config) {
     }
 
     for (const [floor, queue] of byFloor) {
+      if (floor < low || floor > high) continue;
       const y = L.floorY(floor) + L.fh - 9;
       queue.sort((a, b) => b.waitT - a.waitT);
 
@@ -861,6 +1235,7 @@ export function makeRenderer(canvas, config) {
 
   function drawFacility(facility, L, focused = false, hovered = false) {
     const x = L.x0 + facility.slot * L.cw, y = L.floorY(facility.floor);
+    if (x + L.cw < 0 || x > W || y + L.fh < 0 || y > H) return;
     ctx.fillStyle = facility.kind === 'parking' ? '#f4a261'
       : facility.kind === 'security' ? '#e76f51'
         : facility.kind === 'recycling' ? '#2a9d8f' : '#b388ff';
@@ -885,20 +1260,37 @@ export function makeRenderer(canvas, config) {
     ctx.fillText(label, x + L.cw / 2, y + L.fh * 0.58);
   }
 
+  /** The lobby sits in the upper band of the ground floor; the lower band is
+   *  the street, where its entrance reads as an actual way in. */
   function drawLobby(lobby, L) {
-    const y = L.floorY(0);
+    const y = L.floorY(config.building.lobbyFloor ?? 0);
+    const sh = streetHeight(L);
+    const roomH = Math.max(5, L.fh - sh - 4);
     const lobbySlots = lobby.slots ?? [lobby.slot];
     for (const slot of lobbySlots) {
       const x = L.x0 + slot * L.cw;
+      if (x + L.cw < 0 || x > W) continue;
       ctx.fillStyle = '#5aa9e6';
       ctx.globalAlpha = 0.9;
-      roundRect(ctx, x + 2, y + 3, L.cw - 4, L.fh - 8, 3);
+      roundRect(ctx, x + 2, y + 3, L.cw - 4, roomH, 3);
       ctx.fill();
       ctx.globalAlpha = 1;
       ctx.fillStyle = '#102235';
       ctx.textAlign = 'center';
       ctx.font = '700 8px ui-monospace, monospace';
-      ctx.fillText('LOBBY', x + L.cw / 2, y + L.fh * 0.58);
+      if (roomH >= 10) ctx.fillText('LOBBY', x + L.cw / 2, y + roomH * 0.5 + 6);
+
+      // Entrance: a doorway in the street band with a canopy over it. The
+      // placeholder for ground-entrance.png, on the same 48x16 tile.
+      const doorTop = y + L.fh - sh;
+      const doorW = Math.max(6, L.cw * 0.44);
+      const doorX = x + (L.cw - doorW) / 2;
+      ctx.fillStyle = '#9fd3f0';
+      ctx.fillRect(x + 2, doorTop, L.cw - 4, Math.max(1, L.zoom));
+      ctx.fillStyle = '#0d1a26';
+      ctx.fillRect(doorX, doorTop + Math.max(1, L.zoom), doorW, Math.max(2, sh - L.zoom * 2));
+      ctx.fillStyle = '#ffd76a';
+      ctx.fillRect(doorX + doorW / 2 - Math.max(0.5, L.zoom / 2), doorTop + Math.max(1, L.zoom), Math.max(1, L.zoom), Math.max(2, sh - L.zoom * 2));
     }
   }
 
@@ -956,7 +1348,58 @@ export function makeRenderer(canvas, config) {
     return null;
   }
 
-  return { draw, resize, layout, unitPos, floorAt, slotAt, unitAt, facilityAt, shaftAt, get size() { return [W, H]; } };
+  // ------------------------------------------------------- camera controls
+  // The UI drives these; it never reads or writes the camera itself, which is
+  // what keeps every pick going through the one inverse transform above.
+
+  /** The pointer moved by (dx, dy) with a drag in progress: move the world with it. */
+  function dragBy(state, dx, dy) {
+    camera.x -= dx / camera.zoom;
+    camera.y -= dy / camera.zoom;
+    clampCamera(state);
+  }
+
+  /** Zoom to an integer level, holding the world point under the cursor still. */
+  function setZoom(state, nextZoom, anchorX = W / 2, anchorY = H / 2) {
+    const next = clampZoom(nextZoom);
+    if (next !== camera.zoom) {
+      const moved = cameraZoomedAt(camera, viewport(), next, anchorX, anchorY);
+      camera.x = moved.x;
+      camera.y = moved.y;
+      camera.zoom = moved.zoom;
+      clampCamera(state);
+    }
+    return camera.zoom;
+  }
+
+  const zoomBy = (state, steps, anchorX, anchorY) => setZoom(state, camera.zoom + steps, anchorX, anchorY);
+
+  /** The HUD's explicit "go to" — the third and last case where the camera is
+   *  allowed to move itself (spec §2). */
+  function goTo(state, floor, slot = null) {
+    centerOnCell(state, Math.max(0, Math.round(floor) || 0),
+      slot == null ? (config.building.slotsPerFloor - 1) / 2 : slot);
+  }
+
+  const minimapAt = (state, px, py) => {
+    const m = minimapMetrics(viewport(), Math.max(1, state.floors), config.building.slotsPerFloor);
+    return minimapContains(m, px, py) ? { floor: minimapFloorAt(m, py), slot: minimapSlotAt(m, px) } : null;
+  };
+
+  /** Click or drag the strip to jump. Returns false when the point was not on it. */
+  function minimapJump(state, px, py) {
+    const hit = minimapAt(state, px, py);
+    if (!hit) return false;
+    centerOnCell(state, hit.floor, hit.slot);
+    return true;
+  }
+
+  return {
+    draw, resize, layout, unitPos, floorAt, slotAt, unitAt, facilityAt, shaftAt,
+    dragBy, setZoom, zoomBy, goTo, frameLobby, minimapAt, minimapJump,
+    get size() { return [W, H]; },
+    get camera() { return { ...camera }; },
+  };
 }
 
 function roundRect(ctx, x, y, w, h, r) {
