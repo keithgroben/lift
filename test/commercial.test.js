@@ -3,6 +3,7 @@ import { boot, applyAction } from '../src/games/lift/sim/index.js';
 import { scheduleDay, shopsForOffice } from '../src/games/lift/sim/demand.js';
 import { rememberShopTrafficFollowup, shopTrafficEstimate, shopTrafficFollowupCountAccessibleLabel, shopTrafficFollowupCountLabel, shopTrafficFollowupFilterAccessibleLabel, shopTrafficFollowupFilterButtonLabel, shopTrafficFollowupFilterLabel, shopTrafficFollowupOutcome, shopTrafficFollowupResult, shopTrafficFollowupScopeAccessibleLabel, shopTrafficFollowupScopeLabel, shopTrafficFollowupScoreAccessibleLabel, shopTrafficFollowupScoreDetail, shopTrafficFollowupStatus, shopTrafficFollowupSummary, shopTrafficFollowupSummaryHeading, shopTrafficFollowupWindow, shopTrafficHistory, shopTrafficLastCloseAggregate, shopTrafficLastCloseDetail, shopTrafficLastCloseRevenueDetail, shopTrafficPeriodsAccessibleLabel, shopTrafficPeriodsHeading, shopTrafficPeriodsHeadingAccessibleLabel, shopTrafficPeriodsLegendLabel, shopTrafficResponseFilterId, shopTrafficServedDelta, shopTrafficServedTodayDetail, shopTrafficTenantMixPreview, vacancyRecoveryComparison } from '../src/games/lift/sim/evaluation.js';
 import { dayClose } from '../src/games/lift/sim/economy.js';
+import { columnTo, occupy } from './support.js';
 
 const assert = (c, m) => { if (!c) throw new Error(m); };
 
@@ -21,17 +22,20 @@ export const tests = {
   'shop lunch demand uses a local floor catchment'() {
     const config = unlockedShopConfig();
     const nearState = boot(config, 601);
-    // The catchment is a floor distance, so the shop has to be four storeys up
-    // — and something has to hold it there. A shaft column is the cheapest
-    // honest support: it carries the floors without adding a tenant that would
-    // change the office count this test is measuring.
+    // The catchment is a floor distance, so the shop has to be four storeys up,
+    // standing on a column of its own. The filler rooms are left empty, which
+    // keeps them out of both sides of the measurement: an unlet office orders
+    // no lunch, and an unlet shop is not in anybody's catchment.
     assert(applyAction(nearState, { type: 'build_shaft', bottom: 0, top: 5, slot: 0 }, config).ok,
       'could not build near catchment shaft');
-    assert(applyAction(nearState, { type: 'build_unit', kind: 'office', floor: 1 }, config).ok,
+    assert(applyAction(nearState, { type: 'build_unit', kind: 'office', floor: 1, slot: 1 }, config).ok,
       'could not build near office');
-    assert(applyAction(nearState, { type: 'build_unit', kind: 'shop', floor: 4 }, config).ok,
+    const nearOffice = nearState.units.at(-1);
+    occupy(nearState, config, nearOffice);
+    columnTo(nearState, config, 4, 1);
+    assert(applyAction(nearState, { type: 'build_unit', kind: 'shop', floor: 4, slot: 1 }, config).ok,
       'could not build near shop');
-    const nearOffice = nearState.units.find((u) => u.kind === 'office');
+    occupy(nearState, config, nearState.units.at(-1));
     assert(shopsForOffice(nearState, nearOffice, config).length === 1,
       'near shop was not in the office catchment');
     scheduleDay(nearState, config);
@@ -41,11 +45,14 @@ export const tests = {
     const farState = boot(config, 602);
     assert(applyAction(farState, { type: 'build_shaft', bottom: 0, top: 5, slot: 0 }, config).ok,
       'could not build far catchment shaft');
-    assert(applyAction(farState, { type: 'build_unit', kind: 'office', floor: 1 }, config).ok,
+    assert(applyAction(farState, { type: 'build_unit', kind: 'office', floor: 1, slot: 1 }, config).ok,
       'could not build far office');
-    assert(applyAction(farState, { type: 'build_unit', kind: 'shop', floor: 5 }, config).ok,
+    const farOffice = farState.units.at(-1);
+    occupy(farState, config, farOffice);
+    columnTo(farState, config, 5, 1);
+    assert(applyAction(farState, { type: 'build_unit', kind: 'shop', floor: 5, slot: 1 }, config).ok,
       'could not build far shop');
-    const farOffice = farState.units.find((u) => u.kind === 'office');
+    occupy(farState, config, farState.units.at(-1));
     assert(shopsForOffice(farState, farOffice, config).length === 0,
       'far shop incorrectly entered the office catchment');
     scheduleDay(farState, config);
@@ -59,6 +66,10 @@ export const tests = {
     assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 1 }, config).ok &&
       applyAction(state, { type: 'build_unit', kind: 'office', floor: 2 }, config).ok,
       'could not build shop-income offices');
+    // One let office to be the shop's customers, one vacancy to price. The
+    // recovery estimate reads occupied heads in the catchment, so the tenant
+    // has to be seated for the forecast to have anybody to forecast.
+    occupy(state, config, state.units[0], state.units[1]);
     const vacancy = state.units[1];
     vacancy.occupied = false;
     const fullEstimate = shopTrafficEstimate(state, { ...vacancy, kind: 'shop' }, config, 100);

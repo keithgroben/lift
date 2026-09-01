@@ -12,7 +12,9 @@ export const tests = {
     config.economy.startMoney = 10000000;
     const state = boot(config, 41);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok, 'could not build shaft');
-    assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 3 }, config).ok, 'could not build office');
+    // On the ground storey: what a room costs to rent has nothing to do with
+    // how high it is, and this way the fixture needs no scenery under it.
+    assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 1 }, config).ok, 'could not build office');
 
     const unit = state.units[0];
     const standard = unitEvaluation(state, unit, config).score;

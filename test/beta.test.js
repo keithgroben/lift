@@ -1,6 +1,7 @@
 import { CONFIG } from '../src/games/lift/config.js';
 import { boot, applyAction, population, runDays } from '../src/games/lift/sim/index.js';
 import { firstSessionRecoveryEvidence, postBetaManagementGoal, serviceCoverageSummary, unitEvaluation } from '../src/games/lift/sim/evaluation.js';
+import { occupy } from './support.js';
 
 const assert = (condition, message) => {
   if (!condition) throw new Error(message);
@@ -19,6 +20,11 @@ export const tests = {
     for (let floor = 1; floor <= 3; floor++) {
       const room = applyAction(state, { type: 'build_unit', kind: 'office', floor, slot: 0 }, config);
       assert(room.ok, 'first-session path could not build office on F' + floor);
+      // A let tower is the STARTING position here, not the thing under test:
+      // what follows asks whether a single car under-serves three floors of
+      // tenants and whether those tenants stay. "every room still occupied"
+      // only means anything if they were occupied to begin with.
+      occupy(state, config, state.units.at(-1));
     }
 
     runDays(state, 2, config);
@@ -59,6 +65,7 @@ export const tests = {
     for (let floor = 1; floor <= 3; floor++) {
       assert(applyAction(state, { type: 'build_unit', kind: 'office', floor, slot: 0 }, config).ok,
         'beta acceptance path could not build office on F' + floor);
+      occupy(state, config, state.units.at(-1));
     }
 
     runDays(state, 2, config);
@@ -79,7 +86,17 @@ export const tests = {
     assert(goal.action === 'food' && goal.targetUnitId != null && goal.recommendedFloor != null &&
       goal.detail.includes('remaining uncovered'),
       'beta acceptance path did not produce a concrete service goal');
-    const service = applyAction(state, { type: 'build_facility', kind: goal.action, floor: goal.recommendedFloor }, config);
+    // The goal names F2, and this tower is one column of offices beside one
+    // shaft — so every slot on F2 that is free has open air under it, and
+    // nothing can go there yet. A tower widens from the ground up, so the
+    // player's move is to extend the ground storey first and place the
+    // cafeteria on the cell that creates. (Worth a look in `src`: the
+    // recommender picks the floor purely on coverage and never asks whether a
+    // supported slot exists there, so it can hand the player an instruction
+    // they cannot follow in one step.)
+    assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 1, slot: 2 }, config).ok,
+      'beta acceptance path could not widen the ground storey under the service');
+    const service = applyAction(state, { type: 'build_facility', kind: goal.action, floor: goal.recommendedFloor, slot: 2 }, config);
     assert(service.ok, 'beta acceptance path could not place the recommended service');
     const coverage = serviceCoverageSummary(state, 'food', config);
     assert(coverage.coveredRooms === coverage.requiredRooms && coverage.coveredHeads === coverage.requiredHeads &&

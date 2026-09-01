@@ -1,6 +1,7 @@
 import { CONFIG } from '../src/games/lift/config.js';
 import { boot, step, applyAction } from '../src/games/lift/sim/index.js';
 import { POLICIES } from '../src/games/lift/policies.js';
+import { occupy } from './support.js';
 
 const assert = (c, m) => { if (!c) throw new Error(m); };
 
@@ -57,6 +58,10 @@ export const tests = {
     // storey the shaft cannot reach, and the shaft's top cell is what holds
     // the office up.
     applyAction(s, { type: 'build_unit', kind: 'office', floor: 2 }, CONFIG);
+    // Its tenant is seated directly: an empty room schedules no trips, and
+    // trips are the thing being stranded. Leasing would never fill this room
+    // anyway — that is the whole point of putting it out of the shaft's reach.
+    occupy(s, CONFIG, s.units[0]);
     // Day 1's schedule was built by boot(), before the fixture unit existed —
     // read day 2, the first day that actually has trips to strand.
     while (s.day <= 3) step(s, CONFIG.time.dt, CONFIG);

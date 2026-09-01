@@ -5,6 +5,7 @@ import {
 } from '../src/games/lift/sim/demand.js';
 import { unitEvaluation } from '../src/games/lift/sim/evaluation.js';
 import { dayClose } from '../src/games/lift/sim/economy.js';
+import { columnTo } from './support.js';
 
 const assert = (c, m) => { if (!c) throw new Error(m); };
 
@@ -40,15 +41,18 @@ export const tests = {
     const state = setup(config, 302);
     const built = applyAction(state, { type: 'build_stairs', bottom: 0, top: 3 }, config);
     assert(built.ok, built.reason);
-    const unit = applyAction(state, { type: 'build_unit', kind: 'office', floor: 3 }, config);
+    // Three storeys up, so the fixture stacks the column that holds it there.
+    columnTo(state, config, 3, 2);
+    const unit = applyAction(state, { type: 'build_unit', kind: 'office', floor: 3, slot: 2 }, config);
     assert(unit.ok, unit.reason);
+    const office = state.units.at(-1);
 
     const trip = { from: 0, to: 3, toUnit: unit.id };
     assert(servingStairs(state, trip.from, trip.to).length === 1, 'stairs did not serve the trip span');
     const route = chooseServingRoute(state, trip, [], state.stairs, config);
     assert(route.kind === 'stairs', 'stair route was not selected without an elevator');
     const access = stairAccessSeconds(state, trip, state.stairs[0], config);
-    const evaluation = unitEvaluation(state, state.units[0], config);
+    const evaluation = unitEvaluation(state, office, config);
     assert(evaluation.accessMode === 'stairs' && evaluation.accessSeconds === +access.toFixed(1),
       'room evaluation did not recognize stair access');
 

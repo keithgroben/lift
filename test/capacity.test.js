@@ -1,5 +1,6 @@
 import { CONFIG } from '../src/games/lift/config.js';
 import { boot, step, applyAction } from '../src/games/lift/sim/index.js';
+import { occupy } from './support.js';
 
 const assert = (c, m) => { if (!c) throw new Error(m); };
 
@@ -17,6 +18,10 @@ function runFixture(options = {}, seed = 1) {
     for (let i = 0; i < 5; i++) {
       const unit = applyAction(state, { type: 'build_unit', kind: 'office', floor }, config);
       assert(unit.ok, unit.reason);
+      // A deliberately busy tower: fifteen let offices, all of them making
+      // trips from day one. Waiting for leasing to fill them would measure the
+      // leasing system, not the cars.
+      occupy(state, config, state.units.at(-1));
     }
   }
   for (let i = 1; i < (options.cars || 1); i++) {

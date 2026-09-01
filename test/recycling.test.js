@@ -2,6 +2,7 @@ import { CONFIG } from '../src/games/lift/config.js';
 import { boot, applyAction } from '../src/games/lift/sim/index.js';
 import { unitEvaluation } from '../src/games/lift/sim/evaluation.js';
 import { recyclingCoverage, recyclingDemand } from '../src/games/lift/sim/services.js';
+import { columnTo, occupy, unpacedBuilding } from './support.js';
 
 const assert = (c, m) => { if (!c) throw new Error(m); };
 
@@ -12,16 +13,20 @@ export const tests = {
     config.economy.startMoney = 10000000;
     config.building.startFloors = 6;
     config.stars.tiers[2].pop = 0;
+    unpacedBuilding(config);
     const state = boot(config, 101);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 5 }, config).ok,
       'could not build shaft');
     assert(applyAction(state, { type: 'build_unit', kind: 'shop', floor: 1, slot: 1 }, config).ok,
       'could not build nearby shop');
+    const nearby = state.units.at(-1);
+    // A column under the fifth storey. The filler rooms are empty offices, so
+    // the waste totals below still come from the two shops alone.
+    columnTo(state, config, 5, 1);
     assert(applyAction(state, { type: 'build_unit', kind: 'shop', floor: 5, slot: 1 }, config).ok,
       'could not build distant shop');
-
-    const nearby = state.units[0];
-    const distant = state.units[1];
+    const distant = state.units.at(-1);
+    occupy(state, config, nearby, distant);
     const before = unitEvaluation(state, nearby, config);
     const uncovered = recyclingDemand(state, config);
     assert(uncovered.uncoveredRooms === 2 && uncovered.waste > 0,
@@ -52,9 +57,9 @@ export const tests = {
     const state = boot(config, 102);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok,
       'could not build shaft');
-    assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 2 }, config).ok,
+    assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 1 }, config).ok,
       'could not build office');
-    assert(applyAction(state, { type: 'build_facility', kind: 'security', floor: 2 }, config).ok,
+    assert(applyAction(state, { type: 'build_facility', kind: 'security', floor: 1 }, config).ok,
       'could not build security desk');
     const evaluation = unitEvaluation(state, state.units[0], config);
     assert(evaluation.securityCovered, 'security did not cover the office');

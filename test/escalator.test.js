@@ -5,6 +5,7 @@ import {
   stairAccessSeconds,
 } from '../src/games/lift/sim/demand.js';
 import { unitEvaluation } from '../src/games/lift/sim/evaluation.js';
+import { columnTo } from './support.js';
 
 const assert = (c, m) => { if (!c) throw new Error(m); };
 
@@ -24,7 +25,11 @@ export const tests = {
       assert(slotsUsed(state, floor).has(state.escalators[0].slot), 'escalator did not reserve its full column');
     }
 
-    const unit = applyAction(state, { type: 'build_unit', kind: 'office', floor: 3 }, config);
+    // The office is three storeys up and needs its own column. It lands in the
+    // first free slot either way, so the walk to the stairs and to the
+    // escalator is the one this fixture always measured.
+    columnTo(state, config, 3, 3);
+    const unit = applyAction(state, { type: 'build_unit', kind: 'office', floor: 3, slot: 3 }, config);
     assert(unit.ok, unit.reason);
     const trip = { from: 0, to: 3, toUnit: unit.id };
     const stairTime = stairAccessSeconds(state, trip, state.stairs[0], config);
@@ -62,10 +67,12 @@ export const tests = {
     assert(applyAction(state, { type: 'build_lobby', slot: 0 }, config).ok, 'could not build lobby');
     const built = applyAction(state, { type: 'build_escalator', bottom: 0, top: 3 }, config);
     assert(built.ok, built.reason);
-    const unit = applyAction(state, { type: 'build_unit', kind: 'office', floor: 3 }, config);
+    columnTo(state, config, 3, 2);
+    const unit = applyAction(state, { type: 'build_unit', kind: 'office', floor: 3, slot: 2 }, config);
     assert(unit.ok, unit.reason);
+    const office = state.units.at(-1);
     assert(servingEscalators(state, 0, 3).length === 1, 'escalator did not serve the trip span');
-    const evaluation = unitEvaluation(state, state.units[0], config);
+    const evaluation = unitEvaluation(state, office, config);
     assert(evaluation.accessMode === 'escalator' && evaluation.accessSeconds > 0,
       'room evaluation did not recognize escalator access');
 

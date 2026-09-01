@@ -1,6 +1,7 @@
 import { CONFIG } from '../src/games/lift/config.js';
 import { boot, applyAction, slotsUsed } from '../src/games/lift/sim/index.js';
 import { shaftAccessDistance } from '../src/games/lift/sim/demand.js';
+import { columnTo } from './support.js';
 
 const assert = (c, m) => { if (!c) throw new Error(m); };
 
@@ -72,6 +73,10 @@ export const tests = {
       'could not build lobby');
     assert(applyAction(withLobby, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok,
       'could not build lobby shaft');
+    // Both towers stack the column their room stands in. The column shares the
+    // room's slot, so the walk to the shaft — the only thing measured here — is
+    // untouched.
+    columnTo(withLobby, config, 3, 0);
     const lobbyUnit = applyAction(withLobby, { type: 'build_unit', kind: 'office', floor: 3, slot: 0 }, config);
     assert(lobbyUnit.ok, lobbyUnit.reason);
     const withLobbyTrip = { from: 0, to: 3, toUnit: lobbyUnit.id };
@@ -80,6 +85,7 @@ export const tests = {
     const withoutLobby = boot(config, 121);
     assert(applyAction(withoutLobby, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok,
       'could not build comparison shaft');
+    columnTo(withoutLobby, config, 3, 1);
     const plainUnit = applyAction(withoutLobby, { type: 'build_unit', kind: 'office', floor: 3, slot: 1 }, config);
     assert(plainUnit.ok, plainUnit.reason);
     const plainTrip = { from: 0, to: 3, toUnit: plainUnit.id };
@@ -99,7 +105,8 @@ export const tests = {
       'could not build first shaft');
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok,
       'could not build second shaft');
-    const unit = applyAction(state, { type: 'build_unit', kind: 'office', floor: 3 }, config);
+    columnTo(state, config, 3, 3);
+    const unit = applyAction(state, { type: 'build_unit', kind: 'office', floor: 3, slot: 3 }, config);
     assert(unit.ok, unit.reason);
     const secondShaft = state.shafts[1];
     const trip = { from: 0, to: 3, toUnit: unit.id };

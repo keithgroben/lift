@@ -1,6 +1,7 @@
 import { CONFIG } from '../src/games/lift/config.js';
 import { boot, applyAction } from '../src/games/lift/sim/index.js';
 import { leasingForecast } from '../src/games/lift/sim/evaluation/leasing.js';
+import { occupy } from './support.js';
 
 const assert = (c, m) => { if (!c) throw new Error(m); };
 
@@ -14,6 +15,12 @@ function fixture(config) {
   for (let floor = 1; floor <= 10; floor++) {
     const built = applyAction(state, { type: 'build_unit', kind: 'office', floor }, config);
     assert(built.ok, built.reason);
+    // Six occupied rooms and four vacancies is the shape this fixture is named
+    // for, and it is the input to the forecast, not its output — so the tower
+    // is let directly and then four rooms are emptied again below. The seating
+    // draws each tenant's jitter from the same rng the move-in would, which is
+    // what the jitter assertions read.
+    occupy(state, config, state.units.at(-1));
   }
   // Vacate four rooms and age them past every relist delay.
   for (const unit of state.units.slice(0, 4)) {

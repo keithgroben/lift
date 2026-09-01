@@ -3,6 +3,7 @@ import { boot, applyAction, population } from '../src/games/lift/sim/index.js';
 import { scheduleDay } from '../src/games/lift/sim/demand.js';
 import { dayClose } from '../src/games/lift/sim/economy.js';
 import { hotelBookingFeedback, hotelExperienceHistory, hotelExperienceSummary, hotelGuestExperience, hotelServiceSummary } from '../src/games/lift/sim/evaluation.js';
+import { occupy } from './support.js';
 
 const assert = (c, m) => { if (!c) throw new Error(m); };
 
@@ -26,6 +27,11 @@ export const tests = {
     for (let floor = 1; floor <= 27; floor++) {
       const office = applyAction(state, { type: 'build_unit', kind: 'office', floor }, config);
       assert(office.ok, office.reason);
+      // Rooms open empty and fill through leasing over days this fixture does
+      // not run. What is on trial is the POPULATION gate, not how the tower
+      // reached that population, so each office is let as it is built — which
+      // is also what keeps the vacancy backlog from blocking the next one.
+      occupy(state, config, state.units.at(-1));
     }
     assert(population(state) >= 160, 'hotel fixture did not reach its population gate');
     const built = applyAction(state, { type: 'build_unit', kind: 'hotel', floor: 28 }, config);
@@ -40,9 +46,14 @@ export const tests = {
     const state = boot(config, 502);
     assert(applyAction(state, { type: 'build_lobby', slot: 0 }, config).ok, 'could not build lobby');
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok, 'could not build shaft');
-    const built = applyAction(state, { type: 'build_unit', kind: 'hotel', floor: 3 }, config);
+    // The first storey, which stands on the ground and is served by the same
+    // shaft: the trips and the per-guest rent this fixture counts do not depend
+    // on how high the room is.
+    const built = applyAction(state, { type: 'build_unit', kind: 'hotel', floor: 1 }, config);
     assert(built.ok, built.reason);
     const hotel = state.units[0];
+    // Guests are what generate the traffic being counted; seat them.
+    occupy(state, config, hotel);
     scheduleDay(state, config);
     const hotelTrips = state.schedule.filter((trip) => trip.unit === hotel.id);
     assert(hotelTrips.length === hotel.heads * config.demand.hotelTripsPerGuestPerDay,
@@ -65,6 +76,9 @@ export const tests = {
     const built = applyAction(state, { type: 'build_unit', kind: 'hotel', floor: 1 }, config);
     assert(built.ok, built.reason);
     const hotel = state.units[0];
+    // A booking load only exists for a booked room. The subject is what
+    // reputation does to that load, not how the first guests arrived.
+    occupy(state, config, hotel);
     state.log = [{ deliveryRate: 0 }, { deliveryRate: 20 }];
     state.today.trips = 10;
     state.today.delivered = 0;
@@ -81,6 +95,7 @@ export const tests = {
     const poorBuilt = applyAction(stranded, { type: 'build_unit', kind: 'hotel', floor: 1 }, config);
     assert(poorBuilt.ok, poorBuilt.reason);
     const poorHotel = stranded.units[0];
+    occupy(stranded, config, poorHotel);
     const poorClosed = dayClose(stranded, config);
     assert(poorClosed.rep === 100 && poorHotel.heads === config.units.hotel.minGuests,
       'a hotel with no access did not lose bookings despite healthy reputation');
@@ -88,9 +103,13 @@ export const tests = {
     const served = boot(config, 505);
     assert(applyAction(served, { type: 'build_lobby', slot: 0 }, config).ok, 'could not build hotel lobby');
     assert(applyAction(served, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok, 'could not build hotel shaft');
-    const goodBuilt = applyAction(served, { type: 'build_unit', kind: 'hotel', floor: 3 }, config);
+    const goodBuilt = applyAction(served, { type: 'build_unit', kind: 'hotel', floor: 1 }, config);
     assert(goodBuilt.ok, goodBuilt.reason);
     const goodHotel = served.units[0];
+    // Both halves are booked before the close, so "keeps its guests" and "loses
+    // them" are the same measurement made twice — an empty room would satisfy
+    // the served half for the wrong reason.
+    occupy(served, config, goodHotel);
     const goodClosed = dayClose(served, config);
     assert(goodClosed.rep === 100 && goodHotel.heads === config.units.hotel.guests,
       'an accessible hotel did not fill at healthy reputation');
@@ -138,6 +157,9 @@ export const tests = {
     const built = applyAction(state, { type: 'build_unit', kind: 'hotel', floor: 1 }, config);
     assert(built.ok, built.reason);
     const hotel = state.units[0];
+    // Guest feedback is aggregated over BOOKED rooms; an empty one reports
+    // nothing at all.
+    occupy(state, config, hotel);
     const first = dayClose(state, config);
     assert(first.hotelRooms === 1 && first.hotelGuests === hotel.heads && Number.isFinite(first.hotelExperience),
       'day close did not record hotel guest feedback');
@@ -156,6 +178,7 @@ export const tests = {
     const secondBuilt = applyAction(state, { type: 'build_unit', kind: 'hotel', floor: 1 }, config);
     assert(firstBuilt.ok && secondBuilt.ok, 'could not build multi-room hotel feedback fixture');
     const [fullRoom, smallRoom] = state.units;
+    occupy(state, config, fullRoom, smallRoom);
     smallRoom.heads = config.units.hotel.minGuests;
     smallRoom.stress = config.units.hotel.vacateAt;
     const summary = hotelExperienceSummary(state, config);
@@ -193,9 +216,10 @@ export const tests = {
     const state = boot(config, 509);
     assert(applyAction(state, { type: 'build_lobby', slot: 0 }, config).ok, 'could not build hotel feedback lobby');
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok, 'could not build hotel feedback shaft');
-    const built = applyAction(state, { type: 'build_unit', kind: 'hotel', floor: 3 }, config);
+    const built = applyAction(state, { type: 'build_unit', kind: 'hotel', floor: 1 }, config);
     assert(built.ok, built.reason);
     const hotel = state.units[0];
+    occupy(state, config, hotel);
     const first = dayClose(state, config);
     assert(hotel.heads === config.units.hotel.guests, 'healthy hotel did not start full before feedback existed');
     state.log.at(-1).hotelExperience = 0;

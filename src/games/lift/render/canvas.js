@@ -1,6 +1,6 @@
 import { lerp, mix } from './juice.js';
 import { makeSpriteBook } from './sprites.js';
-import { daylight, makeSky, skyColors, skyPhase } from './sky.js';
+import { cloudScale, daylight, flyerScale, makeSky, skyColors, skyPhase } from './sky.js';
 import { buildOccupiedFloorIndex, shaftQueueTrend, tenantDemandQuality, tenantLoadStatus, unitEvaluation, waitingPressureSummary } from '../sim/evaluation.js';
 import { localRouteOccupancy } from '../sim/demand.js';
 import { freeSlot, isUnderground, lowestFloor, slotsUsed } from '../sim/state.js';
@@ -913,14 +913,21 @@ export function makeRenderer(canvas, config) {
   }
 
   /** Clouds drift, and answer the camera by their depth so the sky behind a
-   *  60-floor tower has some distance in it. */
+   *  60-floor tower has some distance in it.
+   *
+   *  They scale with the zoom like everything else. They were drawn at a fixed
+   *  size before, so zooming in grew the tower and left the sky the same —
+   *  Keith, 2026-09-01: "the clouds and birds are not zooming with the map."
+   *  Sky sits at effectively infinite distance, so the zoom magnifies it
+   *  without moving it, the way a telescope does. */
   function drawClouds(k) {
     const lit = 0.35 + k * 0.5;
+    const zoom = camera.zoom;
     for (const cloud of sky.clouds) {
       const x = cloudScreenXFor(cloud);
-      if (x < -cloud.w * 2 || x > W + cloud.w) continue;
+      if (x < -cloud.w * 2 * zoom || x > W + cloud.w * zoom) continue;
       const y = cloud.y * (0.6 + cloud.depth * 0.6);
-      const scale = 0.6 + cloud.depth * 0.9;
+      const scale = cloudScale(cloud.depth, zoom);
       ctx.globalAlpha = (0.25 + cloud.depth * 0.45) * (0.4 + k * 0.6);
       if (!sprites.drawSprite(ctx, { name: 'sky-cloud', animation: cloud.variant, x, y, scale: Math.max(1, Math.round(scale)) })) {
         // Placeholder: three overlapping lozenges read as a cloud at any size.
@@ -944,16 +951,20 @@ export function makeRenderer(canvas, config) {
   /** Birds, planes, balloons — and once in a long while something worth
    *  pointing at. Sprites when they exist, shapes when they do not. */
   function drawFlyers(k) {
+    const zoom = flyerScale(camera.zoom);
     for (const f of sky.flyers) {
       for (let i = 0; i < f.count; i++) {
         const o = f.offsets[i] ?? { dx: 0, dy: 0 };
-        const x = f.x - f.dir * o.dx;
-        const y = f.y + o.dy + Math.sin(f.bob + i) * 3;
-        if (x < -120 || x > W + 120) continue;
+        // Flock spacing and the bob scale too, or a flight of birds bunches
+        // into one bird the moment you zoom in.
+        const x = f.x - f.dir * o.dx * zoom;
+        const y = f.y + (o.dy + Math.sin(f.bob + i) * 3) * zoom;
+        if (x < -120 * zoom || x > W + 120 * zoom) continue;
         ctx.save();
         ctx.translate(x, y);
         if (f.dir < 0) ctx.scale(-1, 1);
-        if (!sprites.drawSprite(ctx, { name: f.kind.sprite, animation: f.kind.animation, x: 0, y: 0, scale: 1, phaseMs: i * 120 })) {
+        if (!sprites.drawSprite(ctx, { name: f.kind.sprite, animation: f.kind.animation, x: 0, y: 0, scale: zoom, phaseMs: i * 120 })) {
+          ctx.scale(zoom, zoom);
           drawFlyerShape(f.kind.name, k);
         }
         ctx.restore();

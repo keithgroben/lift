@@ -2,6 +2,7 @@ import { CONFIG } from '../src/games/lift/config.js';
 import { boot, applyAction, servingShafts, multiHopRoute } from '../src/games/lift/sim/index.js';
 import { shaftParams } from '../src/games/lift/sim/elevator.js';
 import { unitEvaluation } from '../src/games/lift/sim/evaluation.js';
+import { columnTo, unpacedBuilding } from './support.js';
 
 const assert = (c, m) => { if (!c) throw new Error(m); };
 
@@ -62,15 +63,22 @@ export const tests = {
   },
 
   'an express shaft is not "access" for the floors it skips'() {
-    const { state, config } = tallTower(30);
-    applyAction(state, { type: 'build_shaft', bottom: 0, top: 20, kind: 'express' }, config);
-    const midBuilt = applyAction(state, { type: 'build_unit', kind: 'office', floor: 10 }, config);
+    // A shorter tower than this fixture used to raise. Both rooms now need a
+    // real column of storeys under them, and the property under test — an
+    // express is access at its two ends and nowhere between — is the same at
+    // F3/F6 as it was at F10/F20, for four support rooms instead of eighteen.
+    const { state, config } = tallTower(8);
+    unpacedBuilding(config);
+    applyAction(state, { type: 'build_shaft', bottom: 0, top: 6, kind: 'express' }, config);
+    columnTo(state, config, 3, 2);
+    const midBuilt = applyAction(state, { type: 'build_unit', kind: 'office', floor: 3, slot: 2 }, config);
     assert(midBuilt.ok, midBuilt.reason);
     const mid = state.units.at(-1);
     const midEval = unitEvaluation(state, mid, config);
     assert(midEval.accessMode !== 'elevator',
       'a skipped floor claimed elevator access via the express (' + midEval.accessMode + ')');
-    const lobbyBuilt = applyAction(state, { type: 'build_unit', kind: 'office', floor: 20 }, config);
+    columnTo(state, config, 6, 2);
+    const lobbyBuilt = applyAction(state, { type: 'build_unit', kind: 'office', floor: 6, slot: 2 }, config);
     assert(lobbyBuilt.ok, lobbyBuilt.reason);
     const skyLobby = state.units.at(-1);
     assert(unitEvaluation(state, skyLobby, config).accessMode === 'elevator',

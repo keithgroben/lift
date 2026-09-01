@@ -189,16 +189,16 @@ export function cellBuilt(state, floor, slot) {
  * business says nothing about whether that particular slot has anything
  * holding it up.
  *
- * A cell is legal to build in when either:
+ * A cell is legal to build in when the cell **directly beneath it** is built.
+ * That is the whole rule.
  *
- *  - the cell directly beneath it is built — it sits ON something; or
- *  - a neighbour on its own storey is built — the floor spreads sideways from
- *    somewhere that is itself supported.
- *
- * The second clause is what lets a tower widen as it rises instead of growing
- * as a single column, and it stays anchored because every built cell was
- * itself legal when it was placed. Follow any of them down and you arrive at
- * the lobby, which is why the lobby is the first thing you buy.
+ * It first shipped with a second clause — a neighbour on the same storey would
+ * do — meant to let a tower widen as it rose. It let rooms cantilever instead:
+ * Keith, on the next screenshot, "we still have the floating room on the 4th
+ * floor." He was right. A room whose only support is the room beside it is
+ * hanging over open air, and no amount of transitive anchoring makes that look
+ * like a building. A tower widens by being built wider from the ground up,
+ * which is how a real one does it.
  */
 export function isSupported(state, floor, slot, config) {
   const ground = config?.building?.lobbyFloor ?? 0;
@@ -213,8 +213,7 @@ export function isSupported(state, floor, slot, config) {
   // building spreads along its street before it climbs. Everything above that
   // has to stack.
   if (beneath === ground) return (state?.floors ?? 0) > ground;
-  if (cellBuilt(state, beneath, slot)) return true;
-  return cellBuilt(state, floor, slot - 1) || cellBuilt(state, floor, slot + 1);
+  return cellBuilt(state, beneath, slot);
 }
 
 export function freeSlot(state, config, floor) {

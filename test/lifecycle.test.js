@@ -2,6 +2,7 @@ import { CONFIG } from '../src/games/lift/config.js';
 import { boot, applyAction, population, slotsUsed } from '../src/games/lift/sim/index.js';
 import { conversionPreview, leaseStatus, leasingForecast, marketDemandBonus, relistDaysFor, reputationDemandFactor, reputationHistory, reputationRecommendation, tenantDemandForecast, tenantMixDemand, tenantMixDiagnosis, tenantMixHistory, tenantMixResponse, tenantMixSnapshot, unitEvaluation, vacancyRecoveryComparison } from '../src/games/lift/sim/evaluation.js';
 import { dayClose } from '../src/games/lift/sim/economy.js';
+import { occupy } from './support.js';
 
 const assert = (c, m) => { if (!c) throw new Error(m); };
 
@@ -14,9 +15,11 @@ export const tests = {
     const state = boot(config, 118);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok,
       'could not build shaft');
-    assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 3, slot: 1 }, config).ok,
+    // Both rooms on the storey that stands on the ground: they are vacated
+    // below anyway, and what separates them is the renovation, not the height.
+    assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 1, slot: 1 }, config).ok,
       'could not build high-evaluation room');
-    assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 3, slot: 2 }, config).ok,
+    assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 1, slot: 2 }, config).ok,
       'could not build lower-evaluation room');
     const [best, lower] = state.units;
     best.occupied = false;
@@ -52,8 +55,13 @@ export const tests = {
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok,
       'could not build demand-selection shaft');
     const anchor = applyAction(state, { type: 'build_unit', kind: 'office', floor: 1, slot: 1 }, config);
-    const office = applyAction(state, { type: 'build_unit', kind: 'office', floor: 3, slot: 1 }, config);
-    const condo = applyAction(state, { type: 'build_unit', kind: 'condo', floor: 3, slot: 2 }, config);
+    // The anchor is the office-heavy mix the two vacancies are ranked against,
+    // so its tenant is seated directly; the two candidates stay empty, which is
+    // what makes them candidates. Every evaluation weight is zeroed above, so
+    // moving all three onto the ground storey changes nothing that is measured.
+    occupy(state, config, state.units[0]);
+    const office = applyAction(state, { type: 'build_unit', kind: 'office', floor: 1, slot: 2 }, config);
+    const condo = applyAction(state, { type: 'build_unit', kind: 'condo', floor: 1, slot: 3 }, config);
     assert(anchor.ok && office.ok && condo.ok, 'could not build demand-selection fixture');
     state.units[1].occupied = false;
     state.units[1].vacantDays = config.units.office.relistDays;
@@ -97,6 +105,9 @@ export const tests = {
       'could not build second demand mix office');
     assert(applyAction(state, { type: 'build_unit', kind: 'condo', floor: 1, slot: 3 }, config).ok,
       'could not build demand mix condo');
+    // The mix is a count of OCCUPIED heads, so the three rooms are let: this
+    // fixture is about the shares those tenants make, not about their arrival.
+    occupy(state, config, ...state.units);
     const mix = tenantMixDemand(state, config);
     const offices = mix.find((entry) => entry.kind === 'office');
     const condos = mix.find((entry) => entry.kind === 'condo');
@@ -152,7 +163,9 @@ export const tests = {
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok,
       'could not build forecast shaft');
     for (const slot of [1, 2]) {
-      const built = applyAction(state, { type: 'build_unit', kind: 'office', floor: 3, slot }, config);
+      // The ground storey: the fixture vacates both rooms immediately, and the
+      // forecast ranks them on the same terms at any height.
+      const built = applyAction(state, { type: 'build_unit', kind: 'office', floor: 1, slot }, config);
       assert(built.ok, 'could not build forecast room');
     }
     for (const unit of state.units) {
@@ -183,11 +196,15 @@ export const tests = {
     const state = boot(config, 129);
     assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 1 }, config).ok,
       'could not build first mix-history office');
+    // Balance is measured over let rooms, so each one is let as it appears —
+    // the movement under test is office-only mix becoming office-plus-condo.
+    occupy(state, config, state.units.at(-1));
     const first = dayClose(state, config);
     assert(first.tenantMix && Number.isFinite(first.tenantMix.balance),
       'day close did not record tenant mix');
     assert(applyAction(state, { type: 'build_unit', kind: 'condo', floor: 1, slot: 5 }, config).ok,
       'could not build second mix-history condo');
+    occupy(state, config, state.units.at(-1));
     const second = dayClose(state, config);
     const history = tenantMixHistory(state, config);
     assert(history.length === 2 && history[0].day === first.day && history[1].day === second.day,
@@ -205,6 +222,10 @@ export const tests = {
     const state = boot(config, 130);
     assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 1 }, config).ok,
       'could not build mix-diagnosis office');
+    // An all-office mix needs an office tenant; the diagnosis reads occupied
+    // heads. Seated before the snapshot, so "changed no state" still means the
+    // diagnosis changed none.
+    occupy(state, config, state.units[0]);
     const before = JSON.stringify(state);
     const diagnosis = tenantMixDiagnosis(state, config);
     assert(diagnosis.focus?.kind === 'condo' && diagnosis.focus.direction === 'under' &&
@@ -223,6 +244,9 @@ export const tests = {
     assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 1 }, config).ok &&
       applyAction(state, { type: 'build_unit', kind: 'office', floor: 1 }, config).ok,
       'could not build over-supply response fixture');
+    // One let office makes the mix office-heavy; the second is the vacancy the
+    // response is allowed to suggest converting.
+    occupy(state, config, state.units[0], state.units[1]);
     const vacantOffice = state.units[1];
     vacantOffice.occupied = false;
     vacantOffice.vacantDays = 1;
@@ -337,7 +361,7 @@ export const tests = {
     const state = boot(config, 122);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok,
       'could not build recovery-comparison shaft');
-    assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 3, slot: 1 }, config).ok,
+    assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 1, slot: 1 }, config).ok,
       'could not build recovery-comparison office');
     const unit = state.units[0];
     unit.occupied = false;
@@ -365,10 +389,11 @@ export const tests = {
     const state = boot(config, 116);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok,
       'could not build shaft');
-    assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 3, slot: 1 }, config).ok,
+    // The ground storey, so the room stands on something and the freed slot is
+    // still a real slot when the fixture reuses it below.
+    assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 1, slot: 1 }, config).ok,
       'could not build office');
     const unit = state.units[0];
-    unit.occupied = false;
     const recovery = vacancyRecoveryComparison(state, unit, config, 100);
     const demolition = recovery.options.find((option) => option.key === 'demolish');
     assert(demolition?.lastResort && demolition.freedFloorSpace.floor === unit.floor &&
@@ -380,13 +405,13 @@ export const tests = {
 
     const result = applyAction(state, { type: 'demolish_unit', id: unit.id }, config);
     assert(result.ok, result.reason);
-    assert(state.units.length === 0 && !slotsUsed(state, 3).has(1),
+    assert(state.units.length === 0 && !slotsUsed(state, 1).has(1),
       'demolition did not remove the room or free its slot');
     assert(state.money === money - config.costs.demolition,
       'demolition did not charge the configured fee');
     assert(state.events.at(-1).kind === 'demolished' && state.events.at(-1).unitKind === 'office',
       'demolition event was not recorded');
-    assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 3, slot: 1 }, config).ok,
+    assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 1, slot: 1 }, config).ok,
       'freed room slot could not be reused');
   },
 
@@ -398,6 +423,8 @@ export const tests = {
     assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 1 }, config).ok,
       'could not build office');
     const unit = state.units[0];
+    // The refusal under test only exists for a room with somebody in it.
+    occupy(state, config, unit);
     const occupied = applyAction(state, { type: 'demolish_unit', id: unit.id }, config);
     assert(!occupied.ok && occupied.reason === 'room is occupied',
       'occupied room was demolished');
@@ -418,10 +445,16 @@ export const tests = {
     for (let slot = 1; slot <= 7; slot++) {
       assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 1, slot }, config).ok,
         'could not build lower office');
+      // The tower is let as it rises: this fixture needs the 2-star population
+      // to unlock condos at all, and the conversion — not the leasing — is what
+      // it goes on to measure. It also keeps the vacancy backlog clear so the
+      // eleventh room can be built.
+      occupy(state, config, state.units.at(-1));
     }
     for (let slot = 1; slot <= 4; slot++) {
       assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 2, slot }, config).ok,
         'could not build upper office');
+      occupy(state, config, state.units.at(-1));
     }
     const unit = state.units[0];
     unit.occupied = false;
@@ -466,6 +499,7 @@ export const tests = {
     assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 1 }, config).ok,
       'could not build office');
     const unit = state.units[0];
+    occupy(state, config, unit);
     const occupied = applyAction(state, { type: 'convert_unit', id: unit.id, kind: 'condo' }, config);
     assert(!occupied.ok && occupied.reason === 'room is occupied',
       'occupied room was converted');
@@ -482,10 +516,9 @@ export const tests = {
     const state = boot(config, 110);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok,
       'could not build shaft');
-    assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 3 }, config).ok,
+    assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 1 }, config).ok,
       'could not build office');
     const unit = state.units[0];
-    unit.occupied = false;
     const before = unitEvaluation(state, unit, config);
     const money = state.money;
 
@@ -507,6 +540,7 @@ export const tests = {
     assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 1 }, config).ok,
       'could not build office');
     const unit = state.units[0];
+    occupy(state, config, unit);
     const occupied = applyAction(state, { type: 'renovate_unit', id: unit.id }, config);
     assert(!occupied.ok && occupied.reason === 'room is occupied',
       'occupied room was renovated');
@@ -525,10 +559,9 @@ export const tests = {
     const state = boot(config, 111);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok,
       'could not build shaft');
-    assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 3 }, config).ok,
+    assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 1 }, config).ok,
       'could not build office');
     const unit = state.units[0];
-    unit.occupied = false;
     unit.vacantDays = 4;
     const evaluation = unitEvaluation(state, unit, config);
     assert(evaluation.score >= config.evaluation.relistMinScore,
@@ -573,8 +606,11 @@ export const tests = {
     const appealState = boot(config, 121);
     assert(applyAction(appealState, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok,
       'could not build appeal-retention shaft');
-    assert(applyAction(appealState, { type: 'build_unit', kind: 'office', floor: 3 }, config).ok,
+    assert(applyAction(appealState, { type: 'build_unit', kind: 'office', floor: 1 }, config).ok,
       'could not build appeal-retention office');
+    // A departure needs somebody to depart. Both halves seat their tenant
+    // directly; what is on trial is which CAUSE the exit is filed under.
+    occupy(appealState, config, appealState.units[0]);
     const appealClosed = dayClose(appealState, config);
     const appealExit = appealState.events.filter((event) => event.kind === 'vacated').at(-1);
     assert(appealClosed.vacatedByDesirability === 1 && appealClosed.vacatedByStress === 0 &&
@@ -586,8 +622,9 @@ export const tests = {
     const stressState = boot(config, 122);
     assert(applyAction(stressState, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok,
       'could not build stress-retention shaft');
-    assert(applyAction(stressState, { type: 'build_unit', kind: 'office', floor: 3 }, config).ok,
+    assert(applyAction(stressState, { type: 'build_unit', kind: 'office', floor: 1 }, config).ok,
       'could not build stress-retention office');
+    occupy(stressState, config, stressState.units[0]);
     stressState.units[0].stress = config.units.office.vacateAt + config.units.office.stressDecay + 1;
     // Past the new-tenant grace window: this fixture is testing cause
     // attribution for an established tenant, not first-session onboarding.

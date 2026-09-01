@@ -217,14 +217,20 @@ const ACTIONS = {
       id: nid(state), kind, floor: a.floor, slot,
       heads: HEADS(config, kind),
       rentLevel, rent: rentForLevel(config, kind, rentLevel),
-      occupied: true, stress: 0, desirabilityPressure: 0, vacantDays: 0,
+      occupied: false, stress: 0, desirabilityPressure: 0, vacantDays: 0,
       daysOccupied: 0,
       renovated: false,
       servedToday: 0,
     };
-    assignTenantJitter(state, u, config);
     state.units.push(u);
-    state.today.movedIn++;
+    // No tenant comes with the keys. Keith, 2026-09-01: "there is literally no
+    // elevator, yet they are still occupied rooms?" Construction used to seat
+    // a tenant on the spot and count a move-in, which walked straight past the
+    // leasing system in economy.js — the one place that asks whether anybody
+    // can actually REACH the room. A room with no transport scores 0, sits
+    // below `relistMinScore`, and now stays empty until a shaft serves it.
+    // `assignTenantJitter` moves to the move-in itself, where the tenant it
+    // describes actually arrives.
     if (kind === 'condo') { state.money += config.units.condo.salePrice; }
     pushEvent(state, 'unit_built', { unitKind: kind, floor: a.floor });
     return { ok: true, id: u.id };

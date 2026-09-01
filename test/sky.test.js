@@ -2,7 +2,7 @@
  * The sky (render/sky.js). Decoration, but decoration with rules: the day has
  * to read as a day, and a surprise has to stay rare enough to be a surprise.
  */
-import { FLYERS, daylight, launchChance, makeSky, pickFlyer, skyColors, skyPhase } from '../src/games/lift/render/sky.js';
+import { FLYERS, cloudScale, daylight, flyerScale, launchChance, makeSky, pickFlyer, skyColors, skyPhase } from '../src/games/lift/render/sky.js';
 import { CONFIG } from '../src/games/lift/config.js';
 import fs from 'node:fs';
 
@@ -130,6 +130,26 @@ export const tests = {
       assert(cloud.speed > 0, 'a cloud does not move');
       assert(cloud.depth > 0 && cloud.depth <= 1, 'a cloud sits outside the depth range');
     }
+  },
+
+  'the sky scales with the zoom'() {
+    // It did not, and the tower grew around it: zooming in made the building
+    // huge and left the clouds and birds the size they already were.
+    for (const depth of [0.25, 0.6, 1]) {
+      const at1 = cloudScale(depth, 1);
+      const at3 = cloudScale(depth, 3);
+      assert(at3 > at1, 'a cloud at depth ' + depth + ' did not grow with the zoom');
+      // In proportion, not by some token amount: three times the zoom is three
+      // times the size.
+      assert(Math.abs(at3 / at1 - 3) < 1e-9,
+        'a cloud grew out of proportion to the zoom: ' + (at3 / at1).toFixed(2));
+    }
+    assert(flyerScale(3) === 3 && flyerScale(1) === 1, 'flyers do not draw at the camera scale');
+
+    // Depth still makes near clouds bigger than far ones at the same zoom.
+    assert(cloudScale(1, 2) > cloudScale(0.25, 2), 'depth stopped mattering');
+    // And nothing draws inside out on a nonsense zoom.
+    assert(cloudScale(0.5, 0) === 0 && flyerScale(-4) === 0, 'a negative zoom produced a negative size');
   },
 
   'the sky cannot touch the simulation'() {

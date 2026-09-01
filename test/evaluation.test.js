@@ -28,6 +28,7 @@ import { transportResponseRecommendation, unassignedQueueResponse } from '../src
 import { transportInvestmentChoices } from '../src/games/lift/sim/evaluation.js';
 import { shaftCoverageDemandComparison } from '../src/games/lift/sim/evaluation.js';
 import { shaftInvestmentComparison } from '../src/games/lift/sim/evaluation.js';
+import { columnTo, occupy, unpacedBuilding } from './support.js';
 
 const assert = (c, m) => { if (!c) throw new Error(m); };
 
@@ -304,6 +305,9 @@ export const tests = {
       'could not build floor-mix office');
     assert(applyAction(state, { type: 'build_unit', kind: 'condo', floor: 2 }, config).ok,
       'could not build floor-mix condo');
+    // Floor mix counts occupied heads, so both rooms are let: the shares and
+    // the open-slot count are the subject, not who agreed to move in.
+    occupy(state, config, ...state.units);
     const floorOne = tenantFloorMix(state, config).find((floor) => floor.floor === 1);
     const floorTwo = tenantFloorMix(state, config).find((floor) => floor.floor === 2);
     assert(floorOne.totalHeads === config.units.office.workers && floorOne.entries[0].kind === 'office' &&
@@ -321,6 +325,9 @@ export const tests = {
     assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 1 }, config).ok &&
       applyAction(state, { type: 'build_unit', kind: 'condo', floor: 2 }, config).ok,
       'could not build placement-preview fixture');
+    // Seated before the snapshot, so "the preview changed no state" still means
+    // exactly that; the projected share is a share of occupied heads.
+    occupy(state, config, ...state.units);
     const before = JSON.stringify(state);
     const preview = tenantPlacementMixPreview(state, 'condo', config);
     assert(preview.currentShare === 0.333 && preview.projectedShare === 0.5 &&
@@ -567,6 +574,14 @@ export const tests = {
     assert(applyAction(routedState, { type: 'build_lobby', slot: 0 }, config).ok &&
       applyAction(routedState, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok,
       'could not build infrastructure-preview route');
+    // F3 needs storeys under it before either the cafeteria or the previewed
+    // room can go there. Two columns, because the preview places the facility
+    // in the first free slot and the room in the next one — and they are empty
+    // rooms, which the preview's own before/after comparison sees on both sides
+    // and therefore cancels out of the delta.
+    unpacedBuilding(config);
+    columnTo(routedState, config, 3, 0);
+    columnTo(routedState, config, 3, 2);
     const beforeRouted = JSON.stringify(routedState);
     const foodTarget = tenantPlacementFloorPreview(routedState, 'office', 3, config);
     const foodPreview = tenantPlacementInvestmentPreview(foodTarget, { tool: 'food', floor: 3 }, routedState, config, 3);
@@ -613,8 +628,11 @@ export const tests = {
     config.economy.startMoney = 10000000;
     const state = boot(config, 49);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok &&
-      applyAction(state, { type: 'build_unit', kind: 'office', floor: 3 }, config).ok,
+      applyAction(state, { type: 'build_unit', kind: 'office', floor: 1 }, config).ok,
       'could not build first-day evaluation fixture');
+    // An occupied room is the premise of the measurement; the drift it exposes
+    // is the tenant's own first-day stress.
+    occupy(state, config, state.units[0]);
     const occupied = unitEvaluation(state, state.units[0], config);
     state.units[0].stress = config.units.office.vacateAt * 0.2;
     const firstDay = unitEvaluation(state, state.units[0], config);
@@ -677,10 +695,18 @@ export const tests = {
     const state = boot(config, 121);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok,
       'could not build demand-quality shaft');
-    assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 1 }, config).ok &&
-      applyAction(state, { type: 'build_unit', kind: 'office', floor: 3 }, config).ok,
+    assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 1 }, config).ok,
       'could not build demand-quality rooms');
-    for (const unit of state.units) {
+    const servedRoom = state.units.at(-1);
+    // The bare room is three storeys up and stands on a column of its own. The
+    // column rooms keep vacantDays 0, which is below every relist delay, so
+    // they never become candidates and the ranking below still sees two rooms.
+    unpacedBuilding(config);
+    columnTo(state, config, 3, 1);
+    assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 3, slot: 1 }, config).ok,
+      'could not build the bare demand-quality room');
+    const bareRoomUnit = state.units.at(-1);
+    for (const unit of [servedRoom, bareRoomUnit]) {
       unit.occupied = false;
       unit.vacantDays = config.units.office.relistDays;
     }
@@ -690,8 +716,8 @@ export const tests = {
       { kind: 'security', floor: 1, slot: 4 },
       { kind: 'recycling', floor: 1, slot: 5 },
     ];
-    const qualityRoom = tenantDemandQuality(state, state.units[0], config);
-    const bareRoom = tenantDemandQuality(state, state.units[1], config);
+    const qualityRoom = tenantDemandQuality(state, servedRoom, config);
+    const bareRoom = tenantDemandQuality(state, bareRoomUnit, config);
     const forecast = leasingForecast(state, config, 100);
     assert(qualityRoom.coveredServices === qualityRoom.requiredServices &&
       bareRoom.coveredServices < bareRoom.requiredServices && qualityRoom.score > bareRoom.score &&
@@ -708,7 +734,7 @@ export const tests = {
     config.occupancy.transportAccessDemandWeight = 2;
     const state = boot(config, 124);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok &&
-      applyAction(state, { type: 'build_unit', kind: 'office', floor: 3 }, config).ok,
+      applyAction(state, { type: 'build_unit', kind: 'office', floor: 1 }, config).ok,
       'could not build transport-confidence forecast room');
     const unit = state.units[0];
     unit.occupied = false;
@@ -806,7 +832,7 @@ export const tests = {
     config.economy.startMoney = 10000000;
     const state = boot(config, 124);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok &&
-      applyAction(state, { type: 'build_unit', kind: 'office', floor: 3 }, config).ok,
+      applyAction(state, { type: 'build_unit', kind: 'office', floor: 1 }, config).ok,
       'could not build appeal follow-up fixture');
     const unit = state.units[0];
     unit.occupied = false;
@@ -844,9 +870,12 @@ export const tests = {
     config.economy.startMoney = 10000000;
     const state = boot(config, 125);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok &&
-      applyAction(state, { type: 'build_unit', kind: 'office', floor: 3 }, config).ok,
+      applyAction(state, { type: 'build_unit', kind: 'office', floor: 1 }, config).ok,
       'could not build service follow-up fixture');
     const unit = state.units[0];
+    // This half is the occupied case — the result is asserted to read
+    // "occupied" — so the room is let before the service lands.
+    occupy(state, config, unit);
     const before = unitEvaluation(state, unit, config);
     const followup = {
       unitId: unit.id,
@@ -858,7 +887,7 @@ export const tests = {
       beforeFactor: vacancyAppealFactorValue(before, 'services'),
       beforeDesirability: 50,
     };
-    assert(applyAction(state, { type: 'build_facility', kind: 'food', floor: 3 }, config).ok,
+    assert(applyAction(state, { type: 'build_facility', kind: 'food', floor: 1 }, config).ok,
       'service facility could not be built for follow-up');
     const result = vacancyAppealFollowupResult(followup, state, { day: 2, rep: 100, desirability: 51 }, config);
     assert(result.key === 'improved' && result.scoreDelta > 0 && result.factorDelta > 0 &&
@@ -872,7 +901,7 @@ export const tests = {
     config.economy.startMoney = 10000000;
     const state = boot(config, 126);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok &&
-      applyAction(state, { type: 'build_unit', kind: 'office', floor: 3 }, config).ok,
+      applyAction(state, { type: 'build_unit', kind: 'office', floor: 1 }, config).ok,
       'could not build tenant-type follow-up fixture');
     const unit = state.units[0];
     unit.occupied = false;
@@ -906,7 +935,7 @@ export const tests = {
     config.economy.startMoney = 10000000;
     const state = boot(config, 122);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok &&
-      applyAction(state, { type: 'build_unit', kind: 'office', floor: 3 }, config).ok,
+      applyAction(state, { type: 'build_unit', kind: 'office', floor: 1 }, config).ok,
       'could not build vacancy-demand fixture');
     state.units[0].occupied = false;
     state.units[0].vacantDays = config.units.office.relistDays;
@@ -925,7 +954,7 @@ export const tests = {
     config.stars.tiers[1].pop = 0;
     const state = boot(config, 123);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok &&
-      applyAction(state, { type: 'build_unit', kind: 'office', floor: 3 }, config).ok,
+      applyAction(state, { type: 'build_unit', kind: 'office', floor: 1 }, config).ok,
       'could not build transport-access inspection fixture');
     state.units[0].occupied = false;
     state.units[0].vacantDays = config.units.office.relistDays;
@@ -946,7 +975,7 @@ export const tests = {
     config.stars.tiers[1].pop = 0;
     const state = boot(config, 124);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok &&
-      applyAction(state, { type: 'build_unit', kind: 'office', floor: 3 }, config).ok,
+      applyAction(state, { type: 'build_unit', kind: 'office', floor: 1 }, config).ok,
       'could not build vacancy-ranking fixture');
     state.units[0].occupied = false;
     state.units[0].vacantDays = config.units.office.relistDays;
@@ -2375,10 +2404,17 @@ export const tests = {
 
   'room health history distinguishes active and resolved warnings'() {
     const state = withFloors(boot(CONFIG, 1), CONFIG);
-    assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, CONFIG).ok &&
-      applyAction(state, { type: 'build_unit', kind: 'office', floor: 3 }, CONFIG).ok,
+    // The room stays on F3 and gets a column under it rather than moving down:
+    // the change label below is an absolute score delta, and F3's view and
+    // floor-fit terms are part of the 44 the entry is compared against. On the
+    // ground storey the same room scores 65 instead of 74 and the assertion
+    // would have to be rewritten to a different number for no reason. The
+    // column rooms are empty, so they add no noise or layout bonus.
+    assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, CONFIG).ok, 'could not build room-health shaft');
+    columnTo(state, CONFIG, 3, 1);
+    assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 3, slot: 1 }, CONFIG).ok,
       'could not build room-health status fixture');
-    const room = state.units[0];
+    const room = state.units.at(-1);
     const entry = { unitId: room.id, floor: room.floor, kind: room.kind, day: 2, average: 44, readings: 2 };
     room.stress = CONFIG.units[room.kind].vacateAt;
     const active = roomHealthHistoryStatus(entry, state, room, CONFIG);
@@ -2431,11 +2467,19 @@ export const tests = {
     assert(applyAction(state, { type: 'build_lobby', slot: 0 }, config).ok &&
       applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok,
       'could not build replacement-preview route');
+    // The filled floor is the ground storey now. A floor can only be filled to
+    // its last slot if the storey beneath it is filled too, so "F3 full while F2
+    // still has room" is a tower that cannot be built — but the property under
+    // test is that a FULL floor drops out of the alternatives and an open one
+    // survives, and the first storey is full on exactly the same terms.
     let filled = 0;
     for (let index = 0; index < config.building.slotsPerFloor + 1; index++) {
-      const built = applyAction(state, { type: 'build_unit', kind: 'office', floor: 3 }, config);
+      const built = applyAction(state, { type: 'build_unit', kind: 'office', floor: 1 }, config);
       if (!built.ok) break;
       filled++;
+      // Let as it is built, which is what the fixture had before rooms started
+      // arriving empty: the mix these previews weigh is a mix of tenants.
+      occupy(state, config, state.units.at(-1));
     }
     const replacements = tenantPlacementReplacementPreviews(state, 'office', [3, 1], config);
     const condoReplacements = tenantPlacementReplacementPreviews(state, 'condo', [3, 1], config);
@@ -2446,7 +2490,7 @@ export const tests = {
     });
     assert(filled > 0 && !replacements.some((preview) => preview.floor === 3 || preview.floor === 1) &&
       replacements.some((preview) => preview.floor === 2) &&
-      !tenantPlacementFloorComparison(state, 'office', 3, config).available &&
+      !tenantPlacementFloorComparison(state, 'office', 1, config).available &&
       replacementDecision.key === 'aligned' && replacementDecision.label === 'quality + mix aligned' &&
       replacements[0].mix.targetShare === config.units.office.targetShare &&
       Number.isFinite(replacements[0].mix.balanceAfter) && condoReplacements.some((preview) => preview.floor === 2) &&
@@ -2486,8 +2530,10 @@ export const tests = {
     const state = boot(config, 31);
     const shaft = applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config);
     assert(shaft.ok, shaft.reason);
-    const near = applyAction(state, { type: 'build_unit', kind: 'office', floor: 3 }, config);
-    const far = applyAction(state, { type: 'build_unit', kind: 'office', floor: 3 }, config);
+    // Both on the ground storey: what separates them is the walk to the shaft,
+    // which is a distance along a corridor and not a height.
+    const near = applyAction(state, { type: 'build_unit', kind: 'office', floor: 1 }, config);
+    const far = applyAction(state, { type: 'build_unit', kind: 'office', floor: 1 }, config);
     assert(near.ok && far.ok, 'could not build evaluation fixture');
 
     const nearScore = unitEvaluation(state, state.units[0], config);
@@ -2508,13 +2554,21 @@ export const tests = {
     const state = boot(config, 33);
     const shaft = applyAction(state, { type: 'build_shaft', bottom: 0, top: 19 }, config);
     assert(shaft.ok, shaft.reason);
+    // This one is about height, so the tower is genuinely raised to F19: one
+    // column in slot 1, with the three sample rooms as its 1st, 6th and 19th
+    // storeys. The filler rooms are empty, so they contribute no noise and no
+    // layout bonus to the rooms being compared.
+    unpacedBuilding(config);
+    const samples = [];
     for (const floor of [1, 6, 19]) {
+      columnTo(state, config, floor, 1);
       const unit = applyAction(state, { type: 'build_unit', kind: 'office', floor, slot: 1 }, config);
       assert(unit.ok, unit.reason);
+      samples.push(state.units.at(-1));
     }
-    const low = unitEvaluation(state, state.units[0], config);
-    const middle = unitEvaluation(state, state.units[1], config);
-    const high = unitEvaluation(state, state.units[2], config);
+    const low = unitEvaluation(state, samples[0], config);
+    const middle = unitEvaluation(state, samples[1], config);
+    const high = unitEvaluation(state, samples[2], config);
     assert(low.viewBonus === 2 && middle.viewBonus === config.evaluation.viewBonusCap,
       'view bonus did not scale with floor height');
     assert(middle.viewBonus === high.viewBonus && middle.score === high.score,
@@ -2530,13 +2584,19 @@ export const tests = {
     const state = boot(config, 35);
     const shaft = applyAction(state, { type: 'build_shaft', bottom: 0, top: 19 }, config);
     assert(shaft.ok, shaft.reason);
+    // Same shape as the view test: a real column up to F19, with the three
+    // sample rooms at the heights the preference curve is read at.
+    unpacedBuilding(config);
+    const samples = [];
     for (const floor of [3, 6, 19]) {
+      columnTo(state, config, floor, 1);
       const built = applyAction(state, { type: 'build_unit', kind: 'office', floor, slot: 1 }, config);
       assert(built.ok, built.reason);
+      samples.push(state.units.at(-1));
     }
-    const preferred = unitEvaluation(state, state.units[0], config);
-    const middle = unitEvaluation(state, state.units[1], config);
-    const high = unitEvaluation(state, state.units[2], config);
+    const preferred = unitEvaluation(state, samples[0], config);
+    const middle = unitEvaluation(state, samples[1], config);
+    const high = unitEvaluation(state, samples[2], config);
     assert(preferred.preferredFloor === config.units.office.preferredFloor && preferred.preferencePenalty === 0,
       'preferred floor did not produce a clear fit signal');
     assert(middle.preferencePenalty > 0 && high.preferencePenalty === config.evaluation.preferenceWeight,
@@ -2554,17 +2614,24 @@ export const tests = {
     const state = boot(config, 36);
     const shaft = applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config);
     assert(shaft.ok, shaft.reason);
-    const office = applyAction(state, { type: 'build_unit', kind: 'office', floor: 3, slot: 1 }, config);
+    // On the ground storey, so three neighbouring rooms need no scenery under
+    // them. The bonus is about who is NEXT DOOR, which is the same at any
+    // height. Each neighbour is let as it arrives, because the layout bonus is
+    // built from occupied neighbours.
+    const office = applyAction(state, { type: 'build_unit', kind: 'office', floor: 1, slot: 1 }, config);
     assert(office.ok, office.reason);
+    occupy(state, config, state.units[0]);
     const solo = unitEvaluation(state, state.units[0], config);
     assert(solo.layoutBonus === 0, 'single-use floor received a layout bonus');
-    const condo = applyAction(state, { type: 'build_unit', kind: 'condo', floor: 3, slot: 2 }, config);
+    const condo = applyAction(state, { type: 'build_unit', kind: 'condo', floor: 1, slot: 2 }, config);
     assert(condo.ok, condo.reason);
+    occupy(state, config, state.units[1]);
     const mixed = unitEvaluation(state, state.units[0], config);
     assert(mixed.layoutBonus === config.evaluation.layoutBonus && mixed.score > solo.score,
       'mixed-use neighbor did not improve room layout quality');
-    const third = applyAction(state, { type: 'build_unit', kind: 'shop', floor: 3, slot: 3 }, config);
+    const third = applyAction(state, { type: 'build_unit', kind: 'shop', floor: 1, slot: 3 }, config);
     assert(third.ok, third.reason);
+    occupy(state, config, state.units[2]);
     assert(unitEvaluation(state, state.units[0], config).layoutBonus === config.evaluation.layoutBonus,
       'multiple mixed-use neighbors stacked the layout bonus');
   },
@@ -2576,17 +2643,20 @@ export const tests = {
     const state = boot(config, 34);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok,
       'could not build cafeteria evaluation shaft');
-    const unit = applyAction(state, { type: 'build_unit', kind: 'office', floor: 3 }, config);
+    const unit = applyAction(state, { type: 'build_unit', kind: 'office', floor: 1 }, config);
     assert(unit.ok, unit.reason);
     const before = unitEvaluation(state, state.units[0], config);
     assert(before.amenityBonus === 0, 'uncovered room received an amenity bonus');
+    // A cafeteria one storey up, inside its coverage radius.
     assert(applyAction(state, { type: 'build_facility', kind: 'food', floor: 2 }, config).ok,
       'could not build cafeteria');
     const after = unitEvaluation(state, state.units[0], config);
     assert(after.amenityBonus === config.evaluation.amenityWeight &&
       after.score - before.score === config.evaluation.foodWeight + config.evaluation.amenityWeight,
       'cafeteria did not add the expected need relief and amenity bonus');
-    assert(applyAction(state, { type: 'build_facility', kind: 'food', floor: 3 }, config).ok,
+    // The second one has to cover the same room, or it proves nothing about
+    // stacking — so it goes on the room's own floor.
+    assert(applyAction(state, { type: 'build_facility', kind: 'food', floor: 1 }, config).ok,
       'could not build second cafeteria');
     assert(unitEvaluation(state, state.units[0], config).amenityBonus === config.evaluation.amenityWeight,
       'multiple cafeterias stacked the room amenity bonus');

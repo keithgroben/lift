@@ -134,6 +134,27 @@ export function cloudScreenX(cloud, cameraX, viewW, drift) {
   return ((raw % span) + span) % span - cloud.w;
 }
 
+/**
+ * How big a cloud draws, and how big anything flying draws.
+ *
+ * Both scale with the camera zoom. They did not at first, and the tower grew
+ * around them — zooming in made the building huge and left the sky the size it
+ * was (Keith, 2026-09-01: "the clouds and birds are not zooming with the
+ * map"). Sky sits at effectively infinite distance, so a zoom magnifies it
+ * without moving it, the way a telescope does; the parallax that makes it feel
+ * distant is in where a cloud sits, not in how large it is drawn.
+ *
+ * A cloud also takes a size from its depth: the near ones are bigger.
+ */
+export function cloudScale(depth, zoom) {
+  return (0.6 + Math.max(0, Math.min(1, depth)) * 0.9) * Math.max(0, zoom);
+}
+
+/** Everything in flight draws at the camera's own scale. */
+export function flyerScale(zoom) {
+  return Math.max(0, zoom);
+}
+
 /** Deterministic sky, given a seedable rng. `rng()` returns 0..1. */
 export function makeSky(config, rng = Math.random) {
   const feel = (config && config.feel && config.feel.sky) || {};

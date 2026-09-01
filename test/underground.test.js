@@ -17,6 +17,7 @@ import {
 import { unitEvaluation } from '../src/games/lift/sim/evaluation.js';
 import { parkingCoverage } from '../src/games/lift/sim/services.js';
 import { POLICIES } from '../src/games/lift/policies.js';
+import { columnTo, occupy, unpacedBuilding } from './support.js';
 
 const assert = (c, m) => { if (!c) throw new Error(m); };
 
@@ -51,6 +52,11 @@ function basementTower(config, seed, { serveIt }) {
   }
   assert(act(state, config, 'build_unit', { kind: 'office', floor: -1, slot: 2 }).ok,
     'could not build a B1 office');
+  // A new room comes empty and fills through leasing, which takes days this
+  // fixture does not run. The subject here is whether a shaft reaches the
+  // basement at all, so the tenant is seated directly — without one there are
+  // no trips to strand or deliver.
+  occupy(state, config, state.units[0]);
   return state;
 }
 
@@ -197,12 +203,17 @@ export const tests = {
   },
 
   'a room below ground loses appeal per floor down, and stops at the cap'() {
-    const config = rich();
+    const config = unpacedBuilding(rich());
     const state = boot(config, 15);
     for (let i = 0; i < 8; i++) act(state, config, 'dig_basement');
     act(state, config, 'build_shaft', { bottom: -8, top: 5, slot: 1 });
 
+    // Each sample room needs its own column: upwards to F3, and downwards to
+    // B8, where every basement hangs off the storey above it. The filler rooms
+    // sit in the same slot 2, and penaltyAt only ever reads the room it just
+    // built, so they stay out of the measurement.
     const penaltyAt = (floor) => {
+      columnTo(state, config, floor, 2);
       assert(act(state, config, 'build_unit', { kind: 'office', floor, slot: 2 }).ok,
         `could not build an office on ${floor}`);
       const unit = state.units[state.units.length - 1];
@@ -225,14 +236,18 @@ export const tests = {
   },
 
   'a basement facility reaches up from the ground line, and only so far'() {
-    const config = rich((c) => { c.building.startFloors = 12; });
+    const config = rich((c) => { c.building.startFloors = 12; unpacedBuilding(c); });
     const state = boot(config, 16);
     act(state, config, 'dig_basement');
     act(state, config, 'build_shaft', { bottom: -1, top: 11, slot: 1 });
 
     const reach = config.services.parking.coverageFloors + config.underground.serviceCoverageBonus;
     const near = reach, far = reach + 1;
+    // Both sample offices stand on a column in their own slot; the lookups
+    // below still pick them out, because no filler room shares their floor.
+    columnTo(state, config, near, 2);
     assert(act(state, config, 'build_unit', { kind: 'office', floor: near, slot: 2 }).ok, 'near office');
+    columnTo(state, config, far, 2);
     assert(act(state, config, 'build_unit', { kind: 'office', floor: far, slot: 2 }).ok, 'far office');
     assert(act(state, config, 'build_facility', { kind: 'parking', floor: -1, slot: 3 }).ok, 'B1 parking');
 

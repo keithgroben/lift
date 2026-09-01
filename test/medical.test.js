@@ -2,6 +2,7 @@ import { CONFIG } from '../src/games/lift/config.js';
 import { boot, applyAction } from '../src/games/lift/sim/index.js';
 import { unitEvaluation } from '../src/games/lift/sim/evaluation.js';
 import { medicalCoverage, medicalDemand } from '../src/games/lift/sim/services.js';
+import { columnTo, occupy, unpacedBuilding } from './support.js';
 
 const assert = (c, m) => { if (!c) throw new Error(m); };
 
@@ -12,16 +13,21 @@ export const tests = {
     config.economy.startMoney = 10000000;
     config.building.startFloors = 7;
     config.stars.tiers[1].pop = 0;
+    unpacedBuilding(config);
     const state = boot(config, 81);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 6 }, config).ok,
       'could not build shaft');
     assert(applyAction(state, { type: 'build_unit', kind: 'condo', floor: 1, slot: 1 }, config).ok,
       'could not build nearby condo');
+    const nearby = state.units.at(-1);
+    // Six storeys up needs six storeys under it. The column is offices, not
+    // condos, and empty: medical demand counts occupied rooms with a medical
+    // need, so the fixture still has exactly two of them.
+    columnTo(state, config, 6, 1);
     assert(applyAction(state, { type: 'build_unit', kind: 'condo', floor: 6, slot: 1 }, config).ok,
       'could not build distant condo');
-
-    const nearby = state.units[0];
-    const distant = state.units[1];
+    const distant = state.units.at(-1);
+    occupy(state, config, nearby, distant);
     const before = unitEvaluation(state, nearby, config);
     assert(medicalDemand(state, config).uncoveredRooms === 2,
       'uncovered condo medical demand was not reported');
@@ -49,8 +55,9 @@ export const tests = {
     const state = boot(config, 82);
     assert(applyAction(state, { type: 'build_shaft', bottom: 0, top: 3 }, config).ok,
       'could not build shaft');
-    assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 3 }, config).ok,
+    assert(applyAction(state, { type: 'build_unit', kind: 'office', floor: 1 }, config).ok,
       'could not build office');
+    occupy(state, config, state.units[0]);
     const evaluation = unitEvaluation(state, state.units[0], config);
     assert(medicalDemand(state, config).rooms === 0, 'office created condo medical demand');
     assert(evaluation.medicalCovered && evaluation.medicalPenalty === 0,
