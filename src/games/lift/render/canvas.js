@@ -1643,6 +1643,11 @@ export function makeRenderer(canvas, config) {
       const x = L.x0 + slot * L.cw;
       const y = L.floorY(f);
       if (x + L.cw < 0 || x > W || y + L.fh < 0 || y > H) continue;
+      // The building's own shell goes down first, so a stairwell sits INSIDE
+      // the structure and shares its columns with the rooms either side.
+      // Without it the route tile is a box butted against the building, which
+      // is what read as detached.
+      sprites.drawSprite(ctx, { name: 'slot-empty', animation: 'empty', x, y, scale: L.zoom });
       if (!sprites.drawSprite(ctx, { name, animation, x, y, scale: L.zoom, phaseMs: f * 90 })) return false;
     }
     return true;

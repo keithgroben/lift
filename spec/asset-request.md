@@ -195,6 +195,18 @@ what the renderer has to draw. What it does not yet cover:
 - **`escalator-segment`'s four frames are nearly identical**, so the loop may
   not read as movement at 1x.
 - **`roof-cap` is very faint** against the sky.
+- **`stairs-segment` and `escalator-segment` are self-contained boxes.** Each
+  carries its own heavy outer frame, so a stairwell reads as a separate
+  structure parked beside the building rather than a shaft cut through it
+  (Keith, 2026-09-01: "the stairs are still detached"). They need redrawing to
+  match `slot-empty`'s shell — same blue-grey columns at the edges, transparent
+  or shell-coloured where the building's own structure should continue — so a
+  route shares its walls with the rooms either side. The renderer already draws
+  `slot-empty` underneath them in readiness.
+- **No room type has a real EMPTY shell.** The `vacant` frame of each room
+  still has desks and figures in it, so an unlet room looks let. The renderer
+  dims it and stamps FOR LEASE over the top as a stand-in; the art wants a bare
+  unfurnished interior per room type with a letting sign in the window.
 - **`lobby-wing` does not tile seamlessly.** Each frame carries its own bright
   vertical edge, so a widened lobby reads as a row of separate panels rather
   than one frontage. The renderer now puts the doors in the middle with wings
