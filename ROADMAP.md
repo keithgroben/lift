@@ -69,20 +69,29 @@ Keith's ruling, 2026-08-31: **the loop cannot be finished while the UI is the
 way it is**, so item 13 cannot be run honestly yet. Full spec in
 [`spec/tower-view.md`](spec/tower-view.md); in short:
 
-- [ ] Camera — fixed 48×32 world scale, click-and-drag panning, integer zoom
-      steps, all picking through the inverse transform. Today `layout()`
-      refits the whole tower every frame, so a slot at 60 floors draws
-      22×14 px and the game gets *less* readable as you win.
-- [ ] Ground line and street under floor 0.
-- [ ] Lobby-first opening: `startFloors: 0`, build palette reordered so the
-      first click of a new game places the entrance, not a floor.
-- [ ] Build palette — arm a tool, ghost-preview it in the world with the
+- [x] Camera — fixed 48×32 world scale, click-and-drag panning, integer zoom
+      steps, all picking through the inverse transform. A slot is 48×32 px at
+      1× no matter how tall the tower gets, and only the floors in view are
+      painted.
+- [x] Ground line and street under floor 0.
+- [x] Lobby-first opening: `startFloors: 0`, palette reordered so the first
+      click of a new game places the entrance, not a floor.
+- [x] Build palette — arm a tool, ghost-preview it in the world with the
       reason it cannot land, confirm, stay armed for the next placement.
-- [ ] Underground floors `B1..B10` as a sim floor *range* (not a renderer
-      special case), with parking and services down there and shafts that
-      must be extended to reach them. Ships with a test.
-- [ ] Minimap strip, SimTower-style: the whole tower in miniature, one row
+- [x] Underground floors `B1..B10` as a sim floor *range*, with cheaper,
+      less appealing slots, services that belong down there, and shafts that
+      must be extended to reach them. Depth and dig cost came from sweeps
+      (`config.underground`), and the view, the palette's `dig` tool and the
+      minimap all speak the range.
+- [x] Minimap strip, SimTower-style: the whole tower in miniature, one row
       per floor, a box showing the current view, click or drag to jump.
+- [x] The art: 28 native-size sheets, sidecars generated from
+      `tools/sprite-catalog.json`, and a renderer seam that falls back to the
+      old rectangle whenever a sheet is missing or broken. Rooms, the lobby,
+      the street and the earth draw from art now.
+- [ ] `palette-icons.png` redo — the delivered strip came back in a different
+      style with a different tool list (no floor, shaft or car). The tiles
+      carry text placeholders until it lands.
 - [ ] **Then** the recorded playthrough, and the loop balance pass it feeds.
 - [ ] **Only then** the developer sidebar comes out and its numbers move
       in-world. Deliberately gated on the playthrough, not on a date.
