@@ -940,7 +940,7 @@ function modeText() {
       const bestFloor = floorPreview.scoreDelta > 0
         ? floorPreview.scoreDelta + ' below best F' + floorPreview.bestFloor
         : 'best available';
-      const decisionReason = tenantPlacementDecisionReason(floorPreview, CONFIG);
+      const decisionReason = floorPreview ? tenantPlacementDecisionReason(floorPreview, CONFIG) : null;
       return base + ' · F' + hoverFloor + ' available · room eval ' + evaluation.score + '/100 · demand +' + floorPreview.demandQuality.bonus + ' · ' +
         floorPreview.demandQuality.label + ' · ' +
         tenantPlacementDecision(floorPreview, CONFIG).label + (decisionReason ? ' · ' + decisionReason : '') + ' · ' +
@@ -5045,15 +5045,25 @@ canvas.addEventListener('click', (e) => {
     return;
   }
   if (CONFIG.units[tool]) {
-    const floorPreview = tenantPlacementFloorComparison(state, tool, floor, CONFIG);
-    if (!floorPreview.available) {
+    // A room on the row above the roof RAISES that storey (spec §4), so there
+    // is no existing floor for the placement comparisons to read. They all
+    // answer "unavailable" for a storey that does not exist yet, which
+    // silently swallowed the click that was supposed to create it — the tower
+    // could never grow past its first floor.
+    const raising = floor === state.floors;
+    // Do NOT fabricate a stand-in preview here. An object claiming
+    // `available: true` without an `evaluation` throws the moment anything
+    // downstream reads it, and an exception inside a click listener looks
+    // exactly like a click that was ignored.
+    const floorPreview = raising ? null : tenantPlacementFloorComparison(state, tool, floor, CONFIG);
+    if (floorPreview && !floorPreview.available) {
       placementWarning = { kind: tool, floor, full: true };
       refresh();
       setMode(undefined, WARN);
       return;
     }
-    const preview = floorPreview.mix;
-    const recommendedShopPreview = shopDiagnosisContext?.diagnosis === 'mix' && tool === 'office'
+    const preview = floorPreview?.mix ?? null;
+    const recommendedShopPreview = !raising && shopDiagnosisContext?.diagnosis === 'mix' && tool === 'office'
       ? activeShopDemandPreview(null) : null;
     const chosenShopPreview = recommendedShopPreview
       ? activeShopDemandPreview(floor) : null;
@@ -5076,7 +5086,12 @@ canvas.addEventListener('click', (e) => {
       return;
     }
     const warningDelta = CONFIG.occupancy.tenantMixPlacementWarningDelta ?? 0;
-    const materiallyWorsens = preview.balanceBefore - preview.balanceAfter >= warningDelta;
+    // A storey that does not exist yet has no tenant mix to worsen, so there
+    // is nothing here to warn about — and `preview` is null in that case,
+    // which is how this line silently threw inside the click listener and made
+    // the placement look like it had simply been ignored.
+    const materiallyWorsens = !raising && preview
+      && preview.balanceBefore - preview.balanceAfter >= warningDelta;
     const decisionReason = tenantPlacementDecisionReason(floorPreview, CONFIG);
     const confirming = placementWarning && placementWarning.kind === tool && placementWarning.floor === floor && !placementWarning.full;
     if (materiallyWorsens && !confirming) {
@@ -5084,14 +5099,14 @@ canvas.addEventListener('click', (e) => {
         tenantPlacementAlternativeReason(floorPreview),
         tenantPlacementInvestmentReason(floorPreview, state, CONFIG),
         decisionReason,
-        placementReasonText(tool, floorPreview.evaluation),
+        placementReasonText(tool, floorPreview?.evaluation),
       ].filter(Boolean).join(' · ');
       placementWarning = {
         kind: tool,
         floor,
         balanceBefore: preview.balanceBefore,
         balanceAfter: preview.balanceAfter,
-        evaluationScore: floorPreview.evaluation.score,
+        evaluationScore: floorPreview?.evaluation?.score,
         why: warningReasons,
       };
       refresh();
@@ -5637,6 +5652,24 @@ window.__lift = {
     refresh();
     return state.log[state.log.length - 1];
   },
+};
+
+// A read-only window onto the running game, for driving the real page from a
+// console or a browser-automation session. Read-only on purpose: every state
+// change still has to go through applyAction, so this can never become a
+// second way to play. Verifying a UI seam by hunting pixels is how an
+// afternoon disappears.
+window.__lift = {
+  get state() { return state; },
+  get tool() { return tool; },
+  get camera() { return renderer.camera; },
+  layout: () => renderer.layout(state),
+  floorAt: (x, y) => renderer.floorAt(state, x, y),
+  pickBuildFloor: (x, y) => pickBuildFloor(x, y),
+  // The two gates a build click passes through, so a refused placement can be
+  // asked WHY without guessing from a toast that may already have cleared.
+  armedAction: (toolKey, spot) => armedAction(toolKey, spot),
+  verdict: (toolKey, spot) => placementVerdict(toolKey, spot),
 };
 
 // ---------------------------------------------------------------- kickoff
