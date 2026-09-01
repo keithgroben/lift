@@ -53,8 +53,11 @@
   .hud-value { color: #dbe4ee; font-size: 14px; font-weight: 700; white-space: nowrap; }
   .hud-readout-time .hud-value { letter-spacing: .06em; }
   .hud-rush { color: var(--warn); font-size: 9px; font-weight: 700; letter-spacing: .12em; margin-left: 8px; }
+  #topbar .view-controls { display: flex; align-items: center; gap: 4px; margin-left: auto; flex: 0 0 auto; }
+  #topbar .view-controls button { padding: 5px 9px; font-size: 9px; }
+  #topbar .view-controls button[aria-pressed="true"] { color: var(--warn); border-color: var(--warn); background: #2a2313; }
   #topbar .time-controls {
-    display: flex; align-items: center; gap: 4px; margin: 0 0 0 auto; flex: 0 0 auto;
+    display: flex; align-items: center; gap: 4px; margin: 0; flex: 0 0 auto;
   }
   #topbar .time-controls button { padding: 5px 9px; font-size: 9px; }
   /* The context row: one line each, and silent when there is nothing to say.
@@ -472,6 +475,14 @@
     <div class="hud-row">
       <h1 class="hud-brand">LIFT</h1>
       <div id="top-bar-mount"></div>
+      <!-- The appeal view (issue #12) needs somewhere a player can find it
+           without already knowing the key. `A` still works; both go through the
+           one toggle in app.js, so the pressed state cannot lie about what the
+           tower is drawing. -->
+      <div class="view-controls" aria-label="tower views">
+        <button id="appeal-toggle" type="button" aria-pressed="false"
+          title="tint every room by its appeal, to see which part of the tower is rotting (A)">appeal view</button>
+      </div>
       <div id="time-controls" class="time-controls" aria-label="time controls">
         <button type="button" data-speed="0">pause</button>
         <button type="button" data-speed="1">1x</button>

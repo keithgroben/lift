@@ -288,6 +288,35 @@ export const tests = {
       'D no longer opens the developer view');
   },
 
+  /**
+   * Issue #14's rule, applied to the appeal view: a thing the renderer computes,
+   * draws and tests is still a defect if nothing in the interface asks for it.
+   * The overlay must be reachable BOTH by the key and by a control a player can
+   * see without knowing the key — and both must go through one function, because
+   * a button that flips its own pressed state is a second answer to "is the
+   * overlay on" that can disagree with the renderer.
+   */
+  'the appeal view is reachable by key and by a visible control, through one path'() {
+    assert(page.includes('id="appeal-toggle"'), 'the appeal view has no control a player can see');
+    const header = region(page, '<header id="topbar">', '</header>');
+    assert(header.includes('id="appeal-toggle"'), 'the appeal view control is not in the HUD bar');
+    assert(app.includes("if (e.key.toLowerCase() === 'a') toggleAppealOverlay();"),
+      'A no longer reaches the appeal view');
+    assert(app.includes("els['appeal-toggle'].addEventListener('click', () => toggleAppealOverlay());"),
+      'the visible control does not share the key\'s path');
+    // Exactly one caller of the renderer's toggle: two would be two truths.
+    assert((app.match(/renderer\.toggleAppealOverlay\(\)/g) ?? []).length === 1,
+      'the renderer overlay is toggled from more than one place');
+    // And the pressed state is written where the toggle is, not guessed at the
+    // call sites — styled off `aria-pressed` so there is one flag, not two.
+    const toggle = fn('toggleAppealOverlay');
+    assert(/setAttribute\('aria-pressed', String\(on\)\)/.test(toggle),
+      'the control never reports whether the overlay is on');
+    assert(!/classList\.(?:toggle|add|remove)\(/.test(toggle),
+      'the control carries a second on/off flag beside aria-pressed');
+    assert(/\[aria-pressed="true"\]/.test(page), 'nothing styles the pressed state of the view toggle');
+  },
+
   /** Issue #13: the sidebar reduced to the next action and the palette. */
   'the sidebar leads with the next action and the palette, not with readings'() {
     const aside = region(page, '<aside>', '</aside>');
