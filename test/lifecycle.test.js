@@ -1,5 +1,6 @@
 import { CONFIG } from '../src/games/lift/config.js';
 import { boot, applyAction, population, slotsUsed, step } from '../src/games/lift/sim/index.js';
+import { retentionThresholdFor } from '../src/games/lift/sim/evaluation/room.js';
 import { conversionPreview, leaseStatus, leasingForecast, marketDemandBonus, relistDaysFor, reputationDemandFactor, reputationHistory, reputationRecommendation, tenantDemandForecast, tenantMixDemand, tenantMixDiagnosis, tenantMixHistory, tenantMixResponse, tenantMixSnapshot, unitEvaluation, vacancyRecoveryComparison } from '../src/games/lift/sim/evaluation.js';
 import { dayClose } from '../src/games/lift/sim/economy.js';
 import { occupy } from './support.js';
@@ -7,6 +8,45 @@ import { occupy } from './support.js';
 const assert = (c, m) => { if (!c) throw new Error(m); };
 
 export const tests = {
+  /**
+   * The mercy and its limit, in one test.
+   *
+   * A beginner's tower with a working lift has to be able to KEEP its tenants
+   * — Keith's first tower ran delivery at 100% and reputation at 100 and lost
+   * every one of them, to an expectation calibrated for a mature building.
+   * But relief that reaches too far up takes the game with it: swept, `naive`
+   * scores 12.0 at a ramp of 6 and 70.2 at 12, with the spread between best
+   * and worst play collapsing from 92% to 51%.
+   */
+  'tenant expectations rise with the tower, and only for the first few floors'() {
+    const config = structuredClone(CONFIG);
+    const ramp = config.occupancy.desirabilityRetentionRampFloors;
+    const full = config.occupancy.desirabilityRetentionThreshold;
+    assert(ramp >= 2, 'there is no ramp, so a beginner faces a mature tower standard');
+
+    // A small tower expects proportionally less of itself...
+    const small = retentionThresholdFor({ floors: 3, lowestFloor: 0 }, config);
+    assert(small < full, 'a three-storey block is held to a skyscraper standard');
+    assert(Math.abs(small - full * (3 / ramp)) < 0.01, 'the ramp is not proportional to height');
+
+    // ...and a tower past the ramp faces the whole thing, which is where every
+    // swept balance number lives.
+    assert(retentionThresholdFor({ floors: ramp, lowestFloor: 0 }, config) === full,
+      'the expectation never reaches its full value');
+    assert(retentionThresholdFor({ floors: ramp * 4, lowestFloor: 0 }, config) === full,
+      'the expectation kept climbing past its ceiling');
+
+    // The limit that keeps the game: relief must not reach the height a
+    // careless player actually builds to.
+    assert(ramp <= 6, 'the ramp reaches so far up that ignoring the bottleneck stops costing anything');
+
+    // And it counts basements, because a dug storey is a storey.
+    assert(retentionThresholdFor({ floors: 2, lowestFloor: -2 }, config) >
+      retentionThresholdFor({ floors: 2, lowestFloor: 0 }, config),
+      'digging does not count toward the size of the building');
+  },
+
+
   /**
    * THE LOOP: build a tower, people move in — but only if they can get there.
    *

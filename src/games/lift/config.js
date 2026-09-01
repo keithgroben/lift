@@ -544,6 +544,26 @@ export const CONFIG = {
     /** Tower appeal nudges vacancy ranking without overpowering access or mix. */
     desirabilityDemandWeight: 4,
     /** Rooms below this appeal score slowly accumulate a separate retention pressure. */
+    /**
+     * How tall the tower must be before tenants expect the FULL
+     * `desirabilityRetentionThreshold`. Below it the expectation scales with
+     * the building: a three-storey block with a working lift is a good
+     * address, and the same rooms fifty floors up are not.
+     *
+     * SIX floors, and the number is load-bearing. Keith's first tower had
+     * delivery at 100% and reputation at 100 and lost every tenant anyway:
+     * the threshold was calibrated for a mature tower and a beginner had no
+     * lever to pull. But relief that reaches too far up the building takes
+     * the game with it — swept 60d x 5 seeds, `naive` (never adds a car)
+     * scores 12.0 at a ramp of 1/4/6 and 53.8 at 8, 70.2 at 12, with the
+     * spread between best and worst play collapsing 92% -> 78% -> 51%.
+     *
+     * At 6 the beginner's three-storey block faces 22.5 instead of 45 and
+     * holds its tenants, while every policy's score is untouched and playing
+     * badly still ends at 12. Mercy for the first few floors, and not one
+     * floor further.
+     */
+    desirabilityRetentionRampFloors: 6,
     desirabilityRetentionThreshold: 45,
     /** Maximum appeal-pressure units added per day by a severely unattractive room. */
     desirabilityRetentionPressureWeight: 1,

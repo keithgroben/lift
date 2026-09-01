@@ -208,12 +208,32 @@ export function roomDesirabilityScore(evaluation, config) {
   )));
 }
 
+/**
+ * What a tenant expects of the building, and how fast falling short of it
+ * pushes them out.
+ *
+ * The expectation RISES WITH THE TOWER. A three-storey building with a lift
+ * that works is a perfectly good address; the same rooms in a fifty-storey
+ * tower are the bad end of it. Charging the full expectation to a beginner's
+ * first building was the bug Keith hit: delivery at 100%, reputation at 100,
+ * and every tenant leaving anyway for a reason with no lever attached to it.
+ *
+ * The ramp is over the tower's own height, so the difficulty arrives as the
+ * player grows into it — and a mature tower, where every autoplayer lives,
+ * faces exactly the threshold it always did.
+ */
+export function retentionThresholdFor(state, config) {
+  const full = Math.max(0, Math.min(100, Number(config?.occupancy?.desirabilityRetentionThreshold ?? 45)));
+  const ramp = Math.max(1, Number(config?.occupancy?.desirabilityRetentionRampFloors) || 1);
+  const storeys = Math.max(0, Number(state?.floors) || 0) - Math.min(0, Number(state?.lowestFloor) || 0);
+  return +(full * Math.max(0, Math.min(1, storeys / ramp))).toFixed(2);
+}
+
 /** Convert low room appeal into a slow, recoverable tenant-retention pressure. */
 export function tenantRetentionPressure(state, unit, config) {
   const evaluation = unitEvaluation(state, unit, config);
   const score = roomDesirabilityScore(evaluation, config);
-  const threshold = Math.max(0, Math.min(100,
-    Number(config.occupancy.desirabilityRetentionThreshold ?? 45)));
+  const threshold = retentionThresholdFor(state, config);
   const weight = Math.max(0, Number(config.occupancy.desirabilityRetentionPressureWeight) || 0);
   const gap = score == null || threshold === 0 ? 0 : clamp((threshold - score) / threshold);
   const dailyPressure = +(gap * weight).toFixed(3);

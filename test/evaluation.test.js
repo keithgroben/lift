@@ -138,9 +138,13 @@ export const tests = {
 
   'room appeal retention pressure is bounded and recoverable'() {
     const config = structuredClone(CONFIG);
-    config.building.startFloors = 4;
+    // Tall enough to face the FULL expectation. Tenants expect more of a
+    // bigger building (`desirabilityRetentionRampFloors`), so a four-storey
+    // fixture no longer generates the pressure this test is about — it would
+    // pass by having nothing to bound rather than by bounding it.
+    config.building.startFloors = config.occupancy.desirabilityRetentionRampFloors + 2;
     const state = {
-      floors: 4,
+      floors: config.occupancy.desirabilityRetentionRampFloors + 2,
       units: [{ id: 1, kind: 'office', floor: 3, slot: 1, heads: 6, occupied: true, stress: 0, rent: config.units.office.rent }],
       facilities: [],
       shafts: [{ id: 10, bottom: 0, top: 3, slot: 0, cars: [] }],
