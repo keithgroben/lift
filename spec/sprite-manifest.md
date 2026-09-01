@@ -30,9 +30,13 @@ image-gen assistant. If a size disagrees between files, this one wins.
   already shipped). Sprites need **lit-window night variants**, not baked-in
   lighting.
 - **Delivery format:** PNG sprite sheets per subject, 1× native scale,
-  transparent background, plus a sidecar JSON (`{frameW, frameH, animations:
-  {name: {row, frames, fps}}}`). File names kebab-case:
-  `office.png`, `office.json`, `person-worker.png`, …
+  transparent background, plus a sidecar JSON — `{frameW, frameH, animations:
+  {name: {col, frames, speed, loop}}}`, all of a subject's frames in one
+  left-to-right strip. `speed` **names** a constant in
+  `config.feel.sprites.fps`; a raw fps number in an art file is refused by the
+  loader. The exact contract, with an example, is in `spec/asset-request.md`
+  ("Delivery: the sidecar JSON") and `src/games/lift/assets/README.md`. File
+  names kebab-case: `office.png`, `office.json`, `person-worker.png`, …
 
 ## Tier 0 — the shell (added 2026-08-31, produce first)
 
@@ -118,7 +122,10 @@ rooms → people → transport.**
   Until it does, `layout()` refits the tower every frame and a slot at 60
   floors draws 22×14 px — half the native grid these sprites are drawn on.
 - A sprite-sheet loader + animation clock in `render/` (renderer-only;
-  `config.feel` owns fps constants).
+  `config.feel` owns fps constants). **Landed** — `render/sprites.js`. A sheet
+  that has not arrived, or that does not describe itself honestly, falls back
+  to the coloured rectangle without throwing, so art can land one subject at a
+  time. Wiring it into `canvas.js` is the follow-up.
 - The current queue-dot and crowd-bar *signals* survive the reskin: pressure
   color and count badges stay, drawn over the sprites. Legibility beats
   charm — the vision doc's pressure loop must stay readable at every zoom.

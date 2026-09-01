@@ -515,6 +515,37 @@ export const CONFIG = {
     tweenMs: 180,
     shakeOnVacate: 6,
     floaterMs: 900,
+
+    /**
+     * Sprite sheets (`render/sprites.js`). The sidecar JSON shipped with each
+     * PNG names a *speed* from this table; it never carries an fps number, so
+     * retiming the whole game is an edit here and nowhere else.
+     */
+    sprites: {
+      /** Frames per second, by name. `default` is the fallback for anything
+       *  a sidecar leaves unnamed or names wrongly. */
+      fps: {
+        default: 6,
+        /** Barely-there room life — a monitor flicker, a shifting silhouette.
+         *  Slow on purpose: a floor of offices ticking at 6fps reads as noise. */
+        idle: 2,
+        /** Blinking indicators (utility rooms, stressed accents). */
+        blink: 1.5,
+        /** Walk cycles. 8fps over a 4-frame cycle = one stride per half second. */
+        walk: 8,
+        /** Elevator doors — a one-shot, fast enough to feel mechanical. */
+        doors: 12,
+        /** Scaffold-and-dust while a build lands. */
+        construction: 6,
+        /** Escalator step loop. Matches walk so the two read as one speed. */
+        escalator: 8,
+      },
+      /** Integer zoom only; the tower view goes 1x/2x/3x. */
+      maxScale: 3,
+      /** Largest render dt a single advance may add. A backgrounded tab hands
+       *  back seconds at once, which would teleport a one-shot to its end. */
+      maxFrameStepMs: 120,
+    },
   },
 };
 

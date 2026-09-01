@@ -48,6 +48,60 @@ the palette and the read, not pixel-perfect output.
 
 ---
 
+## Delivery: the sidecar JSON
+
+Every PNG ships with a JSON file of the same name. The two together are what
+`render/sprites.js` loads; a PNG on its own cannot be drawn, because nothing
+tells the renderer where one state stops and the next begins.
+
+**All the frames of a subject go in a single strip, left to right, in the
+order the "Frames / states" column lists them.** One row, one file. The
+sidecar then names each state by the column it starts at:
+
+```json
+{
+  "frameW": 48,
+  "frameH": 32,
+  "animations": {
+    "vacant":         { "col": 0, "frames": 1 },
+    "occupied-day":   { "col": 1, "frames": 2, "speed": "idle" },
+    "occupied-night": { "col": 3, "frames": 1 },
+    "stressed":       { "col": 4, "frames": 1, "speed": "blink" }
+  }
+}
+```
+
+That file describes `office.png` — a 240x32 strip of five 48x32 frames.
+
+| Field | Meaning |
+|---|---|
+| `frameW` / `frameH` | one frame at 1x. A room slot is `48x32`; a person is 16 px tall. |
+| `col` | the state's first column, counting from 0. Default `0`. |
+| `frames` | how many frames the state uses, running left to right. |
+| `row` | only for the rare grid sheet (people, with a row per facing). Default `0`. |
+| `speed` | a **name**, never a number — see below. Default `"default"`. |
+| `loop` | `false` for a one-shot such as doors opening. Default `true`. |
+
+Animation keys are the "Frames / states" entries, kebab-cased:
+`vacant`, `occupied-day`, `occupied-night`, `stressed`, `doors-opening`,
+`walk-left`, `wait-annoyed`.
+
+**Speeds are named, not numbered.** The legal names live in
+`config.feel.sprites.fps` and are `idle`, `blink`, `walk`, `doors`,
+`construction`, `escalator`, `default`. An fps *number* in a sidecar is
+refused by the loader and the animation drops to the default speed — timing is
+a feel constant, and feel constants live in config so the whole game can be
+retimed in one edit. If a state needs a speed that is not in that list, say so
+and the constant gets added; do not put the number in the art file.
+
+Drop the pair into `src/games/lift/assets/sprites/` — see
+`src/games/lift/assets/README.md`. Sheets load one subject at a time and
+anything missing or malformed simply keeps drawing the coloured rectangle it
+draws today, so partial delivery is expected and safe: send subjects as they
+finish, not in a batch at the end.
+
+---
+
 ## Tier 0 — the shell (new; the tower view needs these first)
 
 The ground line, the underground, and the build palette. None of this exists
