@@ -112,6 +112,21 @@ export const CONFIG = {
      * lowest value where digging clearly repays its capital, and four floors
      * of reach up from the ground line is the furthest a basement garage can
      * plausibly claim.
+     *
+     * ⚠ THAT CURVE IS STALE. It was measured before the lobby-first change,
+     * when every policy was handed four free storeys; policies now buy their
+     * own opening floors (~$160k), which moved every baseline. Re-measured on
+     * current main, 60d x 5 seeds: twin 92.1, and 0/2/6 -> 101.9 / 117.3 /
+     * 147.1. The DIRECTION survives — coverage is still what makes digging
+     * pay — but "a trap at 0" does not: digging now edges its twin even with
+     * no coverage at all, so the knee argument for 2 no longer holds on its
+     * own terms. The value is left where it is pending Keith's call, not
+     * because the evidence still says 2.
+     *
+     * Also worth knowing: at 40 days (tune.js's default) the knob is INERT —
+     * 0/1/2/4 -> 47.3 / 46.8 / 46.6 / 48.1. Depth needs time to matter, so a
+     * short sweep will read this dimension as a flat curve and conclude there
+     * is no game in it. Use TUNE_DAYS=60 or longer for anything underground.
      */
     serviceCoverageBonus: 2,
   },
