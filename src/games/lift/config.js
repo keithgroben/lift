@@ -77,6 +77,14 @@ export const CONFIG = {
      */
     digCost: 30000,
     /**
+     * Cost to fill the lowest basement back in. Not swept, and deliberately
+     * cheap: undoing a dig is a layout decision, and pricing it near the dig
+     * would make the real question "can I afford to be wrong" instead of
+     * "what belongs down here". Split it off from `costs.demolition` when a
+     * sweep says the two want different numbers.
+     */
+    fillCost: 20000,
+    /**
      * Rooms and facilities below ground cost this fraction of their
      * above-ground price. Weak knob, and worth saying so: 0.7/0.9/1.0 ->
      * 137.2 / 133.7 / 133.3, a ~3% spread that is barely above noise. It

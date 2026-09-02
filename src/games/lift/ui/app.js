@@ -1,5 +1,5 @@
 import { CONFIG } from '../config.js';
-import { basementDepth, boot, step, applyAction, lowestFloor, population, starTier, unlocked } from '../sim/index.js';
+import { basementDepth, boot, step, applyAction, floorLabel as floorName, lowestFloor, population, starTier, unlocked } from '../sim/index.js';
 import { averageEvaluation, boundedEvaluationTrend, conversionPreview, evaluationDrift, firstWavePressure, floorDiagnosisAgeCue, floorDiagnosisChange, floorDiagnosisNextAction, floorDiagnosisRepeatedFailure, floorHandoffPreview, floorOperationsSummary, hotelBookingFeedback, hotelExperienceHistory, hotelExperienceSummary, hotelGuestExperience, hotelServiceSummary, indicatorColorKey, leaseStatus, leasingForecast, marketDemandBonus, rememberFloorDiagnosisResult, rememberRoomHealthHistory, rememberShopTrafficFollowup, reputationDemandFactor, reputationHistory, reputationRecommendation, roomEvaluationResponse, roomHealthHistoryAction, roomHealthHistoryAge, roomHealthHistoryAgeLabel, roomHealthHistoryChange, roomHealthHistoryPriority, roomHealthHistoryStatus, roomHealthHistoryUrgency, routePlacementStatus, shaftBuildControlStatus, shaftCapacityProjection, shaftCandidateCoverageLabel, shaftPlacementProjection, shaftQueueReliefProjection, shaftQueueReliefRecommendation, shaftRouteCoverageLabel, shopTrafficEstimate, shopTrafficFollowupCountAccessibleLabel, shopTrafficFollowupCountLabel, shopTrafficFollowupFilterAccessibleLabel, shopTrafficFollowupFilterButtonLabel, shopTrafficFollowupFilterLabel, shopTrafficFollowupOutcome, shopTrafficFollowupResult, shopTrafficFollowupScoreAccessibleLabel, shopTrafficFollowupScoreDetail, shopTrafficFollowupScopeAccessibleLabel, shopTrafficFollowupStatus, shopTrafficFollowupSummary, shopTrafficFollowupSummaryHeading, shopTrafficFollowupWindow, shopTrafficHistory, shopTrafficLastCloseAggregate, shopTrafficLastCloseDetail, shopTrafficLastCloseRevenueDetail, shopTrafficPeriodsAccessibleLabel, shopTrafficPeriodsHeading, shopTrafficPeriodsHeadingAccessibleLabel, shopTrafficPeriodsLegendLabel, shopTrafficResponseFilterId, shopTrafficServedDelta, shopTrafficServedTodayDetail, sustainedLowEvaluation, tenantDemandForecast, tenantFloorMix, tenantLeasingHistory, tenantLoadStatus, tenantLoadSummary, tenantMixDemand, tenantMixDiagnosis, tenantMixHistory, tenantMixResponse, tenantPlacementAlternativeReason, tenantPlacementComparisonChoice, tenantPlacementDecision, tenantPlacementDecisionReason, tenantPlacementFloorComparison, tenantPlacementInvestmentPreview, tenantPlacementInvestmentReason, tenantPlacementMixPreview, tenantPlacementPreview, tenantPlacementRankingReason, tenantPlacementReplacementPreviews, tenantPlacementSmallestInvestment, tenantUtilizationDelta, tenantUtilizationHistoryLabel, tenantUtilizationHintFocusLabel, tenantUtilizationManagementHint, tenantUtilizationRecoveryResult, tenantUtilizationRecoverySummary, tenantUtilizationRoomContext, tenantUtilizationTrend, transportCoverageText, unitEvaluation, vacancyRecoveryComparison } from '../sim/evaluation.js';
 import { clampRentLevel, rentForLevel } from '../sim/pricing.js';
 import { makeRng } from '../sim/rng.js';
@@ -204,6 +204,69 @@ function dryRun(actions) {
   } catch (error) {
     return { ok: false, reason: 'this placement could not be previewed', cost: null, short: 0 };
   }
+}
+
+/**
+ * What the demolish tool would clear at this point, as an action ready to
+ * apply — or null if the click landed on nothing.
+ *
+ * The tool used to call `unitAt` and nothing else, so it cleared rooms and
+ * answered "click a room to demolish" for everything else in the game. Keith,
+ * playing on 2026-09-02: "i cant demolish a lobby." Neither could anyone
+ * demolish stairs, an escalator, a facility, or a shaft — `delete_shaft` had
+ * existed in the sim, priced, with no caller anywhere.
+ *
+ * Order is smallest-thing-first. A room and a facility occupy one cell; a
+ * shaft, stairwell and escalator occupy a whole column that a click could
+ * also fall inside; the lobby is the ground storey; and an empty basement is
+ * the storey itself, which is why filling it is last — it is what is left
+ * when the click hit nothing built at all.
+ */
+function demolitionTargetAt(px, py) {
+  const unitId = renderer.unitAt(state, px, py);
+  if (unitId != null) {
+    return {
+      action: 'demolish_unit',
+      args: { id: unitId },
+      label: (r) => r.kind.toUpperCase() + ' on ' + floorName(r.floor),
+    };
+  }
+  const facilityId = renderer.facilityAt(state, px, py);
+  if (facilityId != null) {
+    return {
+      action: 'demolish_facility',
+      args: { id: facilityId },
+      label: (r) => r.kind.toUpperCase() + ' on ' + floorName(r.floor),
+    };
+  }
+  const route = renderer.routeAt(state, px, py);
+  if (route) {
+    return {
+      action: route.kind === 'stairs' ? 'demolish_stairs' : 'demolish_escalator',
+      args: { id: route.id },
+      label: (r) => route.kind.toUpperCase() + ' ' + floorName(r.bottom) + '–' + floorName(r.top),
+    };
+  }
+  const shaftId = renderer.shaftAt(state, px, py);
+  if (shaftId != null) {
+    return { action: 'delete_shaft', args: { id: shaftId }, label: () => 'SHAFT' };
+  }
+  const lobbySlot = renderer.lobbyAt(state, px, py);
+  if (lobbySlot != null) {
+    return {
+      action: 'demolish_lobby',
+      args: { slot: lobbySlot },
+      label: (r) => r.remaining ? 'LOBBY SEGMENT · ' + r.remaining + ' left' : 'THE WHOLE LOBBY · no entrance now',
+    };
+  }
+  // Only the lowest basement can be filled, and only when it is empty, so the
+  // click has to be on that storey — anywhere else in the earth is not an undo
+  // for anything.
+  const floor = renderer.floorAt(state, px, py);
+  if (floor != null && floor === lowestFloor(state) && floor < 0) {
+    return { action: 'fill_basement', args: {}, label: (r) => floorName(r.floor) + ' FILLED IN' };
+  }
+  return null;
 }
 
 /** Why the ghost is red, in the player's terms. */
@@ -912,7 +975,7 @@ function carToolModeText() {
 function modeText() {
   if (placementNotice) return placementNotice;
   if (tool === 'observe') return 'WATCHING — let the next rush run, or choose a build action above.';
-  if (tool === 'demolish') return 'DEMOLISH selected — click a vacant room to clear its slot. Esc puts the tool away.';
+  if (tool === 'demolish') return 'DEMOLISH selected — click what you want gone: room, facility, stairs, escalator, shaft, a lobby segment, or the lowest basement once it is empty. Esc puts the tool away.';
   if (tool === 'dig') {
     return 'DIG selected — click to sink B' + (basementDepth(state) + 1) +
       '. Underground slots are cheaper and less appealing, and a shaft has to reach them.';
@@ -3416,10 +3479,25 @@ function renderShaftInspector() {
       (state.money >= carCost
         ? ' · dispatch ' + dispatchCapacity + ' → ' + (dispatchCapacity + CONFIG.elevator.capacity) + ' riders <button class="shaft-upgrade-button" data-shaft-car-tool="' + shaft.id + '">select + car</button>'
         : ' · NOT ENOUGH MONEY (have ' + money(state.money) + ')') + '</div>';
+  /**
+   * Taking a car back off. `add_car` was the one purchase in the game with no
+   * way back, and it lives here rather than on the demolish tool because a car
+   * is inside a shaft column and moving — clicking the shaft means the shaft.
+   * Only an EMPTY car goes, which is why the button says which are free.
+   */
+  const idleCars = shaft.cars.filter((car) => car.riders.length === 0).length;
+  const carRemovalText = !shaft.cars.length ? ''
+    : '<div class="shaft-upgrade">' + idleCars + ' of ' + shaft.cars.length + ' car'
+      + (shaft.cars.length === 1 ? '' : 's') + ' empty · removing one drops dispatch to '
+      + ((shaft.cars.length - 1) * CONFIG.elevator.capacity) + ' riders · ' + money(CONFIG.costs.demolition)
+      + (idleCars && state.money >= CONFIG.costs.demolition
+        ? ' <button class="shaft-upgrade-button" data-shaft-remove-car="' + shaft.id + '">remove a car</button>'
+        : idleCars ? ' · NOT ENOUGH MONEY' : ' · every car has riders aboard') + '</div>';
   element.innerHTML = '<div id="shaft-title">S' + (state.shafts.indexOf(shaft) + 1) + ' ELEVATOR SHAFT</div>' +
     '<div id="shaft-status" class="' + statusClass + '" title="queue pressure: ' + queueMeaning + '">' + status + ' · ' + shaft.cars.length + '/' + CONFIG.elevator.maxCarsPerShaft + ' cars</div>' +
     '<div id="shaft-detail">served floors F' + shaft.bottom + '–F' + shaft.top + ' · dispatch capacity ' + dispatchCapacity + ' riders · aboard ' + aboard + '/' + dispatchCapacity + '<br><span class="' + statusClass + '">route queue: ' + waiting + ' waiting · ' + queueMeaning + '</span> · <span class="' + indicatorCssClass(waitingPressure(buildingWaiting).colorKey) + '" title="waiting people assigned to all elevator routes">building-wide W ' + buildingWaiting + ' total</span> · route share ' + routeQueueShare + '% · <span class="' + trendClass + '" title="recent assigned-queue trend">' + trendLabel + trendSpan + '</span> · ' + moving + ' moving · ' + doors + ' at doors<br>queue origins: ' + queueOriginText + '<br>cars: ' + carDetails + '</div>' +
     carUpgradeText +
+    carRemovalText +
     '<div class="shaft-inspector-note">yellow-outlined W badges mark floors feeding this route<br>trend key: ↑ rising · ↓ falling · → steady · ! spike<br>capacity is per dispatch; add cars to this shaft or build another route when queues persist</div>' +
     '<button class="shaft-clear" data-clear-shaft-focus>clear shaft focus</button>';
   element.classList.add('open');
@@ -3429,6 +3507,16 @@ els['shaft-inspector'].addEventListener('click', (event) => {
   const carButton = event.target.closest('button[data-shaft-car-tool]');
   if (carButton) {
     selectRouteAlternative('car', Number(carButton.dataset.shaftCarTool));
+    return;
+  }
+  const removeButton = event.target.closest('button[data-shaft-remove-car]');
+  if (removeButton) {
+    const removed = act('remove_car', { id: Number(removeButton.dataset.shaftRemoveCar) });
+    if (removed.ok) {
+      refresh();
+      setMode('CAR REMOVED — ' + removed.cars + ' left on this shaft.');
+      toast('car removed · ' + removed.cars + ' left', INFO);
+    }
     return;
   }
   if (!event.target.closest('button[data-clear-shaft-focus]')) return;
@@ -4126,11 +4214,20 @@ function refresh() {
         : state.money < CONFIG.underground.digCost ? 'not enough money' : 'sink one storey below ground';
     }
     if (b.dataset.do === 'demolish') {
-      const clearable = state.units.some((unit) => !unit.occupied);
+      // The tool clears everything now, so the old "is there a vacant room"
+      // gate would have disabled it on a tower that is nothing but a lobby —
+      // exactly the tower a player most wants to undo.
+      const clearable = state.units.some((unit) => !unit.occupied)
+        || (state.facilities?.length ?? 0) > 0
+        || (state.stairs?.length ?? 0) > 0
+        || (state.escalators?.length ?? 0) > 0
+        || state.shafts.length > 0
+        || Boolean(state.lobby)
+        || basementDepth(state) > 0;
       b.disabled = !clearable || state.money < CONFIG.costs.demolition;
       b.title = state.money < CONFIG.costs.demolition ? 'not enough money'
-        : !clearable ? 'nothing to clear — an occupied room cannot be demolished'
-          : 'clear a vacant room and free its slot';
+        : !clearable ? 'nothing built to clear yet'
+          : 'clear what you click — room, facility, stairs, escalator, shaft, lobby, or an empty basement';
     }
     if (b.dataset.do === 'shaft') {
       const shaftControl = shaftBuildControlStatus(state, CONFIG);
@@ -4833,14 +4930,15 @@ canvas.addEventListener('click', (e) => {
   // strip jumps the view and must not also demolish or build what is under it.
   if (renderer.minimapAt(state, px, py)) return;
   if (tool === 'demolish') {
-    const id = renderer.unitAt(state, px, py);
-    if (id == null) return toast('click a room to demolish', WARN);
-    const cleared = act('demolish_unit', { id });
+    const target = demolitionTargetAt(px, py);
+    if (!target) return toast('nothing to demolish there', WARN);
+    const cleared = act(target.action, target.args);
     if (cleared.ok) {
       selectedUnitId = null;
+      selectedShaftId = null;
+      serviceFocusTarget = null;
       refresh();
-      setMode('DEMOLISHED ' + cleared.kind.toUpperCase() + ' on F' + cleared.floor +
-        ' · DEMOLISH stays armed — Esc puts it away.');
+      setMode('DEMOLISHED ' + target.label(cleared) + ' · DEMOLISH stays armed — Esc puts it away.');
     }
     return;
   }

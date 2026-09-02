@@ -13,6 +13,7 @@ const statBar = read('../src/games/lift/ui/hud/StatBar.tsx');
 const canvas = read('../src/games/lift/render/canvas.js');
 const main = read('../src/games/lift/ui/main.tsx');
 const savesPanel = read('../src/games/lift/ui/hud/SavesPanel.tsx');
+const actions = read('../src/games/lift/sim/actions.js');
 
 /** The markup between two ids, so "is X inside Y" is asked of a real region. */
 function region(source, open, close) {
@@ -500,6 +501,63 @@ export const tests = {
     assert(app.includes('let speed = 0;'), 'game starts simulating before the player chooses a speed');
     assert(app.includes('RENDER_INTERVAL_MS = 1000 / 30'), 'visual rendering is not capped for a safe baseline');
     assert(app.includes('LIVE_REFRESH_INTERVAL_MS = 200'), 'live sidebar refreshes are not throttled');
+  },
+
+  /**
+   * The bug Keith found by playing, generalised. `delete_shaft` sat in the sim
+   * fully written and priced at $50,000 with **no caller anywhere** — not the
+   * UI, not a test, not a policy — while the demolish tool called `unitAt` and
+   * nothing else, so the answer to clicking a lobby was "click a room to
+   * demolish".
+   *
+   * The rule, not the instance: **every way of taking something away has to be
+   * reachable from the interface.** A removal the player cannot perform is a
+   * building they cannot fix.
+   */
+  'every removal the sim can do is reachable from the game'() {
+    const removals = [...actions.matchAll(/^  ((?:demolish|delete|remove|fill)_\w+)\(state/gm)].map((m) => m[1]);
+    assert(removals.length >= 7, 'found only ' + removals.length + ' removal actions: ' + removals.join(', '));
+    for (const action of removals) {
+      assert(app.includes("'" + action + "'"),
+        action + ' exists in the sim and nothing in the game ever calls it');
+    }
+  },
+
+  'the demolish tool clears whatever was clicked, not only rooms'() {
+    const pick = fn('demolitionTargetAt');
+    // Each picker the tool needs, and the action it dispatches to. Bounded to
+    // the one function so a match elsewhere in 6,000 lines cannot stand in.
+    for (const [picker, action] of [
+      ['unitAt', 'demolish_unit'],
+      ['facilityAt', 'demolish_facility'],
+      ['routeAt', 'demolish_stairs'],
+      ['shaftAt', 'delete_shaft'],
+      ['lobbyAt', 'demolish_lobby'],
+      ['floorAt', 'fill_basement'],
+    ]) {
+      assert(pick.includes('renderer.' + picker + '('), 'the demolish tool cannot pick with ' + picker);
+      assert(pick.includes("'" + action + "'"), 'the demolish tool never dispatches ' + action);
+    }
+    assert(pick.includes("'demolish_escalator'"), 'the demolish tool never dispatches demolish_escalator');
+    // Taking a car back off lives on the shaft inspector, because a car sits
+    // inside a shaft column and moving — clicking the column means the column.
+    assert(app.includes('data-shaft-remove-car'), 'there is no way to take a car back off a shaft');
+    assert(app.includes("act('remove_car'"), 'the remove-car control is not wired to the action');
+  },
+
+  /**
+   * The tool used to be gated on "is there a vacant room", which would disable
+   * it on a tower that is nothing but a lobby — exactly the tower a player most
+   * wants to undo, and exactly the one Keith was looking at.
+   */
+  'the demolish tile is available on a tower with no rooms at all'() {
+    const region = app.slice(app.indexOf("b.dataset.do === 'demolish'"));
+    const body = region.slice(0, region.indexOf('\n    }'));
+    assert(/state\.lobby/.test(body), 'the demolish tile ignores the lobby when deciding it has nothing to do');
+    assert(/basementDepth\(state\)/.test(body), 'the demolish tile ignores basements');
+    for (const list of ['facilities', 'stairs', 'escalators', 'shafts']) {
+      assert(new RegExp('state\\.' + list).test(body), 'the demolish tile ignores ' + list);
+    }
   },
 
   // ------------------------------------------------------------------ saves

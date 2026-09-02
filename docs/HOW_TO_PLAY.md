@@ -93,8 +93,21 @@ population that unlocks it. Nothing disappears from the palette.
 - `stairs`, `escalator`, and `express` are the other routes out of the lobby.
 - Services such as cafeterias and parking are placed on a floor and cover a
   nearby range.
-- `demolish` clears a vacant room and frees its slot. It is a tool in the
-  palette like any other; an occupied room refuses, and says so.
+- `demolish` clears **whatever you click** — a vacant room, a facility, a
+  stairwell, an escalator, a shaft, a lobby segment, or the lowest basement
+  once nothing is left on it. It is a tool in the palette like any other, and
+  it stays armed. Anything it refuses says why: an occupied room keeps its
+  tenants, a car with riders aboard stays put, and nothing can be pulled out
+  from under something resting on it — the refusal names the floor that is in
+  the way.
+  - The lobby is the exception to that last rule, and it looks odd until you
+    know why: the first storey rests on the **ground**, not on the entrance, so
+    a lobby segment can always come out, however tall the tower. Clearing the
+    last one leaves you with no entrance, which is legal — it is how a new game
+    starts — and you can build a new lobby anywhere along the street.
+  - To take an elevator **car** back off, select the shaft and use `remove a
+    car` in its panel. A car sits inside the shaft column and is moving, so
+    clicking the column means the column.
 
 Every construction choice spends money and can add operating costs. Empty
 rooms still have upkeep, so a larger tower is not automatically a better one.

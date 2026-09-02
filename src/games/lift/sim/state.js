@@ -216,6 +216,44 @@ export function isSupported(state, floor, slot, config) {
   return cellBuilt(state, beneath, slot);
 }
 
+/**
+ * The cell that RESTS on `(floor, slot)` and would be left hanging in air if
+ * it were taken away — or null if nothing does.
+ *
+ * This is the exact mirror of `isSupported`, and it lives here beside it for
+ * one reason: demolition must not invent a second, disagreeing idea of what
+ * holds a building up. Every removal asks this one question.
+ *
+ * Nothing depends on a cell on the GROUND storey, because nothing rests on it:
+ * `isSupported` puts the first storey up and the first basement down on the
+ * ground itself, not on a particular column. That is why a lobby segment can
+ * always come out, however tall the tower above it — which reads oddly until
+ * you notice it is the same rule that lets a tower be built wider than its
+ * entrance in the first place.
+ */
+export function dependentCell(state, floor, slot, config) {
+  const ground = config?.building?.lobbyFloor ?? 0;
+  if (!Number.isInteger(floor) || !Number.isInteger(slot)) return null;
+  if (floor === ground) return null;
+  // Up above the ground, down below it: a basement hangs off the storey over
+  // it, so the cell depending on it is the one deeper down.
+  const dependent = floor > ground ? floor + 1 : floor - 1;
+  return cellBuilt(state, dependent, slot) ? { floor: dependent, slot } : null;
+}
+
+/**
+ * The same question for a column that occupies a whole span — a shaft, a
+ * stairwell, an escalator. Only the cells OUTSIDE the span can be stranded by
+ * removing it; the ones inside are going away with it.
+ */
+export function spanDependents(state, slot, bottom, top, config) {
+  const ends = [dependentCell(state, top, slot, config), dependentCell(state, bottom, slot, config)];
+  return ends.filter((cell) => cell && (cell.floor > top || cell.floor < bottom));
+}
+
+/** `F6`, or `B2` for a basement. The one place a floor index becomes a name. */
+export const floorLabel = (floor) => (isUnderground(floor) ? 'B' + -floor : 'F' + floor);
+
 export function freeSlot(state, config, floor) {
   const used = slotsUsed(state, floor);
   for (let i = 0; i < config.building.slotsPerFloor; i++) if (!used.has(i)) return i;

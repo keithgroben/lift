@@ -2217,6 +2217,40 @@ export function makeRenderer(canvas, config, options = {}) {
     return null;
   }
 
+  /**
+   * The stairwell or escalator under the pointer, as `{kind, id}`. Same shape
+   * as `shaftAt` because they are the same shape in the world: one slot, a
+   * span of floors. Added so the demolish tool can reach them — before it,
+   * they were the only built things with no way to pick them at all.
+   */
+  function routeAt(state, px, py) {
+    const L = layout(state);
+    for (const [kind, routes] of [['stairs', state.stairs ?? []], ['escalator', state.escalators ?? []]]) {
+      for (const route of routes) {
+        const x = L.x0 + route.slot * L.cw;
+        const top = L.floorY(route.top);
+        const bottom = L.floorY(route.bottom) + L.fh;
+        if (px >= x && px <= x + L.cw && py >= top && py <= bottom) return { kind, id: route.id };
+      }
+    }
+    return null;
+  }
+
+  /** The lobby SEGMENT under the pointer — the slot, since that is what a
+   *  player clears one at a time. Null when the point is not on the entrance. */
+  function lobbyAt(state, px, py) {
+    if (!state.lobby) return null;
+    const L = layout(state);
+    const ground = config.building.lobbyFloor ?? 0;
+    const y = L.floorY(ground);
+    if (py < y || py > y + L.fh) return null;
+    for (const slot of state.lobby.slots ?? [state.lobby.slot]) {
+      const x = L.x0 + slot * L.cw;
+      if (px >= x && px <= x + L.cw) return slot;
+    }
+    return null;
+  }
+
   // ------------------------------------------------------- camera controls
   // The UI drives these; it never reads or writes the camera itself, which is
   // what keeps every pick going through the one inverse transform above.
@@ -2269,6 +2303,7 @@ export function makeRenderer(canvas, config, options = {}) {
 
   return {
     draw, resize, layout, unitPos, floorAt, slotAt, unitAt, facilityAt, shaftAt,
+    routeAt, lobbyAt,
     dragBy, setZoom, zoomBy, goTo, frameLobby, minimapAt, minimapJump,
     // The appeal overlay (issue #12). Same shape as the camera controls: ui/
     // binds the key, the renderer owns what the key shows.

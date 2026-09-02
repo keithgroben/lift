@@ -1,6 +1,7 @@
 import {
   nid, freeSlot, freeSupportedSlot, slotsUsed, unlocked, pushEvent, assignTenantJitter,
-  basementDepth, floorCost, isBuildableFloor, isSupported, lowestFloor,
+  basementDepth, dependentCell, floorCost, floorLabel, isBuildableFloor, isSupported,
+  lowestFloor, spanDependents,
 } from './state.js';
 import { clampRentLevel, rentForLevel } from './pricing.js';
 import { unitEvaluation, leasingForecast } from './evaluation.js';
@@ -22,6 +23,43 @@ const charge = (state, amount) => {
   state.today.spent += amount;
   return true;
 };
+
+/**
+ * Refuse a removal that would leave something hanging in air.
+ *
+ * Demolition is the build rule read backwards, and it is written once, here,
+ * so the two can never disagree about what holds a building up. The message
+ * names the cell that is in the way, because "you cannot" without "what is
+ * stopping me" is the shape of refusal players learn to ignore.
+ */
+const strandCheck = (cells) => {
+  const blocking = cells.find(Boolean);
+  return blocking
+    ? { ok: false, reason: 'something is built on ' + floorLabel(blocking.floor) + ' resting on this — clear that first' }
+    : null;
+};
+
+/**
+ * Remove a whole transport column: a stairwell or an escalator. The two are
+ * the same shape and the same rules, so they are the same function — the
+ * build side has them written out twice and that is already one copy too
+ * many to keep in step.
+ */
+function removeRoute(state, a, config, key, label) {
+  const list = state[key] ?? [];
+  const index = list.findIndex((route) => route.id === a.id);
+  if (index < 0) return { ok: false, reason: 'no such ' + label };
+  const route = list[index];
+  const stranded = strandCheck(spanDependents(state, route.slot, route.bottom, route.top, config));
+  if (stranded) return stranded;
+  if (!charge(state, config.costs.demolition)) return { ok: false, reason: 'not enough money' };
+  list.splice(index, 1);
+  // Anyone part-way along it is left to time out the same way a rider waiting
+  // on a deleted shaft does, rather than being force-resolved into a new kind
+  // of outcome the day-close accounting would have to learn about.
+  pushEvent(state, label + '_demolished', { bottom: route.bottom, top: route.top, slot: route.slot });
+  return { ok: true, id: route.id, slot: route.slot, bottom: route.bottom, top: route.top };
+}
 
 const HEADS = (config, kind) =>
   kind === 'office' ? config.units.office.workers
@@ -324,6 +362,106 @@ const ACTIONS = {
     return { ok: true, id: unit.id, kind: unit.kind, floor: unit.floor };
   },
 
+  /**
+   * Take out one segment of the lobby, and the whole entrance when the last
+   * one goes. Keith's call, 2026-09-02, on finding the demolish tool would
+   * only clear rooms: yes, the last segment too.
+   *
+   * There is no support check, and that is not an omission. Nothing rests on
+   * a ground cell — `isSupported` stands the first storey and the first
+   * basement on the ground itself rather than on a column — so a lobby
+   * segment can always come out, however tall the tower over it. A tower with
+   * no entrance is a legal state already: it is how every game opens, and
+   * `build_lobby` will take you back.
+   */
+  demolish_lobby(state, a, config) {
+    if (!state.lobby) return { ok: false, reason: 'there is no lobby' };
+    const slots = state.lobby.slots ?? [state.lobby.slot];
+    const slot = a.slot ?? slots[slots.length - 1];
+    if (!slots.includes(slot)) return { ok: false, reason: 'no lobby in that slot' };
+    if (!charge(state, config.costs.demolition)) return { ok: false, reason: 'not enough money' };
+
+    const remaining = slots.filter((s) => s !== slot);
+    if (remaining.length) {
+      state.lobby.slots = remaining;
+      // `slot` is the lobby's primary column and plenty of code still reads
+      // it, so it has to keep pointing at one that exists.
+      if (state.lobby.slot === slot) state.lobby.slot = remaining[0];
+    } else {
+      state.lobby = null;
+    }
+    pushEvent(state, 'lobby_demolished', { slot, remaining: remaining.length });
+    return { ok: true, slot, remaining: remaining.length };
+  },
+
+  demolish_stairs(state, a, config) {
+    return removeRoute(state, a, config, 'stairs', 'stairs');
+  },
+
+  demolish_escalator(state, a, config) {
+    return removeRoute(state, a, config, 'escalators', 'escalator');
+  },
+
+  demolish_facility(state, a, config) {
+    const index = (state.facilities ?? []).findIndex((f) => f.id === a.id);
+    if (index < 0) return { ok: false, reason: 'no such facility' };
+    const facility = state.facilities[index];
+    const stranded = strandCheck([dependentCell(state, facility.floor, facility.slot, config)]);
+    if (stranded) return stranded;
+    if (!charge(state, config.costs.demolition)) return { ok: false, reason: 'not enough money' };
+
+    state.facilities.splice(index, 1);
+    pushEvent(state, 'facility_demolished', { facilityKind: facility.kind, floor: facility.floor });
+    return { ok: true, id: facility.id, kind: facility.kind, floor: facility.floor, slot: facility.slot };
+  },
+
+  /**
+   * Take a car off a shaft. The shaft stays; this is the undo for `add_car`,
+   * which is otherwise the one purchase in the game with no way back.
+   *
+   * Always an EMPTY car, never the one with people in it — same rule as
+   * `delete_shaft`, and for the same reason: a rider deleted mid-ride is a
+   * trip that never lands in any column of the day's accounting.
+   */
+  remove_car(state, a, config) {
+    const sh = state.shafts.find((s) => s.id === a.id);
+    if (!sh) return { ok: false, reason: 'no such shaft' };
+    if (!sh.cars.length) return { ok: false, reason: 'that shaft has no cars' };
+    const index = sh.cars.map((car, i) => [car, i]).reverse()
+      .find(([car]) => car.riders.length === 0)?.[1];
+    if (index == null) return { ok: false, reason: 'every car has riders aboard' };
+    if (!charge(state, config.costs.demolition)) return { ok: false, reason: 'not enough money' };
+
+    sh.cars.splice(index, 1);
+    pushEvent(state, 'car_removed', { id: sh.id, cars: sh.cars.length });
+    return { ok: true, id: sh.id, cars: sh.cars.length };
+  },
+
+  /**
+   * Fill the lowest basement back in — the undo for `dig_basement`, and the
+   * mirror of it in every way: it moves the same end of the floor range, and
+   * everything that reads the range picks the change up for free.
+   *
+   * `slotsUsed` answers "is anything down there" for rooms, facilities, and
+   * any transport column reaching into the storey, in one question.
+   */
+  fill_basement(state, _a, config) {
+    const floor = lowestFloor(state);
+    if (floor >= (config.building?.lobbyFloor ?? 0)) return { ok: false, reason: 'there is no basement to fill' };
+    const used = slotsUsed(state, floor);
+    if (used.size) {
+      return { ok: false, reason: 'clear ' + floorLabel(floor) + ' first — ' + used.size
+        + (used.size === 1 ? ' slot is' : ' slots are') + ' still built on' };
+    }
+    const cost = Number(config.underground?.fillCost);
+    if (!Number.isFinite(cost)) return { ok: false, reason: 'filling has no cost' };
+    if (!charge(state, cost)) return { ok: false, reason: 'not enough money' };
+
+    state.lowestFloor = floor + 1;
+    pushEvent(state, 'basement_filled', { floor, depth: basementDepth(state) });
+    return { ok: true, floor };
+  },
+
   rerent_unit(state, a, config) {
     const unit = state.units.find((u) => u.id === a.id);
     if (!unit) return { ok: false, reason: 'no such unit' };
@@ -423,6 +561,12 @@ const ACTIONS = {
     const sh = state.shafts[index];
     const hasRiders = sh.cars.some((car) => car.riders.length > 0);
     if (hasRiders) return { ok: false, reason: 'shaft has riders in transit' };
+    // A room can be built resting on a shaft's top cell, so pulling the shaft
+    // out from under it has to be refused like any other removal. Added when
+    // the demolish tool finally reached this action (2026-09-02); nothing
+    // called it before, so there is no earlier behaviour to preserve.
+    const stranded = strandCheck(spanDependents(state, sh.slot, sh.bottom, sh.top, config));
+    if (stranded) return stranded;
     if (!charge(state, config.costs.shaftDemolition)) return { ok: false, reason: 'not enough money' };
     state.shafts.splice(index, 1);
     // Anyone still waiting for this shaft is left alone, not force-resolved:
