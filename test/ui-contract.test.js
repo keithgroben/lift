@@ -523,6 +523,22 @@ export const tests = {
     }
   },
 
+  /**
+   * The sim takes a column for stairs and escalators now, but a sim rule the
+   * interface never exercises is a rule the player cannot use. Before this,
+   * `armedAction` sent only `bottom` and `top`, so the run went wherever the
+   * fallback put it — Keith, 2026-09-02: "why can i only put my stairs there
+   * now?"
+   */
+  'the stairs and escalator tools send the column the player clicked'() {
+    const armed = fn('armedAction');
+    const branch = armed.slice(armed.indexOf("toolKey === 'stairs'"));
+    const call = branch.slice(0, branch.indexOf('};'));
+    assert(/build_stairs.*build_escalator|build_escalator/.test(call), 'could not find the local-route action');
+    assert(/top: floor, slot\b/.test(call),
+      'the stairs/escalator action carries no slot, so the sim picks the column instead of the player');
+  },
+
   'the demolish tool clears whatever was clicked, not only rooms'() {
     const pick = fn('demolitionTargetAt');
     // Each picker the tool needs, and the action it dispatches to. Bounded to

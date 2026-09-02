@@ -1,5 +1,5 @@
 /** Shaft/car/route recommendation engine — the elevator-throughput diagnostics. */
-import { slotsUsed, unlocked } from '../state.js';
+import { firstRouteColumn, slotsUsed, unlocked } from '../state.js';
 import { escalatorAccessSeconds, localRouteOccupancy, stairAccessSeconds } from '../demand.js';
 import { tenantLoadStatus } from './room.js';
 
@@ -2002,13 +2002,12 @@ function routeOption(state, config, kind) {
   const tune = config[kind];
   const bottom = config.building.lobbyFloor ?? 0;
   const top = Math.min(state.floors - 1, bottom + tune.maxSpan - 1);
-  const slot = top > bottom
-    ? Array.from({ length: config.building.slotsPerFloor }, (_, candidateSlot) => candidateSlot)
-      .find((candidateSlot) => Array.from({ length: top - bottom + 1 }, (_, index) => bottom + index)
-        .every((floor) => !slotsUsed(state, floor).has(candidateSlot)))
-    : null;
+  // The sim's own answer, not a second guess at it: advice that names a column
+  // `build_stairs` would refuse is worse than no advice.
+  const found = top > bottom ? firstRouteColumn(state, config, bottom, top) : -1;
+  const slot = found < 0 ? null : found;
   if (slot == null) {
-    return { kind, available: false, reason: 'no clear column' };
+    return { kind, available: false, reason: 'no clear column against the building' };
   }
   return {
     kind,

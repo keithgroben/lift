@@ -6,6 +6,8 @@ import {
 import { unitEvaluation } from '../src/games/lift/sim/evaluation.js';
 import { dayClose } from '../src/games/lift/sim/economy.js';
 import { columnTo } from './support.js';
+import { firstRouteColumn } from '../src/games/lift/sim/state.js';
+import { localRouteTargetStatus } from '../src/games/lift/render/canvas.js';
 
 const assert = (c, m) => { if (!c) throw new Error(m); };
 
@@ -16,6 +18,119 @@ function setup(config, seed) {
 }
 
 export const tests = {
+  /**
+   * Keith, playing on 2026-09-02, looking at a stairwell standing alone in the
+   * field two columns clear of his tower: "why can i only put my stairs there
+   * now?" The tool had never asked him where. It took the leftmost column free
+   * top to bottom, which is out in the open the moment a lobby does not start
+   * at slot 0 — and `build_stairs` never called `isSupported`, so stairs and
+   * escalators were the only things in the game able to stand in mid-air.
+   */
+  'stairs take the column you name'() {
+    const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
+    config.economy.startMoney = 10000000;
+    const state = boot(config, 311);
+    assert(applyAction(state, { type: 'build_lobby', slot: 4 }, config).ok, 'could not build lobby');
+
+    // Slot 5 is beside the lobby: legal, and it is the column that was asked
+    // for rather than the leftmost free one.
+    const built = applyAction(state, { type: 'build_stairs', bottom: 0, top: 3, slot: 5 }, config);
+    assert(built.ok, built.reason);
+    assert(state.stairs[0].slot === 5, 'stairs landed in slot ' + state.stairs[0].slot + ', not the one asked for');
+  },
+
+  'a run has to start against the building, not out in the field'() {
+    const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
+    config.economy.startMoney = 10000000;
+    const state = boot(config, 312);
+    assert(applyAction(state, { type: 'build_lobby', slot: 4 }, config).ok, 'could not build lobby');
+
+    // Slot 0 is free the whole way up and touches nothing. This is the exact
+    // placement in the screenshot.
+    const detached = applyAction(state, { type: 'build_stairs', bottom: 0, top: 3, slot: 0 }, config);
+    assert(!detached.ok, 'a stairwell was built in an empty field');
+    assert(/against the building/.test(detached.reason), 'the refusal does not say why: ' + detached.reason);
+    assert(state.stairs.length === 0, 'the detached stairwell was built anyway');
+
+    // Immediately beside the lobby is fine, on either side.
+    for (const slot of [3, 5]) {
+      const beside = applyAction(state, { type: 'build_stairs', bottom: 0, top: 3, slot }, config);
+      assert(beside.ok, 'a stairwell beside the lobby was refused at slot ' + slot + ': ' + beside.reason);
+    }
+  },
+
+  'the auto-picked column is attached too, not just the leftmost free one'() {
+    const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
+    config.economy.startMoney = 10000000;
+    const state = boot(config, 313);
+    assert(applyAction(state, { type: 'build_lobby', slot: 4 }, config).ok, 'could not build lobby');
+
+    // No slot named: the old scan would have taken slot 0, out in the field.
+    const built = applyAction(state, { type: 'build_stairs', bottom: 0, top: 3 }, config);
+    assert(built.ok, built.reason);
+    const slot = state.stairs[0].slot;
+    assert(slot === 3 || slot === 5, 'the fallback picked slot ' + slot + ', which does not touch the lobby');
+  },
+
+  'a blocked column is refused by name rather than silently relocated'() {
+    const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
+    config.economy.startMoney = 10000000;
+    const state = boot(config, 314);
+    assert(applyAction(state, { type: 'build_lobby', slot: 4 }, config).ok, 'could not build lobby');
+    assert(applyAction(state, { type: 'build_stairs', bottom: 0, top: 3, slot: 5 }, config).ok, 'fixture stairs failed');
+
+    // Slot 5 is now the stairwell's own column. Asking again must refuse, not
+    // quietly build somewhere else — the whole complaint was a tool that put
+    // things where it liked.
+    const blocked = applyAction(state, { type: 'build_stairs', bottom: 0, top: 3, slot: 5 }, config);
+    assert(!blocked.ok, 'a blocked column was built in anyway');
+    assert(/blocked/.test(blocked.reason), 'the refusal does not say it is blocked: ' + blocked.reason);
+    assert(state.stairs.length === 1, 'a second stairwell appeared somewhere else');
+
+    const offGrid = applyAction(state, { type: 'build_stairs', bottom: 0, top: 3, slot: 99 }, config);
+    assert(!offGrid.ok && /outside the building/.test(offGrid.reason), 'a column off the grid was accepted');
+  },
+
+  'escalators obey the identical rule'() {
+    const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
+    config.economy.startMoney = 10000000;
+    const state = boot(config, 315);
+    assert(applyAction(state, { type: 'build_lobby', slot: 4 }, config).ok, 'could not build lobby');
+
+    const detached = applyAction(state, { type: 'build_escalator', bottom: 0, top: 3, slot: 0 }, config);
+    assert(!detached.ok && /against the building/.test(detached.reason), 'a detached escalator was built');
+    const beside = applyAction(state, { type: 'build_escalator', bottom: 0, top: 3, slot: 5 }, config);
+    assert(beside.ok && state.escalators[0].slot === 5, 'an escalator ignored the column it was given');
+  },
+
+  /**
+   * The rule was written out FOUR times — twice in `actions.js`, once in the
+   * evaluation's advice, once in the renderer's placement status — and three
+   * of them only predicted what the fourth would do. Advice or a ghost naming
+   * a column the sim refuses is worse than none.
+   */
+  'the sim, the advisor and the renderer agree on where a run may stand'() {
+    const config = structuredClone(CONFIG);
+    config.building.startFloors = 4;
+    config.economy.startMoney = 10000000;
+    const state = boot(config, 316);
+    assert(applyAction(state, { type: 'build_lobby', slot: 4 }, config).ok, 'could not build lobby');
+
+    const shared = firstRouteColumn(state, config, 0, 3);
+    const shown = localRouteTargetStatus({ kind: 'stairs', floor: 3 }, state, config);
+    assert(shown.slot === shared, 'the renderer points at slot ' + shown.slot + ', the sim at ' + shared);
+
+    // And the column all three name is one the sim will genuinely accept.
+    const built = applyAction(state, { type: 'build_stairs', bottom: 0, top: 3, slot: shared }, config);
+    assert(built.ok, 'the column everything agreed on was refused: ' + built.reason);
+  },
+
+
   'stairs reserve a continuous column and cannot overlap a shaft'() {
     const config = structuredClone(CONFIG);
     config.building.startFloors = 4;

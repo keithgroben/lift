@@ -1,7 +1,7 @@
 import {
   nid, freeSlot, freeSupportedSlot, slotsUsed, unlocked, pushEvent, assignTenantJitter,
-  basementDepth, dependentCell, floorCost, floorLabel, isBuildableFloor, isSupported,
-  lowestFloor, spanDependents,
+  basementDepth, columnClear, dependentCell, firstRouteColumn, floorCost, floorLabel,
+  isBuildableFloor, isSupported, lowestFloor, routeFootAttached, spanDependents,
 } from './state.js';
 import { clampRentLevel, rentForLevel } from './pricing.js';
 import { unitEvaluation, leasingForecast } from './evaluation.js';
@@ -61,6 +61,34 @@ function removeRoute(state, a, config, key, label) {
   return { ok: true, id: route.id, slot: route.slot, bottom: route.bottom, top: route.top };
 }
 
+/**
+ * Where does this local route stand? The player's column if they named one,
+ * otherwise the leftmost legal column.
+ *
+ * Both answers go through the same two rules — clear over the whole span, and
+ * a foot against the building — so a click and a fallback can never disagree
+ * about what is legal.
+ */
+function chooseRouteColumn(state, config, { slot, bottom, top }, plural) {
+  const columns = config.building.slotsPerFloor;
+  if (slot == null) {
+    const found = firstRouteColumn(state, config, bottom, top);
+    return found < 0
+      ? { ok: false, reason: 'no clear column for ' + plural + ' against the building' }
+      : { ok: true, slot: found };
+  }
+  if (!Number.isInteger(slot) || slot < 0 || slot >= columns) {
+    return { ok: false, reason: 'that column is outside the building' };
+  }
+  if (!columnClear(state, slot, bottom, top)) {
+    return { ok: false, reason: 'that column is blocked between ' + floorLabel(bottom) + ' and ' + floorLabel(top) };
+  }
+  if (!routeFootAttached(state, slot, bottom, config)) {
+    return { ok: false, reason: plural + ' have to start against the building — put them beside the lobby' };
+  }
+  return { ok: true, slot };
+}
+
 const HEADS = (config, kind) =>
   kind === 'office' ? config.units.office.workers
   : kind === 'condo' ? config.units.condo.residents
@@ -117,15 +145,9 @@ const ACTIONS = {
       return { ok: false, reason: `local stairs cap at ${config.stairs.maxSpan} floors` };
     }
 
-    let slot = -1;
-    for (let s = 0; s < config.building.slotsPerFloor; s++) {
-      let clear = true;
-      for (let f = bottom; f <= top && clear; f++) {
-        if (slotsUsed(state, f).has(s)) clear = false;
-      }
-      if (clear) { slot = s; break; }
-    }
-    if (slot < 0) return { ok: false, reason: 'no clear column for stairs' };
+    const column = chooseRouteColumn(state, config, { slot: a.slot, bottom, top }, 'stairs');
+    if (!column.ok) return column;
+    const slot = column.slot;
 
     const cost = config.costs.stairs + config.costs.stairsPerFloor * (top - bottom);
     if (!charge(state, cost)) return { ok: false, reason: 'not enough money' };
@@ -150,15 +172,9 @@ const ACTIONS = {
       return { ok: false, reason: `local escalators cap at ${config.escalator.maxSpan} floors` };
     }
 
-    let slot = -1;
-    for (let s = 0; s < config.building.slotsPerFloor; s++) {
-      let clear = true;
-      for (let f = bottom; f <= top && clear; f++) {
-        if (slotsUsed(state, f).has(s)) clear = false;
-      }
-      if (clear) { slot = s; break; }
-    }
-    if (slot < 0) return { ok: false, reason: 'no clear column for escalators' };
+    const column = chooseRouteColumn(state, config, { slot: a.slot, bottom, top }, 'escalators');
+    if (!column.ok) return column;
+    const slot = column.slot;
 
     const cost = config.costs.escalator + config.costs.escalatorPerFloor * (top - bottom);
     if (!charge(state, cost)) return { ok: false, reason: 'not enough money' };

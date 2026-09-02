@@ -254,6 +254,64 @@ export function spanDependents(state, slot, bottom, top, config) {
 /** `F6`, or `B2` for a basement. The one place a floor index becomes a name. */
 export const floorLabel = (floor) => (isUnderground(floor) ? 'B' + -floor : 'F' + floor);
 
+/** Nothing standing anywhere in this column over `bottom..top`. */
+export function columnClear(state, slot, bottom, top) {
+  for (let floor = bottom; floor <= top; floor++) {
+    if (slotsUsed(state, floor).has(slot)) return false;
+  }
+  return true;
+}
+
+/**
+ * **A stairwell has to start against the building.**
+ *
+ * Keith, playing on 2026-09-02, looking at a stairwell standing alone in the
+ * field two columns clear of his tower: "why can i only put my stairs there
+ * now?" The tool had never asked him where — it took the leftmost column that
+ * was free top to bottom, which is out in the open the moment a lobby does not
+ * start at slot 0.
+ *
+ * `isSupported` cannot express this. It stands everything on the ground storey
+ * on the ground itself, so a stairwell's foot is "supported" anywhere on the
+ * lot — the same rule that lets a lobby segment be demolished under a tower.
+ * The missing constraint is not support but ATTACHMENT: the foot needs
+ * something built beside it. Since the lobby is the only thing allowed on the
+ * ground storey, in practice that reads as "stairs start beside the lobby",
+ * which is what the existing rule already claimed — it only ever constrained
+ * the FLOOR, never the column.
+ *
+ * Only the foot is checked, deliberately. The run's own lower cells hold up
+ * its upper ones, so demanding a neighbour the whole way would forbid building
+ * a stairwell before the rooms it will serve — and stairs are frequently the
+ * thing you put in first.
+ */
+export function routeFootAttached(state, slot, bottom, config) {
+  const columns = config?.building?.slotsPerFloor ?? 0;
+  for (const neighbour of [slot - 1, slot + 1]) {
+    if (neighbour < 0 || neighbour >= columns) continue;
+    if (cellBuilt(state, bottom, neighbour)) return true;
+  }
+  return false;
+}
+
+/**
+ * The column a local route would take if the player does not name one: the
+ * leftmost that is both clear and attached, or -1.
+ *
+ * This exists because the answer was written out FOUR times — twice in
+ * `actions.js`, once in the evaluation's advice, once in the renderer's
+ * placement status — and three of them only predicted what the fourth would
+ * do. Adding the attachment rule to the sim alone would have left the ghost
+ * and the advisor promising columns the sim refuses.
+ */
+export function firstRouteColumn(state, config, bottom, top) {
+  const columns = config?.building?.slotsPerFloor ?? 0;
+  for (let slot = 0; slot < columns; slot++) {
+    if (columnClear(state, slot, bottom, top) && routeFootAttached(state, slot, bottom, config)) return slot;
+  }
+  return -1;
+}
+
 export function freeSlot(state, config, floor) {
   const used = slotsUsed(state, floor);
   for (let i = 0; i < config.building.slotsPerFloor; i++) if (!used.has(i)) return i;

@@ -91,6 +91,11 @@ population that unlocks it. Nothing disappears from the palette.
   and names the problem if that column is blocked or the span is invalid.
 - `car` adds capacity to an existing shaft: arm it, then click the shaft.
 - `stairs`, `escalator`, and `express` are the other routes out of the lobby.
+  Stairs and escalators take **the column you click**, and every run starts at
+  the lobby floor. A run also has to **touch the building** — the column beside
+  its foot must be built, which in practice means beside the lobby. Point at
+  open ground and the ghost turns red and says so, rather than quietly putting
+  the stairwell somewhere else.
 - Services such as cafeterias and parking are placed on a floor and cover a
   nearby range.
 - `demolish` clears **whatever you click** — a vacant room, a facility, a

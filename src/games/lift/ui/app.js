@@ -347,8 +347,11 @@ function armedAction(toolKey, spot) {
     };
   }
   if (toolKey === 'stairs' || toolKey === 'escalator') {
+    // The column you click is the column it takes. It used to send no slot at
+    // all, so the sim took the leftmost free column and the run could land in
+    // an empty field two columns clear of the tower (Keith, 2026-09-02).
     return {
-      actions: [{ type: toolKey === 'stairs' ? 'build_stairs' : 'build_escalator', bottom: ground, top: floor }],
+      actions: [{ type: toolKey === 'stairs' ? 'build_stairs' : 'build_escalator', bottom: ground, top: floor, slot }],
       column: { slot, bottom: ground, top: floor },
     };
   }
@@ -390,9 +393,10 @@ function ghostGeometry(armed, verdict, spot) {
     return unit ? cell(unit.floor, unit.slot) : null;
   }
   if (armed.column) {
-    // Stairs and escalators pick their own clear column; on a legal run the
-    // dry run already reported which one, so the ghost stands where the real
-    // thing will, not where the cursor happens to be.
+    // The ghost stands where the run will. That is now the column under the
+    // cursor, because the action takes it — but the dry run's answer still
+    // wins, so the fallback paths that name no column (the guided next-action
+    // buttons) preview the spot the sim will actually choose.
     const slot = Number.isInteger(verdict.slot) ? verdict.slot : armed.column.slot;
     return slot < 0 ? null : column(slot, armed.column.bottom, armed.column.top);
   }
@@ -1028,7 +1032,7 @@ function modeText() {
     const lockedTop = transportFocusTarget?.kind === tool && Number.isInteger(transportFocusTarget.floor)
       ? transportFocusTarget.floor : null;
     const targetText = lockedTop == null ? '' : ' · focused target F' + lockedTop;
-    return tool.toUpperCase() + ' selected — click the top floor to place ' + (tool === 'stairs' ? 'them' : 'it') + '.' + targetText + investmentContext(tool);
+    return tool.toUpperCase() + ' selected — click the column and top floor to place ' + (tool === 'stairs' ? 'them' : 'it') + '; the run starts at the lobby and has to touch the building.' + targetText + investmentContext(tool);
   }
   if (tool === 'food') return 'CAFETERIA selected — click an upper floor to place it.' + servicePlacementWarningText('food') + investmentContext('food');
   if (tool === 'parking') return 'PARKING selected — click an upper floor to place it.' + servicePlacementWarningText('parking') + investmentContext('parking');
@@ -5671,8 +5675,8 @@ els.build.addEventListener('click', (e) => {
   if (b.dataset.do === 'stairs') {
     if (!state.lobby) return toast('build a lobby first', WARN);
     tool = 'stairs';
-    setMode('STAIRS selected — click the top floor to place them.');
-    toast('click the top floor for the new stairwell', INFO);
+    setMode('STAIRS selected — click the column and top floor; they have to start beside the lobby.');
+    toast('click the column and top floor for the new stairwell', INFO);
     refresh();
   }
   if (b.dataset.do === 'express') {
@@ -5687,8 +5691,8 @@ els.build.addEventListener('click', (e) => {
   if (b.dataset.do === 'escalator') {
     if (!state.lobby) return toast('build a lobby first', WARN);
     tool = 'escalator';
-    setMode('ESCALATOR selected — click the top floor to place it.');
-    toast('click the top floor for the new escalator', INFO);
+    setMode('ESCALATOR selected — click the column and top floor; it has to start beside the lobby.');
+    toast('click the column and top floor for the new escalator', INFO);
     refresh();
   }
   if (b.dataset.do === 'extend') {

@@ -3,7 +3,7 @@ import { makeSpriteBook } from './sprites.js';
 import { cloudScale, daylight, flyerScale, makeSky, skyColors, skyPhase } from './sky.js';
 import { buildOccupiedFloorIndex, roomDesirabilityScore, shaftQueueTrend, tenantDemandQuality, tenantLoadStatus, unitEvaluation, waitingPressureSummary } from '../sim/evaluation.js';
 import { localRouteOccupancy } from '../sim/demand.js';
-import { freeSlot, isUnderground, lowestFloor, slotsUsed } from '../sim/state.js';
+import { firstRouteColumn, freeSlot, isUnderground, lowestFloor, slotsUsed } from '../sim/state.js';
 
 /** Convert a floor queue into the same readable pressure scale used by the
  * canvas badge. Twelve waiting people is the critical point; deeper queues stay
@@ -229,12 +229,12 @@ export function localRouteTargetStatus(target, state, config) {
   if (top - bottom + 1 > route.maxSpan) {
     return { key: 'blocked', bottom, top, slot: -1, detail: kind + ' exceeds its ' + route.maxSpan + '-floor limit' };
   }
-  for (let slot = 0; slot < config.building.slotsPerFloor; slot++) {
-    const clear = Array.from({ length: top - bottom + 1 }, (_, index) => bottom + index)
-      .every((floor) => !slotsUsed(state, floor).has(slot));
-    if (clear) return { key: 'ready', bottom, top, slot, detail: 'clear column available' };
-  }
-  return { key: 'blocked', bottom, top, slot: -1, detail: 'no clear column for ' + kind };
+  // Asks the sim where a route may stand rather than predicting it. The two
+  // used to be separate scans, so adding the attachment rule to one would have
+  // left this one pointing at columns the sim refuses.
+  const slot = firstRouteColumn(state, config, bottom, top);
+  if (slot >= 0) return { key: 'ready', bottom, top, slot, detail: 'clear column available' };
+  return { key: 'blocked', bottom, top, slot: -1, detail: 'no clear column against the building for ' + kind };
 }
 
 /** Floors covered by a focused, already-built service. */
