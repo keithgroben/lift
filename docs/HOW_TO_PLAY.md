@@ -27,6 +27,29 @@ Use the visible TIME controls to pause, slow down, or speed up the simulation.
 The keyboard shortcuts are optional: Space pauses, and 1/2/3 select the same
 speeds.
 
+## Saving
+
+A tower is a long session, so the game saves one for you and lets you keep as
+many as you like.
+
+- **It autosaves once a day** as you play. You do not have to do anything.
+- **`saves`, beside `new session`** — or the **S** key — opens the list. Name
+  the tower and press *save* to keep a copy you can come back to; every row
+  says what the tower was, so you can recognise your own: *day 212 · 26 floors
+  · 84 people · $4,180,000*.
+- **Loading replaces the tower on screen**, so it asks first, and the loaded
+  tower arrives paused.
+- **`new session` autosaves the tower it is about to replace**, so starting
+  again is not the one button that throws away an afternoon.
+- **Export a save to a file** to keep it beyond this browser — a file survives
+  a cleared cache, and can be sent to whoever is debugging. Import puts it back
+  in the list without loading it.
+
+A save carries the tuning the tower was played at, so it resumes into the game
+you were playing. If the simulation's rules have changed too much since a save
+was written, loading it is refused with the reason rather than half-loaded into
+a tower that plays by neither set of rules.
+
 ## What to do on the first screen
 
 The tower starts as an empty lot: street, sky, and nothing built. The `lobby`

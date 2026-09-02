@@ -1,5 +1,6 @@
 import type { Component } from 'solid-js';
 import { render } from 'solid-js/web';
+import { SavesPanel } from './hud/SavesPanel';
 import { StatBar } from './hud/StatBar';
 import { ContextLine, TopBar } from './hud/TopBar';
 
@@ -10,6 +11,10 @@ const mounts: [string, Component][] = [
   ['top-bar-mount', TopBar],
   ['hud-context-mount', ContextLine],
   ['stat-bar-mount', StatBar],
+  // The saves panel (issue #15) renders nothing until it is opened, so it
+  // mounts alongside the HUD rather than being created on demand — one place
+  // that knows how to draw it, whether the key or the button asked.
+  ['saves-mount', SavesPanel],
 ];
 for (const [id, Panel] of mounts) {
   const mount = document.getElementById(id);

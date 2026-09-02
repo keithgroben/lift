@@ -139,10 +139,57 @@
   .player-help a { color: var(--info); }
   .player-help-links { color: #7f97ad; font-size: 9px; margin-top: 7px; }
   .player-help-links a { color: var(--info); }
-  .player-session-controls { display: flex; justify-content: flex-end; margin-top: 5px; }
+  .player-session-controls { display: flex; justify-content: flex-end; gap: 10px; margin-top: 5px; }
   .player-session-controls button { background: transparent; border: 0; color: #7f97ad; font-size: 8px; padding: 2px 0; }
   .player-session-controls button:hover:not(:disabled) { color: var(--info); }
   .player-session-controls button.armed { color: var(--warn); }
+
+  /* ---------------------------------------------------------------- saves
+     Issue #15. A tower is about six hours, and before this, closing the tab
+     lost one. The panel is modal because loading replaces the tower on
+     screen — that is not a decision to take from a corner of the sidebar. */
+  .saves-scrim { position: fixed; inset: 0; background: rgba(6,9,13,.72); z-index: 40; }
+  .saves-panel {
+    position: fixed; z-index: 41; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: min(520px, calc(100vw - 32px)); max-height: min(640px, calc(100vh - 48px));
+    display: flex; flex-direction: column;
+    background: var(--panel); border: 1px solid #2f3f52; box-shadow: 0 18px 48px rgba(0,0,0,.55);
+    font-size: 10px;
+  }
+  .saves-head { display: flex; align-items: center; justify-content: space-between; padding: 11px 13px 9px; border-bottom: 1px solid #2a3949; }
+  .saves-head h2 { margin: 0; font-size: 10px; letter-spacing: .14em; color: #aebdca; }
+  .saves-close { background: transparent; border: 0; color: #7f97ad; font-size: 15px; line-height: 1; padding: 0 3px; cursor: pointer; }
+  .saves-close:hover { color: var(--bad); }
+  .saves-warning { margin: 0; padding: 8px 13px; background: rgba(239,71,111,.1); border-bottom: 1px solid #2a3949; color: var(--bad); line-height: 1.5; }
+  .saves-new { display: flex; gap: 7px; padding: 11px 13px; border-bottom: 1px solid #2a3949; }
+  .saves-new input {
+    flex: 1; min-width: 0; background: #131b24; border: 1px solid #33455a; color: #dbe4ee;
+    font-family: var(--mono); font-size: 10px; padding: 5px 7px;
+  }
+  .saves-new input:focus { outline: none; border-color: var(--info); }
+  .saves-new button { padding: 5px 13px; font-size: 10px; }
+  .saves-message { margin: 0; padding: 8px 13px; border-bottom: 1px solid #2a3949; line-height: 1.5; }
+  .saves-good { color: var(--good); }
+  .saves-bad { color: var(--bad); }
+  .saves-info { color: var(--info); }
+  .saves-list { overflow-y: auto; flex: 1; min-height: 0; }
+  .saves-empty { margin: 0; padding: 20px 13px; color: #6b8199; text-align: center; line-height: 1.6; }
+  .saves-row { padding: 9px 13px; border-bottom: 1px solid #222f3d; }
+  .saves-row-auto { background: rgba(142,202,230,.05); }
+  .saves-row-head { display: flex; align-items: baseline; gap: 6px; }
+  .saves-name { color: #dbe4ee; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .saves-tag { color: var(--info); font-size: 7px; letter-spacing: .1em; border: 1px solid rgba(142,202,230,.4); padding: 0 3px; flex: none; }
+  .saves-tag-warn { color: var(--bad); border-color: rgba(239,71,111,.45); }
+  .saves-when { margin-left: auto; color: #6b8199; font-size: 8px; flex: none; }
+  .saves-tower { color: #8fa3b8; font-size: 9px; margin-top: 3px; }
+  .saves-actions, .saves-confirm { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+  .saves-confirm span { color: var(--warn); font-size: 9px; margin-right: auto; }
+  .saves-actions button, .saves-confirm button { padding: 3px 8px; font-size: 9px; }
+  .saves-danger { color: var(--bad); border-color: rgba(239,71,111,.45); }
+  .saves-foot { padding: 10px 13px; border-top: 1px solid #2a3949; display: flex; flex-direction: column; gap: 5px; }
+  .saves-import { color: var(--info); font-size: 9px; display: flex; flex-direction: column; gap: 4px; }
+  .saves-import input { font-family: var(--mono); font-size: 8px; color: #8fa3b8; }
+  .saves-foot-note { color: #6b8199; font-size: 8px; line-height: 1.5; }
   .player-key { color: #7f97ad; font-size: 8px; line-height: 1.45; margin-top: 6px; }
   .player-key b { color: #aebdca; }
   .player-color-key { color: #7f97ad; font-size: 8px; line-height: 1.45; margin-top: 3px; }
@@ -511,7 +558,10 @@
         <button id="quick-action-button" type="button">—</button>
         <div id="quick-action-detail" class="quick-action-detail">—</div>
       </div>
-      <div class="player-session-controls"><button id="restart-game" type="button" title="reset this tower and start a fresh session">new session</button></div>
+      <div class="player-session-controls">
+        <button id="open-saves" type="button" title="save this tower, or load one you saved earlier (S)">saves</button>
+        <button id="restart-game" type="button" title="reset this tower and start a fresh session">new session</button>
+      </div>
     </div>
 
     <h2>BUILD</h2>
@@ -658,11 +708,15 @@
       Units: select one, then click a floor.<br>
       Cars: select + car, then click a shaft.<br>
       Click an empty room to inspect and re-rent it.<br>
-      <b>space</b> pause · <b>1/2/3</b> speed · <b>A</b> appeal view · <b>D</b> developer details · <b>E</b> export tape · <b>R</b> restart
+      <b>space</b> pause · <b>1/2/3</b> speed · <b>S</b> saves · <b>A</b> appeal view · <b>D</b> developer details · <b>E</b> export tape · <b>R</b> restart
       </p>
       <div class="player-help-links"><a href="../../../docs/DEVELOPER_MODE.md" target="_blank" rel="noreferrer">Developer mode guide</a></div>
     </section>
   </aside>
+
+  <!-- The saves panel (issue #15). Mounted outside the page grid: it is a
+       modal over the whole game, not a sidebar section. -->
+  <div id="saves-mount"></div>
 
   <script type="module" src="./ui/main.tsx"></script>
   <script type="module" src="./ui/app.js"></script>

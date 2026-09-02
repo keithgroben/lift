@@ -11,6 +11,8 @@ const guide = read('../docs/HOW_TO_PLAY.md');
 const topBar = read('../src/games/lift/ui/hud/TopBar.tsx');
 const statBar = read('../src/games/lift/ui/hud/StatBar.tsx');
 const canvas = read('../src/games/lift/render/canvas.js');
+const main = read('../src/games/lift/ui/main.tsx');
+const savesPanel = read('../src/games/lift/ui/hud/SavesPanel.tsx');
 
 /** The markup between two ids, so "is X inside Y" is asked of a real region. */
 function region(source, open, close) {
@@ -32,6 +34,23 @@ function fn(name, source = app) {
 /** Every tool tile in the palette, in the order the player reads them. */
 const paletteOrder = [...page.matchAll(/<button class="tile" data-(?:do|kind|facility)="([a-z_]+)"/g)]
   .map((match) => match[1]);
+
+/**
+ * The keydown handler that owns the game's own keys. There are two — the other
+ * is the camera's — so this picks the one that disarms the tool rather than
+ * whichever comes first in the file.
+ */
+function gameKeys() {
+  // Bound each handler to its own closing brace BEFORE asking which one it is.
+  // Searching the raw split first finds the camera's handler, whose chunk runs
+  // on for 36 kB and happens to contain a `disarmTool(true)` from elsewhere.
+  const bodies = app.split("addEventListener('keydown'").slice(1)
+    .map((chunk) => chunk.slice(0, chunk.indexOf('\n});')))
+    .filter((body) => body.length > 0);
+  const found = bodies.find((body) => body.includes('disarmTool(true)'));
+  assert(found, 'no keydown handler disarms the tool');
+  return found;
+}
 
 /** The tower click handler, bounded so a match elsewhere cannot pass for one here. */
 function placementHandler() {
@@ -217,7 +236,13 @@ export const tests = {
   },
 
   'Esc and right-click put the armed tool away'() {
-    assert(app.includes("if (e.key === 'Escape') { disarmTool(true); return; }"), 'Esc does not disarm the tool');
+    // Bounded to the handler and matched on the CALL, not on one exact line.
+    // The Escape branch grew a modal check when the saves panel landed, and a
+    // test pinned character-for-character to the old line failed a correct
+    // change — the shape moved, the rule did not.
+    const escape = gameKeys().split('\n').filter((line) => line.includes("e.key === 'Escape'"));
+    assert(escape.length > 0, 'the game-key handler has no Escape branch');
+    assert(escape.some((line) => line.includes('disarmTool(true)')), 'Esc does not disarm the tool');
     assert(app.includes("canvas.addEventListener('contextmenu'"), 'right-click does not disarm the tool');
     const start = app.indexOf('function disarmTool(');
     const end = app.indexOf('// ---------------------------------------------------------------- game loop');
@@ -475,5 +500,91 @@ export const tests = {
     assert(app.includes('let speed = 0;'), 'game starts simulating before the player chooses a speed');
     assert(app.includes('RENDER_INTERVAL_MS = 1000 / 30'), 'visual rendering is not capped for a safe baseline');
     assert(app.includes('LIVE_REFRESH_INTERVAL_MS = 200'), 'live sidebar refreshes are not throttled');
+  },
+
+  // ------------------------------------------------------------------ saves
+  //
+  // Issue #15. The failure this section is written against is the one that has
+  // now happened six times in this repo: a thing that exists and nothing
+  // reaches. A panel nothing mounts, a button nothing binds, or a verb the
+  // panel calls that `app.js` never wired — each is invisible until a player
+  // clicks it, and the last one throws where a player cannot read it.
+
+  'the saves panel is mounted, and reachable by both a button and a key'() {
+    assert(page.includes('id="saves-mount"'), 'the page has nowhere to mount the saves panel');
+    assert(main.includes("['saves-mount', SavesPanel]"), 'nothing mounts the saves panel');
+    assert(page.includes('id="open-saves"'), 'there is no control that opens the saves panel');
+    assert(app.includes("els['open-saves'].addEventListener('click'"), 'the saves button is not bound');
+
+    // Button and key must share one path, so the two cannot drift into
+    // disagreeing about what "open" means — the same rule the appeal view got.
+    const keys = gameKeys();
+    assert(/e\.key\.toLowerCase\(\) === 's'/.test(keys), 'no key opens the saves panel');
+    assert(keys.includes('openSavesPanel()'), 'the S key does not go through the panel opener');
+    assert(page.includes('<b>S</b> saves'), 'the key list does not mention the saves key');
+  },
+
+  'every verb the saves panel calls is one app.js actually wired'() {
+    const called = new Set([...savesPanel.matchAll(/savesBridge\.(\w+)\(/g)].map((m) => m[1]));
+    assert(called.size >= 4, 'the panel calls suspiciously few verbs: ' + [...called].join(', '));
+
+    const wiring = region(app, 'wireSaves({', '});');
+    for (const verb of called) {
+      // `load: loadTower` and the shorthand `saveNamed,` both count.
+      assert(new RegExp('(^|[\\s{,])' + verb + '\\s*[,:]').test(wiring),
+        'the panel calls savesBridge.' + verb + '() and app.js never wired it — that throws on click');
+    }
+  },
+
+  'a loaded tower comes in through the same door a new one does'() {
+    // The reset in beginSession clears diagnosis history, queue history and
+    // room-health trends. A load with its own shorter reset would show a
+    // loaded tower readings taken from the tower it replaced.
+    assert(app.includes('function beginSession('), 'there is no single entry point for putting a tower on screen');
+    assert(fn('restart').includes('beginSession('), 'new session no longer shares the session reset');
+    assert(fn('loadTower').includes('beginSession('), 'loading a save no longer shares the session reset');
+    assert(fn('loadTower').includes('applyConfigPatch(CONFIG'), 'a loaded tower does not get the tuning it was played at');
+    assert(fn('loadTower').includes('syncKnobInputs()'), 'the dev knobs would still show the tuning the save replaced');
+    assert(fn('loadTower').includes('speed = 0'), 'a loaded tower starts running before the player has looked at it');
+  },
+
+  'typing a tower’s name cannot play the game'() {
+    const keys = gameKeys();
+    // Bounded at the first game key, so the guard has to come before any of
+    // them — being present further down the handler would not save a typist.
+    const guard = keys.slice(0, keys.indexOf('disarmTool(true)'));
+    assert(/input\[type="text"\]/.test(guard) && /return;/.test(guard),
+      'the game keys fire while a player is typing in a text field');
+    // The dev knobs are ranges, and space must still pause with one focused.
+    assert(!/input\[type="range"\]/.test(guard), 'the typing guard also swallows the dev knobs');
+  },
+
+  'new session writes the tower it is about to throw away'() {
+    const body = fn('restart');
+    assert(body.includes('autosave()'), '"new session" still destroys a tower with no copy of it anywhere');
+    assert(body.indexOf('autosave()') < body.indexOf('beginSession('),
+      'the autosave fires after the tower has already been replaced, so it saves the new empty one');
+  },
+
+  /**
+   * The race this locks down: a write started against one tower, finishing
+   * after another has replaced it. Without the guard it stamps the NEW session
+   * as already saved, and the first autosave of a fresh tower — the one that
+   * costs the most to lose — never fires.
+   */
+  'a save still in flight cannot mark a different tower as saved'() {
+    const body = fn('writeTower');
+    assert(/const session = sessionId/.test(body), 'the write does not record which tower it belongs to');
+    assert(/if \(session === sessionId\)/.test(body), 'the write updates the autosave clock without checking the tower is still on screen');
+    assert(body.indexOf('snapshot(state') < body.indexOf('await '),
+      'the snapshot is taken after an await, so a caller cannot save a tower it is replacing');
+    assert(fn('beginSession').includes('sessionId++'), 'putting a new tower on screen does not invalidate writes in flight');
+  },
+
+  'the autosave is gated on the tower AND the clock'() {
+    const close = fn('onDayClose');
+    assert(close.includes('shouldAutosave('), 'nothing autosaves at a day close');
+    assert(close.includes('lastSavedDay: lastAutosaveDay') && close.includes('lastSavedAt: lastAutosaveAt'),
+      'the autosave does not pass both gates, so 12x writes a snapshot every few seconds');
   },
 };

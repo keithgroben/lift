@@ -93,6 +93,11 @@ way it is**, so item 13 cannot be run honestly yet. Full spec in
       right 18 tools, was ingested by `tools/ingest_icon_grid.py`, and is on
       the buttons. The tiles keep their text monograms underneath as the
       fallback and the screen-reader label.
+- [x] Saves. A tower is about six hours, and the recorded playthrough below
+      cannot honestly be asked of one sitting. Snapshot-based (`sim/save.js`),
+      stored in IndexedDB because a played tower outgrows localStorage, with
+      named slots, a daily autosave, file export/import, and a load that
+      refuses a save the simulation has outgrown rather than half-reading it.
 - [ ] **Then** the recorded playthrough, and the loop balance pass it feeds.
 - [ ] **Only then** the developer sidebar comes out and its numbers move
       in-world. Deliberately gated on the playthrough, not on a date.

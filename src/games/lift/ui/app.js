@@ -41,6 +41,9 @@ import { serviceCoverageChange, serviceCoverageSummary, servicePlacementBudgetIm
 import { cashRunwaySummary, expansionSafetySummary } from '../sim/evaluation.js';
 import { appealWhyLine as appealWhyLineFor, weekLossPattern as weekLossPatternFor } from './hud/lines.js';
 import { setHud } from './hud/store';
+import { applyConfigPatch, restore, shouldAutosave, snapshot } from '../sim/save.js';
+import { AUTOSAVE_KEY, deleteSave, listSaves, memoryOnlyKeys, newSaveKey, readSave, writeSave } from './save-store.js';
+import { saves, setSaves, wireSaves } from './hud/saves-store';
 
 const [, , GOOD, WARN, BAD, INFO] = CONFIG.feel.palette;
 const indicatorPaletteColor = (key) => key === 'good' ? GOOD : key === 'bad' ? BAD : WARN;
@@ -133,6 +136,13 @@ let restartArmed = false;
  * ask "did that change help ME play, or just help the autoplayer?"
  */
 let tape = [];
+
+/** Autosave bookkeeping. `null` means this tower has never been written. */
+let lastAutosaveDay = null;
+let lastAutosaveAt = 0;
+/** Bumped whenever a different tower goes on screen, so a write that is still
+ *  in flight can tell it no longer belongs to the game being played. */
+let sessionId = 0;
 
 function act(type, extra = {}) {
   const action = { type, ...extra };
@@ -447,6 +457,12 @@ function frame(now) {
 }
 
 function onDayClose(closed, occupiedBefore) {
+  // A day closing is the natural save point: the ledger has settled and the
+  // tower is not mid-trip. Gated on wall clock too, or 12x would write a
+  // multi-megabyte snapshot every 3.75 seconds (sim/save.js: shouldAutosave).
+  if (shouldAutosave({ day: state.day, now: Date.now(), lastSavedDay: lastAutosaveDay, lastSavedAt: lastAutosaveAt })) {
+    autosave();
+  }
   recordCarQueueDay(closed.day);
   recordLocalRouteDay(closed.day);
   if (routeInterventionOutcome?.placed && !routeInterventionOutcome.after) {
@@ -596,7 +612,7 @@ function onDayClose(closed, occupiedBefore) {
 
 // ---------------------------------------------------------------------- HUD
 const els = {};
-for (const id of ['build', 'build-ghost', 'build-ghost-reason', 'expansion-safety', 'log', 'knobs', 'mode', 'cancel-tool', 'goal-copy', 'transport', 'rent-control', 'rent-kind', 'rent-value', 'facility-inspector', 'shaft-inspector', 'unit-inspector', 'unit-title', 'unit-appeal-why', 'unit-status', 'unit-detail', 'unit-utilization-context', 'conversion-controls', 'renovate-unit', 'rerent-unit', 'demolish-unit', 'cancel-confirmation', 'recovery-warning', 'rerent-reason', 'placement-guide-legend', 'placement-preview', 'beta-path', 'developer-toggle', 'developer-panel', 'time-controls', 'appeal-toggle', 'quick-action', 'quick-action-button', 'quick-action-detail', 'restart-game'])
+for (const id of ['build', 'build-ghost', 'build-ghost-reason', 'expansion-safety', 'log', 'knobs', 'mode', 'cancel-tool', 'goal-copy', 'transport', 'rent-control', 'rent-kind', 'rent-value', 'facility-inspector', 'shaft-inspector', 'unit-inspector', 'unit-title', 'unit-appeal-why', 'unit-status', 'unit-detail', 'unit-utilization-context', 'conversion-controls', 'renovate-unit', 'rerent-unit', 'demolish-unit', 'cancel-confirmation', 'recovery-warning', 'rerent-reason', 'placement-guide-legend', 'placement-preview', 'beta-path', 'developer-toggle', 'developer-panel', 'time-controls', 'appeal-toggle', 'quick-action', 'quick-action-button', 'quick-action-detail', 'restart-game', 'open-saves'])
   els[id] = document.getElementById(id);
 
 let developerMode = false;
@@ -5593,7 +5609,19 @@ els['rent-control'].addEventListener('click', (e) => {
 });
 
 addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { disarmTool(true); return; }
+  // The saves panel has a text field in it. Every key below would otherwise
+  // fire while a player types a tower's name — "shaft 2" would pause the game,
+  // set 4x speed, and open the appeal view. Narrow on purpose: the dev knobs
+  // are range inputs, and space still pauses while one has focus.
+  if (e.target?.matches?.('input[type="text"], input[type="file"], textarea')) {
+    if (e.key === 'Escape') e.target.blur();
+    return;
+  }
+  if (e.key === 'Escape') { if (saves.open) { closeSavesPanel(); return; } disarmTool(true); return; }
+  if (e.key.toLowerCase() === 's') { saves.open ? closeSavesPanel() : openSavesPanel(); return; }
+  // The panel is modal. Without this, R behind it restarts the tower you came
+  // to the panel to save.
+  if (saves.open) return;
   if (e.key === ' ') { e.preventDefault(); speed = speed ? 0 : 1; updateTimeControls(); toast(speed ? 'running' : 'paused', INFO); }
   if (e.key === '1') { speed = 1; updateTimeControls(); toast('1x', INFO); }
   if (e.key === '2') { speed = 4; updateTimeControls(); toast('4x', INFO); }
@@ -5608,11 +5636,24 @@ addEventListener('keydown', (e) => {
   if (e.key.toLowerCase() === 'a') toggleAppealOverlay();
 });
 
-function restart() {
+/**
+ * Put a different tower on screen — a fresh one, or one loaded from a save.
+ *
+ * Everything below the first two lines is session state the UI accumulated
+ * about the tower being replaced: diagnosis results keyed by floor id, queue
+ * history keyed by day, room-health trends, followup lists. Carrying any of it
+ * across would show a loaded tower readings taken from a different building —
+ * which is why loading goes through the identical reset that "new session"
+ * does, instead of getting its own shorter one that drifts.
+ */
+function beginSession(nextState, { tape: nextTape = [], message = '' } = {}) {
   restartArmed = false;
   els['restart-game'].textContent = 'new session';
   els['restart-game'].classList.remove('armed');
-  state = boot(CONFIG, (state.seed % 9999) + 1);
+  state = nextState;
+  // The camera belongs to the renderer and survives a session, so a tower
+  // loaded while panned over empty sky would open on nothing. Frame the ground.
+  renderer.frameLobby(state);
   tool = OPENING_TOOL;
   ghostSpot = null;
   lastGhostKey = null;
@@ -5620,7 +5661,7 @@ function restart() {
   tenantUtilizationChange = null;
   tenantUtilizationHistory = [{ day: state.day, ratio: tenantUtilizationBaseline }];
   managementHintConfirmation = null;
-  tape = [];
+  tape = nextTape;
   hoverFloor = null;
   hoverSlot = -1;
   hoverUnitId = null;
@@ -5670,8 +5711,24 @@ function restart() {
   renovationTargetId = null;
   rerentTargetId = null;
   demolitionTargetId = null;
-  toast('NEW TOWER · room health history reset · seed ' + state.seed, INFO);
+  // The autosave belongs to the tower on screen. Clearing the marker means the
+  // next day close writes immediately, so a loaded tower is protected from its
+  // first day rather than from whenever the previous session last wrote.
+  sessionId++;
+  lastAutosaveDay = null;
+  lastAutosaveAt = 0;
+  if (message) toast(message, INFO);
   refresh();
+}
+
+function restart() {
+  // The tower being thrown away gets one last write first, so "new session"
+  // stops being the one button in the game that destroys hours of play. The
+  // snapshot inside `writeTower` is taken before anything is awaited, so it
+  // captures the OLD tower even though `beginSession` runs on the next line.
+  if (state.day > 1 || state.units.length || state.lobby) autosave();
+  const fresh = boot(CONFIG, (state.seed % 9999) + 1);
+  beginSession(fresh, { message: 'NEW TOWER · previous tower autosaved · seed ' + fresh.seed });
 }
 
 /** Hands you the session as JSON. Drop it in replay/ and re-run it after a
@@ -5684,6 +5741,198 @@ function exportTape() {
   a.click();
   toast('exported ' + tape.length + ' actions', GOOD);
 }
+
+// ------------------------------------------------------------------- saves
+//
+// Issue #15. A tower is about six hours; before this, closing the tab lost
+// one. The snapshot itself lives in `sim/save.js` (pure, tested against a
+// resumed tower producing a byte-identical future) and the storage in
+// `ui/save-store.js` (IndexedDB, because a played tower outgrows localStorage).
+// What is left here is the part that has to touch the live session: taking the
+// snapshot, and handing a loaded one to `beginSession` so a save arrives
+// through exactly the same door a new game does.
+
+const say = (text, tone = 'info') => {
+  setSaves('message', { text, tone });
+  toast(text, tone === 'bad' ? BAD : tone === 'good' ? GOOD : INFO);
+};
+
+/** Re-read the slot list. Cheap: the rows are metadata, never the towers. */
+async function refreshSavesList() {
+  const held = memoryOnlyKeys();
+  const rows = (await listSaves()).map((row) => ({ ...row, memoryOnly: held.has(row.key) }));
+  setSaves('rows', rows);
+  setSaves('storageWarning', rows.some((row) => row.memoryOnly)
+    ? 'This browser refused to store at least one tower. Anything marked THIS TAB ONLY is gone when the tab closes — export it to a file.'
+    : '');
+}
+
+/**
+ * Snapshot the tower on screen into `key`.
+ *
+ * The snapshot is taken synchronously, before anything is awaited, so a caller
+ * may fire this and immediately replace the tower — which is exactly what
+ * `restart` does — and still write the building it meant to.
+ */
+async function writeTower(key, name) {
+  const session = sessionId;
+  const day = state.day;
+  const blob = snapshot(state, CONFIG, { tape, name });
+  const result = await writeSave(key, blob, { name });
+  // If the tower changed while the write was in flight, this bookkeeping is
+  // about a building nobody is playing any more. Marking the NEW session as
+  // already saved would skip its first autosave, which is the one that costs
+  // the most to lose.
+  if (session === sessionId) {
+    lastAutosaveDay = day;
+    lastAutosaveAt = Date.now();
+  }
+  return result;
+}
+
+async function saveNamed(rawName) {
+  const name = (rawName || '').trim() || 'day ' + state.day + ' · ' + state.floors + ' floors';
+  setSaves('busy', true);
+  try {
+    const { durable, reason } = await writeTower(newSaveKey(), name);
+    await refreshSavesList();
+    if (durable) say('saved "' + name + '"', 'good');
+    else say('"' + name + '" is held in this tab only — ' + reason + ' Export it to a file to keep it.', 'bad');
+  } catch (error) {
+    say(error.message, 'bad');
+  } finally {
+    setSaves('busy', false);
+  }
+}
+
+/**
+ * The automatic one. Deliberately quiet — it never toasts, because a message
+ * once a day for six hours is noise, and the panel's timestamp is where a
+ * player actually checks whether they are covered.
+ */
+async function autosave() {
+  try {
+    await writeTower(AUTOSAVE_KEY, 'autosave');
+    if (saves.open) await refreshSavesList();
+  } catch (error) {
+    // A full disk is worth interrupting for: the player is no longer covered
+    // and only they can fix it.
+    say(error.message, 'bad');
+  }
+}
+
+async function loadTower(key) {
+  setSaves('busy', true);
+  try {
+    const blob = await readSave(key);
+    if (!blob) { say('that save is no longer in this browser.', 'bad'); return; }
+    const result = restore(blob, CONFIG);
+    if (!result.ok) { say(result.reason, 'bad'); return; }
+
+    // The tuning the tower was played at comes back with it, or it resumes
+    // into different physics. Reported rather than applied silently: a save
+    // quietly overriding a balance change is how we would end up reading feel
+    // notes from numbers we thought we had stopped using.
+    applyConfigPatch(CONFIG, result.configPatch);
+    syncKnobInputs();
+
+    speed = 0;
+    updateTimeControls();
+    beginSession(result.state, { tape: Array.isArray(blob.tape) ? blob.tape : [] });
+    closeSavesPanel();
+
+    const tuned = result.configPatch.length;
+    say('loaded "' + (blob.name || 'save') + '" · day ' + state.day + ' · paused'
+      + (tuned ? ' · ' + tuned + ' tuning value' + (tuned === 1 ? '' : 's') + ' restored with it' : ''), 'good');
+  } catch (error) {
+    say('that save could not be read: ' + error.message, 'bad');
+  } finally {
+    setSaves('busy', false);
+  }
+}
+
+async function removeTower(key) {
+  await deleteSave(key);
+  await refreshSavesList();
+  say('save deleted', 'info');
+}
+
+const fileSlug = (text) => (text || 'tower').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'tower';
+
+async function downloadSave(key) {
+  const blob = await readSave(key);
+  if (!blob) { say('that save is no longer in this browser.', 'bad'); return; }
+  const a = document.createElement('a');
+  const url = URL.createObjectURL(new Blob([JSON.stringify(blob)], { type: 'application/json' }));
+  a.href = url;
+  a.download = 'lift-' + fileSlug(blob.name) + '-day' + (blob.summary?.day ?? 0) + '.json';
+  a.click();
+  URL.revokeObjectURL(url);
+  say('exported "' + (blob.name || 'save') + '" to a file', 'good');
+}
+
+/**
+ * Import validates and stores; it deliberately does NOT load. Picking a file
+ * should never be the click that destroys the tower on screen — the player
+ * loads it from the list afterwards, having seen what is in it.
+ */
+async function importSaveFile(file) {
+  setSaves('busy', true);
+  try {
+    const text = await file.text();
+    let blob;
+    try { blob = JSON.parse(text); }
+    catch { say('"' + file.name + '" is not readable JSON.', 'bad'); return; }
+
+    const check = restore(blob, CONFIG);
+    if (!check.ok) { say(check.reason, 'bad'); return; }
+
+    const name = blob.name || file.name.replace(/\.json$/i, '');
+    const { durable, reason } = await writeSave(newSaveKey(), { ...blob, name }, { name });
+    await refreshSavesList();
+    const summary = check.summary;
+    say('imported "' + name + '" · day ' + summary.day + ' · ' + summary.floors + ' floors'
+      + (durable ? ' — press load to open it' : ' — held in this tab only (' + reason + ')'),
+      durable ? 'good' : 'bad');
+  } catch (error) {
+    say('that file could not be imported: ' + error.message, 'bad');
+  } finally {
+    setSaves('busy', false);
+  }
+}
+
+function openSavesPanel() {
+  setSaves('open', true);
+  setSaves('confirming', null);
+  setSaves('message', null);
+  setSaves('autosaveKey', AUTOSAVE_KEY);
+  refreshSavesList();
+}
+
+function closeSavesPanel() {
+  setSaves('open', false);
+  setSaves('confirming', null);
+}
+
+wireSaves({
+  saveNamed,
+  load: loadTower,
+  remove: removeTower,
+  download: downloadSave,
+  upload: importSaveFile,
+  close: closeSavesPanel,
+});
+
+els['open-saves'].addEventListener('click', () => (saves.open ? closeSavesPanel() : openSavesPanel()));
+
+// Leaving the page is the moment a save is worth most, and the moment there is
+// least time to write one. `visibilitychange` fires on a tab switch and on the
+// way to a close, and is the last hook a browser reliably runs; the write is
+// still asynchronous, so this narrows the window rather than closing it. The
+// once-a-day autosave is what actually covers a hard kill.
+addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden' && state.day > 1) autosave();
+});
 
 // --------------------------------------------------------------- dev knobs
 /** Live tuning, permanently. Ship it behind the D key, never delete it. */
@@ -5717,6 +5966,22 @@ els.knobs.addEventListener('input', (e) => {
   put(CONFIG, p, Number(e.target.value));
   document.getElementById('o_' + p.replace(/\./g, '_')).textContent = e.target.value;
 });
+
+/**
+ * Re-read the sliders from the config. Loading a save restores the tuning the
+ * tower was played at, and a slider still showing the old number is a knob
+ * that lies about what the sim is running — the exact defect the dev panel
+ * exists to prevent.
+ */
+function syncKnobInputs() {
+  for (const [path] of KNOBS) {
+    const value = dig(CONFIG, path);
+    const input = els.knobs.querySelector('input[data-path="' + path + '"]');
+    const output = document.getElementById('o_' + path.replace(/\./g, '_'));
+    if (input) input.value = String(value);
+    if (output) output.textContent = String(value);
+  }
+}
 
 /**
  * Dev hook. Lets a test or an agent drive the real UI without synthesising
