@@ -1,5 +1,30 @@
 # Lift
 
+> ## ⚠️ Superseded — the tower game continues at [`keithgroben/tower`](https://github.com/keithgroben/tower)
+>
+> **2026-09-02.** Keith, after hitting the same wall a fifth time while playing:
+> *"I was attempting to add to the loop without having it first."*
+>
+> He was right, and the reason was written down here all along. This repo's north
+> star said **"SimTower's bottleneck, SimCity's appeal-shaping — not a clone,"** so
+> the tenant model was invented on purpose: appeal scores, desirability, a
+> leasing-capacity curve, first-let and re-let bars. Nothing could ever settle
+> *"is this right?"*, because by design it wasn't SimTower's.
+>
+> In SimTower an office rents when a worker's lobby-to-office route actually
+> **resolves** — the elevator network decides whether you have tenants at all.
+> Here it served tenants who arrived by a separate scoring system. That is the
+> difference, and it is not a tuning pass.
+>
+> **[`keithgroben/tower`](https://github.com/keithgroben/tower)** rebuilds the loop
+> faithfully, carrying over what worked: the elevator sim, the tower view, the art
+> pipeline, saves, and the headless harness. The teardown that explains the whole
+> decision is [`spec/simtower-loop.md`](spec/simtower-loop.md), written here before
+> the move.
+>
+> This repo stays up, playable, and unchanged — it is the comparison.
+
+
 A prototyping rig for **throughput games** — the genre where the player is a
 logistics bottleneck and the game is about seeing and widening it. SimTower,
 Melvor Idle, Particle Fleet, tower-defense RTS, incremental trees. They are all
